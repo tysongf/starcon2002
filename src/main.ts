@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { ProceduralHullGenerator, type HullGenerationResult } from './procgen/ProceduralHullGenerator';
 
 class GameEngine {
   private canvas: HTMLCanvasElement;
@@ -13,6 +14,12 @@ class GameEngine {
   private starLight: THREE.DirectionalLight;
   private sectorGrid: THREE.GridHelper;
   private starfield: THREE.Points;
+
+  // Active Ship Mesh & Material
+  private shipMesh: THREE.Mesh | null = null;
+  private shipMaterial: THREE.MeshStandardMaterial;
+  private currentSeed: number = 12345;
+  private autoRotateShip: boolean = true;
 
   // Diagnostics & Telemetry
   private lastTime: number = performance.now();
@@ -28,9 +35,13 @@ class GameEngine {
   private elTriangles: HTMLElement | null = null;
   private elCamPos: HTMLElement | null = null;
   private elCamTarget: HTMLElement | null = null;
+  private elHullTris: HTMLElement | null = null;
+  private elHullVerts: HTMLElement | null = null;
+  private inputSeed: HTMLInputElement | null = null;
+  private btnToggleRotate: HTMLElement | null = null;
 
-  // Default camera configuration
-  private readonly defaultCamPos = new THREE.Vector3(0, 18, 28);
+  // Default camera configuration (closer to inspect the ship)
+  private readonly defaultCamPos = new THREE.Vector3(0, 7, 14);
   private readonly defaultCamTarget = new THREE.Vector3(0, 0, 0);
 
   constructor() {
@@ -48,7 +59,7 @@ class GameEngine {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.1;
+    this.renderer.toneMappingExposure = 1.15;
 
     // 2. Initialize Scene
     this.scene = new THREE.Scene();
@@ -57,7 +68,7 @@ class GameEngine {
 
     // 3. Initialize Perspective Camera
     this.camera = new THREE.PerspectiveCamera(
-      55,
+      50,
       window.innerWidth / window.innerHeight,
       0.1,
       1000
@@ -69,49 +80,95 @@ class GameEngine {
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.05;
     this.controls.screenSpacePanning = true;
-    this.controls.minDistance = 5;
+    this.controls.minDistance = 2;
     this.controls.maxDistance = 150;
-    this.controls.maxPolarAngle = Math.PI / 2 + 0.1; // Allow slight sub-plane view
+    this.controls.maxPolarAngle = Math.PI / 2 + 0.15;
     this.controls.target.copy(this.defaultCamTarget);
 
     // 5. Lighting Setup
-    // Soft deep-space ambient light
-    this.ambientLight = new THREE.AmbientLight(0x28334a, 1.2);
+    this.ambientLight = new THREE.AmbientLight(0x28334a, 1.3);
     this.scene.add(this.ambientLight);
 
-    // Primary sector star (warm directional sunlight)
-    this.starLight = new THREE.DirectionalLight(0xfff4e6, 2.0);
-    this.starLight.position.set(40, 60, 30);
+    // Key light (primary star)
+    this.starLight = new THREE.DirectionalLight(0xfff5eb, 2.2);
+    this.starLight.position.set(30, 45, 25);
     this.scene.add(this.starLight);
 
-    // Secondary rim backlight
-    const rimLight = new THREE.DirectionalLight(0x38bdf8, 0.7);
-    rimLight.position.set(-40, -20, -30);
-    this.scene.add(rimLight);
+    // Fill light
+    const fillLight = new THREE.DirectionalLight(0x38bdf8, 0.9);
+    fillLight.position.set(-30, -15, -20);
+    this.scene.add(fillLight);
 
-    // 6. Tactical Sector Grid (X/Z navigation plane)
-    this.sectorGrid = new THREE.GridHelper(100, 50, 0x38bdf8, 0x1a2638);
-    this.sectorGrid.position.y = -0.05;
+    // Subtle bottom bounce light for ship underbelly
+    const bounceLight = new THREE.DirectionalLight(0x1e293b, 0.8);
+    bounceLight.position.set(0, -20, 0);
+    this.scene.add(bounceLight);
+
+    // 6. Tactical Sector Grid (X/Z plane)
+    this.sectorGrid = new THREE.GridHelper(50, 50, 0x38bdf8, 0x141e2e);
+    this.sectorGrid.position.y = -2.0;
     this.scene.add(this.sectorGrid);
 
     // 7. Background Starfield
-    this.starfield = this.createStarfield(1200);
+    this.starfield = this.createStarfield(1400);
     this.scene.add(this.starfield);
 
-    // 8. Cache Telemetry DOM references
+    // 8. Shared Material for Flat-Shaded Low-Poly Hulls
+    this.shipMaterial = new THREE.MeshStandardMaterial({
+      vertexColors: true,
+      roughness: 0.6,
+      metalness: 0.25,
+      flatShading: true,
+    });
+
+    // 9. Cache Telemetry DOM references
     this.cacheTelemetryElements();
 
-    // 9. Setup Event Listeners
+    // 10. Generate Initial Ship with Default Seed 12345
+    this.generateShip(this.currentSeed);
+
+    // 11. Setup Event Listeners
     this.setupEventListeners();
 
-    // 10. Start Animation Loop
+    // 12. Start Animation Loop
     this.animate = this.animate.bind(this);
     requestAnimationFrame(this.animate);
   }
 
   /**
-   * Generates a deterministic procedural starfield
+   * Generates or regenerates procedural spacecraft hull
    */
+  public generateShip(seed: number): void {
+    this.currentSeed = seed;
+
+    // Remove existing ship mesh if present
+    if (this.shipMesh) {
+      this.scene.remove(this.shipMesh);
+      this.shipMesh.geometry.dispose();
+      this.shipMesh = null;
+    }
+
+    // Generate new geometry
+    const result: HullGenerationResult = ProceduralHullGenerator.generate({
+      seed: this.currentSeed,
+    });
+
+    this.shipMesh = new THREE.Mesh(result.geometry, this.shipMaterial);
+    this.shipMesh.position.set(0, 0, 0);
+    this.scene.add(this.shipMesh);
+
+    // Update Telemetry & UI Readouts
+    if (this.elHullTris) {
+      this.elHullTris.textContent = `${result.triangleCount}`;
+    }
+    if (this.elHullVerts) {
+      this.elHullVerts.textContent = `${result.vertexCount}`;
+    }
+    if (this.inputSeed) {
+      this.inputSeed.value = `${this.currentSeed}`;
+    }
+  }
+
   private createStarfield(count: number): THREE.Points {
     const geometry = new THREE.BufferGeometry();
     const positions = new Float32Array(count * 3);
@@ -125,8 +182,7 @@ class GameEngine {
     ];
 
     for (let i = 0; i < count; i++) {
-      // Distribute stars on a large sphere radius around origin
-      const radius = 250 + Math.random() * 200;
+      const radius = 220 + Math.random() * 220;
       const theta = Math.random() * Math.PI * 2;
       const phi = Math.acos(Math.random() * 2 - 1);
 
@@ -161,6 +217,10 @@ class GameEngine {
     this.elTriangles = document.getElementById('val-triangles');
     this.elCamPos = document.getElementById('val-cam-pos');
     this.elCamTarget = document.getElementById('val-cam-target');
+    this.elHullTris = document.getElementById('val-hull-tris');
+    this.elHullVerts = document.getElementById('val-hull-verts');
+    this.inputSeed = document.getElementById('input-seed') as HTMLInputElement;
+    this.btnToggleRotate = document.getElementById('btn-toggle-rotate');
   }
 
   private setupEventListeners(): void {
@@ -173,25 +233,53 @@ class GameEngine {
       this.renderer.setSize(width, height);
     });
 
-    // Reset Camera Button & 'R' Key
+    // Reset Camera
     const resetCam = () => {
       this.camera.position.copy(this.defaultCamPos);
       this.controls.target.copy(this.defaultCamTarget);
       this.controls.update();
     };
-
     document.getElementById('btn-reset-cam')?.addEventListener('click', resetCam);
 
-    // Toggle Grid Button & 'G' Key
+    // Toggle Grid
     const toggleGrid = () => {
       this.sectorGrid.visible = !this.sectorGrid.visible;
     };
-
     document.getElementById('btn-toggle-grid')?.addEventListener('click', toggleGrid);
 
-    // Toggle Stars Button
-    document.getElementById('btn-toggle-stars')?.addEventListener('click', () => {
-      this.starfield.visible = !this.starfield.visible;
+    // Toggle Auto-Rotate
+    const toggleRotate = () => {
+      this.autoRotateShip = !this.autoRotateShip;
+      if (this.btnToggleRotate) {
+        this.btnToggleRotate.textContent = `Auto-Rotate: ${this.autoRotateShip ? 'ON' : 'OFF'}`;
+      }
+    };
+    this.btnToggleRotate?.addEventListener('click', toggleRotate);
+
+    // Regenerate Seed from input
+    document.getElementById('btn-generate-seed')?.addEventListener('click', () => {
+      if (this.inputSeed) {
+        const val = parseInt(this.inputSeed.value, 10);
+        if (!isNaN(val) && val > 0) {
+          this.generateShip(val);
+        }
+      }
+    });
+
+    // Randomize Seed
+    document.getElementById('btn-random-seed')?.addEventListener('click', () => {
+      const randomSeed = Math.floor(Math.random() * 900000) + 10000;
+      this.generateShip(randomSeed);
+    });
+
+    // Enter key inside seed input
+    this.inputSeed?.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key === 'Enter') {
+        const val = parseInt(this.inputSeed!.value, 10);
+        if (!isNaN(val) && val > 0) {
+          this.generateShip(val);
+        }
+      }
     });
 
     // Keyboard Shortcuts
@@ -203,6 +291,9 @@ class GameEngine {
         resetCam();
       } else if (e.key === 'g' || e.key === 'G') {
         toggleGrid();
+      } else if (e.key === ' ') {
+        e.preventDefault();
+        toggleRotate();
       }
     });
   }
@@ -227,7 +318,12 @@ class GameEngine {
       this.updateTelemetryDOM();
     }
 
-    // Slowly rotate background starfield for gentle ambient depth
+    // Slowly rotate ship if enabled
+    if (this.shipMesh && this.autoRotateShip) {
+      this.shipMesh.rotation.y += 0.006;
+    }
+
+    // Ambient starfield rotation
     this.starfield.rotation.y += 0.00015;
 
     // Update Damped Orbit Controls
@@ -237,9 +333,6 @@ class GameEngine {
     this.renderer.render(this.scene, this.camera);
   }
 
-  /**
-   * Updates HUD telemetry readings
-   */
   private updateTelemetryDOM(): void {
     if (this.elFps) this.elFps.textContent = `${this.currentFps} FPS`;
     if (this.elFrameTime) this.elFrameTime.textContent = `${this.currentFrameTime.toFixed(1)} ms`;

@@ -63,6 +63,38 @@
           </div>
         </aside>
 
+        <!-- Parametric Hull Generator Panel -->
+        <aside class="hud-panel generator-panel">
+          <div class="panel-header">
+            <h3>PARAMETRIC HULL GEN</h3>
+            <span class="live-indicator">ACTIVE</span>
+          </div>
+          <div class="generator-controls">
+            <div class="control-row">
+              <label for="input-seed">INTEGER SEED</label>
+              <div class="input-group">
+                <input type="number" id="input-seed" value="12345" min="1" max="999999999" />
+                <button id="btn-random-seed" class="hud-btn-mini" title="Randomize Seed">🎲</button>
+              </div>
+            </div>
+            <button id="btn-generate-seed" class="hud-btn primary full-width">REGENERATE HULL</button>
+            <div class="telemetry-grid" style="margin-top: 0.75rem;">
+              <div class="telemetry-item">
+                <span class="telemetry-label">HULL TRIANGLES</span>
+                <span class="telemetry-val" id="val-hull-tris">--</span>
+              </div>
+              <div class="telemetry-item">
+                <span class="telemetry-label">HULL VERTICES</span>
+                <span class="telemetry-val" id="val-hull-verts">--</span>
+              </div>
+              <div class="telemetry-item full-width">
+                <span class="telemetry-label">CLASS / SYMMETRY</span>
+                <span class="telemetry-val mono">Strike Corvette // Axial-X</span>
+              </div>
+            </div>
+          </div>
+        </aside>
+
         <!-- Instructions / Status Panel -->
         <aside class="hud-panel instructions-panel">
           <div class="panel-header">
@@ -74,6 +106,7 @@
             <li><kbd>Scroll</kbd> Zoom In / Out</li>
             <li><kbd>R</kbd> Reset Camera to Default</li>
             <li><kbd>G</kbd> Toggle Sector Grid</li>
+            <li><kbd>Space</kbd> Toggle Auto-Rotation</li>
           </ul>
         </aside>
       </div>
@@ -82,10 +115,10 @@
         <div class="hud-actions">
           <button id="btn-reset-cam" class="hud-btn" title="Reset Camera (R)">Reset Camera</button>
           <button id="btn-toggle-grid" class="hud-btn" title="Toggle Grid (G)">Toggle Grid</button>
-          <button id="btn-toggle-stars" class="hud-btn" title="Toggle Background Stars">Toggle Stars</button>
+          <button id="btn-toggle-rotate" class="hud-btn" title="Toggle Hull Spin (Space)">Auto-Rotate: ON</button>
         </div>
         <div class="hud-system-note">
-          <span>Week 1 Day 1 Engine Sandbox // WebGL 2.0 Three.js</span>
+          <span>Week 1 Day 2 // Parametric Hull Generator // WebGL 2.0 Three.js</span>
         </div>
       </footer>
     </div>
