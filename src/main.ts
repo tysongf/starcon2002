@@ -67,6 +67,8 @@ class GameEngine {
   private modalDock: HTMLElement | null = null;
   private modalStationName: HTMLElement | null = null;
   private modalOfficerQuote: HTMLElement | null = null;
+  private modalMarketTicker: HTMLElement | null = null;
+  private elBackendBadge: HTMLElement | null = null;
   private btnUndock: HTMLElement | null = null;
   private btnQuickService: HTMLElement | null = null;
 
@@ -266,6 +268,9 @@ class GameEngine {
       this.modalStationName.textContent = `${this.station.config.name} // SECTOR 01`;
     }
 
+    // Load live market inventory from backend database
+    this.loadPortInventory();
+
     // Reveal Station Dock Modal
     if (this.modalDock) {
       this.modalDock.classList.remove('hidden');
@@ -360,8 +365,54 @@ class GameEngine {
     this.modalDock = document.getElementById('station-dock-modal');
     this.modalStationName = document.getElementById('modal-station-name');
     this.modalOfficerQuote = document.getElementById('modal-officer-quote');
+    this.modalMarketTicker = document.getElementById('modal-market-ticker');
+    this.elBackendBadge = document.getElementById('backend-status-badge');
     this.btnUndock = document.getElementById('btn-undock');
     this.btnQuickService = document.getElementById('btn-quick-service');
+
+    // Check backend health
+    this.checkBackendHealth();
+  }
+
+  private async checkBackendHealth(): Promise<void> {
+    try {
+      const res = await fetch('/health');
+      if (res.ok) {
+        const data = await res.json();
+        if (this.elBackendBadge) {
+          const eng = data.database.engine === 'postgresql-remote' ? 'POSTGRES' : 'PGLITE';
+          this.elBackendBadge.textContent = `API: ONLINE (${eng})`;
+          this.elBackendBadge.style.color = '#34d399';
+          this.elBackendBadge.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+        }
+      }
+    } catch {
+      if (this.elBackendBadge) {
+        this.elBackendBadge.textContent = 'API: STANDALONE';
+      }
+    }
+  }
+
+  private async loadPortInventory(): Promise<void> {
+    try {
+      const res = await fetch('/api/ports/PORT_AEGIS_01');
+      if (res.ok) {
+        const data = await res.json();
+        if (this.modalMarketTicker && Array.isArray(data.inventory)) {
+          this.modalMarketTicker.innerHTML = data.inventory
+            .map((item: { commodity_id: string; buy_price: number; stock: number; capacity: number; demand: number }) => `
+              <div class="ticker-row">
+                <span>${item.commodity_id.replace('COMM_', '')}</span>
+                <span class="price">${item.buy_price.toFixed(1)} Cr</span>
+                <span class="stock">STOCK: ${item.stock} / ${item.capacity}</span>
+              </div>
+            `)
+            .join('');
+        }
+      }
+    } catch {
+      // Keep initial static preview
+    }
   }
 
   private setupEventListeners(): void {
