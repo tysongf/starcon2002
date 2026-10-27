@@ -63,13 +63,40 @@
           </div>
         </aside>
 
-        <!-- Parametric Hull Generator Panel -->
+        <!-- Parametric Hull Generator & Faction Style Panel -->
         <aside class="hud-panel generator-panel">
           <div class="panel-header">
-            <h3>PARAMETRIC HULL GEN</h3>
+            <h3>PARAMETRIC HULL & RACE STYLE</h3>
             <span class="live-indicator">ACTIVE</span>
           </div>
           <div class="generator-controls">
+            <!-- Faction Selector -->
+            <div class="control-row">
+              <label for="select-faction">FACTION DESIGN STYLE</label>
+              <select id="select-faction" class="hud-select">
+                <option value="FACTION_SOL">Sol-Perimeter League (Terran Industrial)</option>
+                <option value="FACTION_PHORID">The Phorid Exchange (Segmented Chitin)</option>
+                <option value="FACTION_LITHOS">The Lithos Axiom (Crystalline Facet)</option>
+                <option value="FACTION_VAELIC">The Vaelic Hegemony (Obsidian Brutalist)</option>
+              </select>
+            </div>
+
+            <!-- Faction Cultural Summary & Swatches -->
+            <div class="faction-summary-box">
+              <div class="swatches-container">
+                <span class="swatches-label">PALETTE:</span>
+                <div class="swatches-row" id="faction-swatches">
+                  <span class="swatch" id="swatch-pri" title="Primary Plating"></span>
+                  <span class="swatch" id="swatch-sec" title="Secondary Trim"></span>
+                  <span class="swatch" id="swatch-glow" title="Emissive Glow"></span>
+                </div>
+              </div>
+              <p id="val-faction-desc" class="faction-desc-text">
+                Pragmatic, battle-worn modular scrap-rigs built from industrial plasteel.
+              </p>
+            </div>
+
+            <!-- Seed Controls -->
             <div class="control-row">
               <label for="input-seed">INTEGER SEED</label>
               <div class="input-group">
@@ -78,6 +105,7 @@
               </div>
             </div>
             <button id="btn-generate-seed" class="hud-btn primary full-width">REGENERATE HULL</button>
+            
             <div class="telemetry-grid" style="margin-top: 0.75rem;">
               <div class="telemetry-item">
                 <span class="telemetry-label">HULL TRIANGLES</span>
@@ -88,8 +116,8 @@
                 <span class="telemetry-val" id="val-hull-verts">--</span>
               </div>
               <div class="telemetry-item full-width">
-                <span class="telemetry-label">CLASS / SYMMETRY</span>
-                <span class="telemetry-val mono">Strike Corvette // Axial-X</span>
+                <span class="telemetry-label">CLASS / SHAPE GRAMMAR</span>
+                <span class="telemetry-val mono" id="val-grammar-style">Strike Corvette // Modular Industrial</span>
               </div>
             </div>
           </div>
@@ -118,7 +146,7 @@
           <button id="btn-toggle-rotate" class="hud-btn" title="Toggle Hull Spin (Space)">Auto-Rotate: ON</button>
         </div>
         <div class="hud-system-note">
-          <span>Week 1 Day 2 // Parametric Hull Generator // WebGL 2.0 Three.js</span>
+          <span>Week 1 Day 3 // Flat-Shading & Race Color Palette Mapping // WebGL 2.0 Three.js</span>
         </div>
       </footer>
     </div>

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { ProceduralHullGenerator, type HullGenerationResult } from './procgen/ProceduralHullGenerator';
+import { type FactionStyle, FACTION_STYLES } from './procgen/FactionStyles';
 
 class GameEngine {
   private canvas: HTMLCanvasElement;
@@ -19,6 +20,7 @@ class GameEngine {
   private shipMesh: THREE.Mesh | null = null;
   private shipMaterial: THREE.MeshStandardMaterial;
   private currentSeed: number = 12345;
+  private currentFaction: FactionStyle = FACTION_STYLES.FACTION_SOL;
   private autoRotateShip: boolean = true;
 
   // Diagnostics & Telemetry
@@ -28,7 +30,7 @@ class GameEngine {
   private currentFps: number = 60;
   private currentFrameTime: number = 16.6;
 
-  // Telemetry DOM elements
+  // Telemetry & UI DOM elements
   private elFps: HTMLElement | null = null;
   private elFrameTime: HTMLElement | null = null;
   private elDrawCalls: HTMLElement | null = null;
@@ -37,10 +39,16 @@ class GameEngine {
   private elCamTarget: HTMLElement | null = null;
   private elHullTris: HTMLElement | null = null;
   private elHullVerts: HTMLElement | null = null;
+  private elGrammarStyle: HTMLElement | null = null;
+  private elFactionDesc: HTMLElement | null = null;
+  private selectFaction: HTMLSelectElement | null = null;
+  private swatchPri: HTMLElement | null = null;
+  private swatchSec: HTMLElement | null = null;
+  private swatchGlow: HTMLElement | null = null;
   private inputSeed: HTMLInputElement | null = null;
   private btnToggleRotate: HTMLElement | null = null;
 
-  // Default camera configuration (closer to inspect the ship)
+  // Default camera configuration
   private readonly defaultCamPos = new THREE.Vector3(0, 7, 14);
   private readonly defaultCamTarget = new THREE.Vector3(0, 0, 0);
 
@@ -89,7 +97,7 @@ class GameEngine {
     this.ambientLight = new THREE.AmbientLight(0x28334a, 1.3);
     this.scene.add(this.ambientLight);
 
-    // Key light (primary star)
+    // Key light (primary sector star)
     this.starLight = new THREE.DirectionalLight(0xfff5eb, 2.2);
     this.starLight.position.set(30, 45, 25);
     this.scene.add(this.starLight);
@@ -99,7 +107,7 @@ class GameEngine {
     fillLight.position.set(-30, -15, -20);
     this.scene.add(fillLight);
 
-    // Subtle bottom bounce light for ship underbelly
+    // Bounce light for ship underbelly
     const bounceLight = new THREE.DirectionalLight(0x1e293b, 0.8);
     bounceLight.position.set(0, -20, 0);
     this.scene.add(bounceLight);
@@ -116,16 +124,16 @@ class GameEngine {
     // 8. Shared Material for Flat-Shaded Low-Poly Hulls
     this.shipMaterial = new THREE.MeshStandardMaterial({
       vertexColors: true,
-      roughness: 0.6,
-      metalness: 0.25,
+      roughness: this.currentFaction.materials.roughness,
+      metalness: this.currentFaction.materials.metalness,
       flatShading: true,
     });
 
     // 9. Cache Telemetry DOM references
     this.cacheTelemetryElements();
 
-    // 10. Generate Initial Ship with Default Seed 12345
-    this.generateShip(this.currentSeed);
+    // 10. Generate Initial Ship with Default Seed and Faction
+    this.generateShip(this.currentSeed, this.currentFaction);
 
     // 11. Setup Event Listeners
     this.setupEventListeners();
@@ -136,10 +144,18 @@ class GameEngine {
   }
 
   /**
-   * Generates or regenerates procedural spacecraft hull
+   * Generates or regenerates procedural spacecraft hull with race palette
    */
-  public generateShip(seed: number): void {
+  public generateShip(seed: number, faction?: FactionStyle): void {
     this.currentSeed = seed;
+    if (faction) {
+      this.currentFaction = faction;
+    }
+
+    // Update material properties dynamically according to faction aesthetic
+    this.shipMaterial.roughness = this.currentFaction.materials.roughness;
+    this.shipMaterial.metalness = this.currentFaction.materials.metalness;
+    this.shipMaterial.needsUpdate = true;
 
     // Remove existing ship mesh if present
     if (this.shipMesh) {
@@ -148,9 +164,10 @@ class GameEngine {
       this.shipMesh = null;
     }
 
-    // Generate new geometry
+    // Generate new geometry driven by faction grammar and palette
     const result: HullGenerationResult = ProceduralHullGenerator.generate({
       seed: this.currentSeed,
+      faction: this.currentFaction,
     });
 
     this.shipMesh = new THREE.Mesh(result.geometry, this.shipMaterial);
@@ -166,6 +183,30 @@ class GameEngine {
     }
     if (this.inputSeed) {
       this.inputSeed.value = `${this.currentSeed}`;
+    }
+    if (this.selectFaction) {
+      this.selectFaction.value = this.currentFaction.id;
+    }
+    if (this.elFactionDesc) {
+      this.elFactionDesc.textContent = this.currentFaction.culturalSummary;
+    }
+    if (this.elGrammarStyle) {
+      const grammarName = this.currentFaction.shapeGrammar.replace('_', ' ');
+      this.elGrammarStyle.textContent = `Strike Corvette // ${grammarName}`;
+    }
+
+    // Update Color Swatches
+    const toHexStr = (c: number) => '#' + c.toString(16).padStart(6, '0');
+    if (this.swatchPri) {
+      this.swatchPri.style.backgroundColor = toHexStr(this.currentFaction.palette.primary);
+    }
+    if (this.swatchSec) {
+      this.swatchSec.style.backgroundColor = toHexStr(this.currentFaction.palette.secondary);
+    }
+    if (this.swatchGlow) {
+      const glowHex = toHexStr(this.currentFaction.palette.engineGlow);
+      this.swatchGlow.style.backgroundColor = glowHex;
+      this.swatchGlow.style.boxShadow = `0 0 8px ${glowHex}`;
     }
   }
 
@@ -219,6 +260,12 @@ class GameEngine {
     this.elCamTarget = document.getElementById('val-cam-target');
     this.elHullTris = document.getElementById('val-hull-tris');
     this.elHullVerts = document.getElementById('val-hull-verts');
+    this.elGrammarStyle = document.getElementById('val-grammar-style');
+    this.elFactionDesc = document.getElementById('val-faction-desc');
+    this.selectFaction = document.getElementById('select-faction') as HTMLSelectElement;
+    this.swatchPri = document.getElementById('swatch-pri');
+    this.swatchSec = document.getElementById('swatch-sec');
+    this.swatchGlow = document.getElementById('swatch-glow');
     this.inputSeed = document.getElementById('input-seed') as HTMLInputElement;
     this.btnToggleRotate = document.getElementById('btn-toggle-rotate');
   }
@@ -256,6 +303,14 @@ class GameEngine {
     };
     this.btnToggleRotate?.addEventListener('click', toggleRotate);
 
+    // Faction Selector Dropdown Change
+    this.selectFaction?.addEventListener('change', () => {
+      const selectedId = this.selectFaction?.value;
+      if (selectedId && FACTION_STYLES[selectedId]) {
+        this.generateShip(this.currentSeed, FACTION_STYLES[selectedId]);
+      }
+    });
+
     // Regenerate Seed from input
     document.getElementById('btn-generate-seed')?.addEventListener('click', () => {
       if (this.inputSeed) {
@@ -284,7 +339,7 @@ class GameEngine {
 
     // Keyboard Shortcuts
     window.addEventListener('keydown', (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) {
         return;
       }
       if (e.key === 'r' || e.key === 'R') {
@@ -294,6 +349,14 @@ class GameEngine {
       } else if (e.key === ' ') {
         e.preventDefault();
         toggleRotate();
+      } else if (e.key === '1') {
+        this.generateShip(this.currentSeed, FACTION_STYLES.FACTION_SOL);
+      } else if (e.key === '2') {
+        this.generateShip(this.currentSeed, FACTION_STYLES.FACTION_PHORID);
+      } else if (e.key === '3') {
+        this.generateShip(this.currentSeed, FACTION_STYLES.FACTION_LITHOS);
+      } else if (e.key === '4') {
+        this.generateShip(this.currentSeed, FACTION_STYLES.FACTION_VAELIC);
       }
     });
   }

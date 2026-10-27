@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { PRNG } from './PRNG';
+import { type FactionStyle, FACTION_STYLES } from './FactionStyles';
 
 /**
  * 3D Integer Vector for fixed-point math (1000 = 1.0 Three.js world unit)
@@ -12,9 +13,10 @@ export interface IntVec3 {
 
 export interface HullGenerationOptions {
   seed: number;
+  faction?: FactionStyle;
   length?: number;       // In integer millispaces (default ~8000 = 8.0 units)
-  width?: number;        // In integer millispaces (default ~3000 = 3.0 units)
-  height?: number;       // In integer millispaces (default ~1500 = 1.5 units)
+  width?: number;        // In integer millispaces (default ~2800 = 2.8 units)
+  height?: number;       // In integer millispaces (default ~1600 = 1.6 units)
   wingSpread?: number;   // Extra wing extension
   weaponHardpoints?: boolean;
 }
@@ -24,6 +26,7 @@ export interface HullGenerationResult {
   triangleCount: number;
   vertexCount: number;
   seed: number;
+  faction: FactionStyle;
 }
 
 /**
@@ -34,15 +37,20 @@ export class ProceduralHullGenerator {
   private static readonly FP_SCALE = 1000; // Fixed-point divisor
 
   /**
-   * Generates a deterministic low-poly hull geometry from an integer seed.
+   * Generates a deterministic low-poly hull geometry from an integer seed and faction style.
    */
   public static generate(options: HullGenerationOptions): HullGenerationResult {
     const prng = new PRNG(options.seed);
+    const faction = options.faction ?? FACTION_STYLES.FACTION_SOL;
 
-    // Dynamic hull dimensions with deterministic variation
-    const halfLen = Math.floor((options.length ?? 8000) / 2);
-    const halfWid = Math.floor((options.width ?? 2800) / 2);
-    const halfHgt = Math.floor((options.height ?? 1600) / 2);
+    // Dynamic hull dimensions with deterministic variation scaled by faction grammar
+    const baseLen = Math.floor((options.length ?? 8000) * faction.structural.lengthMult);
+    const baseWid = Math.floor((options.width ?? 2800) * faction.structural.widthMult);
+    const baseHgt = Math.floor((options.height ?? 1600) * faction.structural.heightMult);
+
+    const halfLen = Math.floor(baseLen / 2);
+    const halfWid = Math.floor(baseWid / 2);
+    const halfHgt = Math.floor(baseHgt / 2);
 
     // List of vertices (in integer coordinates)
     const vertices: IntVec3[] = [];
@@ -211,8 +219,10 @@ export class ProceduralHullGenerator {
     // =========================================================================
     // 3. PARAMETRIC WINGS WITH AXIAL-X SYMMETRY
     // =========================================================================
-    const wingSweepBack = Math.floor(halfLen * 0.35) + prng.rangeInt(-200, 400);
-    const wingSpan = halfWid * 2 + (options.wingSpread ?? 2500) + prng.rangeInt(-300, 600);
+    const rawSweep = Math.floor(halfLen * 0.35) + prng.rangeInt(-200, 400);
+    const wingSweepBack = rawSweep + faction.structural.wingSweep;
+    const baseWingSpread = (options.wingSpread ?? 2500) * faction.structural.wingSpreadMult;
+    const wingSpan = Math.floor(halfWid * 2 + baseWingSpread + prng.rangeInt(-300, 600));
     const wingThickness = Math.floor(halfHgt * 0.25);
 
     // Right Wing (+X)
@@ -299,14 +309,14 @@ export class ProceduralHullGenerator {
     const normals = new Float32Array(totalTris * 3 * 3);
     const colors = new Float32Array(totalTris * 3 * 3);
 
-    // Color definitions for visual distinction
+    // Color definitions for visual distinction derived from faction palette
     const colorMap: Record<string, THREE.Color> = {
-      hull: new THREE.Color(0x3a4454),            // Steel gunmetal grey
-      accent: new THREE.Color(0x38bdf8),          // Neon cyan trim
-      canopy: new THREE.Color(0x0f172a),          // Deep cockpit glass
-      engine_bulkhead: new THREE.Color(0x1e293b), // Dark exhaust frame
-      engine_glow: new THREE.Color(0xf59e0b),     // Warm amber plasma glow
-      metal: new THREE.Color(0x64748b),           // Hardened titanium barrels
+      hull: new THREE.Color(faction.palette.primary),
+      accent: new THREE.Color(faction.palette.secondary),
+      canopy: new THREE.Color(faction.palette.canopy),
+      engine_bulkhead: new THREE.Color(faction.palette.engineBulkhead),
+      engine_glow: new THREE.Color(faction.palette.engineGlow),
+      metal: new THREE.Color(faction.palette.metal),
     };
 
     let pIdx = 0;
@@ -384,6 +394,7 @@ export class ProceduralHullGenerator {
       triangleCount: totalTris,
       vertexCount: totalTris * 3,
       seed: options.seed,
+      faction,
     };
   }
 }

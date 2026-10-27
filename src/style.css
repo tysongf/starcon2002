@@ -281,6 +281,82 @@ kbd {
   letter-spacing: 0.05em;
 }
 
+.hud-select {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid var(--border-subtle);
+  border-radius: 5px;
+  color: var(--text-accent);
+  font-family: var(--font-main);
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 0.5rem 0.65rem;
+  outline: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.hud-select:hover, .hud-select:focus {
+  border-color: var(--text-accent);
+  background: rgba(18, 24, 34, 0.9);
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.2);
+}
+
+.hud-select option {
+  background: #0f141c;
+  color: var(--text-primary);
+  font-family: var(--font-main);
+}
+
+.faction-summary-box {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  padding: 0.6rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.swatches-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.swatches-label {
+  font-size: 0.62rem;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--text-secondary);
+  letter-spacing: 0.05em;
+}
+
+.swatches-row {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.swatch {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  display: inline-block;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.swatch:hover {
+  transform: scale(1.15);
+}
+
+.faction-desc-text {
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--text-secondary);
+}
+
 .input-group {
   display: flex;
   gap: 0.4rem;
