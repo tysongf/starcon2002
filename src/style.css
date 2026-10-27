@@ -534,3 +534,234 @@ kbd {
   border-radius: 4px;
   border: 1px solid rgba(255, 255, 255, 0.05);
 }
+
+/* ==========================================================================
+   STATION DOCK MODAL (Milestone 0.1)
+   ========================================================================== */
+
+.dock-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(3, 5, 8, 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  z-index: 100;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 1.5rem;
+  opacity: 1;
+  transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.dock-modal-overlay.hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.98);
+}
+
+.dock-modal-card {
+  background: rgba(13, 18, 26, 0.95);
+  border: 1px solid var(--border-accent);
+  border-radius: 12px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8), var(--shadow-glow);
+  width: 100%;
+  max-width: 780px;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 1.75rem;
+  animation: modal-enter 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes modal-enter {
+  0% { transform: translateY(12px) scale(0.97); opacity: 0; }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+.dock-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 1rem;
+}
+
+.dock-title-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.dock-badge {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--text-accent);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+.dock-station-name {
+  font-size: 1.45rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--text-primary);
+}
+
+.dock-subtext {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.dock-status-tag {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid var(--text-success);
+  color: #34d399;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.4rem 0.75rem;
+  border-radius: 6px;
+  letter-spacing: 0.05em;
+}
+
+.dock-officer-comms {
+  display: flex;
+  gap: 1rem;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 1rem;
+  align-items: flex-start;
+}
+
+.officer-avatar {
+  font-size: 2.2rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  width: 52px;
+  height: 52px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.officer-transmission {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  flex: 1;
+}
+
+.officer-name {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-accent);
+  letter-spacing: 0.05em;
+}
+
+.officer-quote {
+  font-size: 0.88rem;
+  line-height: 1.45;
+  color: #d1d5db;
+  font-style: italic;
+}
+
+.dock-services-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.service-card {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.service-card h4 {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--text-secondary);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 0.4rem;
+}
+
+.market-ticker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.ticker-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text-primary);
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.05);
+  padding-bottom: 0.25rem;
+}
+
+.ticker-row .price {
+  color: var(--text-warn);
+  font-weight: 700;
+}
+
+.ticker-row .stock {
+  font-size: 0.68rem;
+  color: var(--text-secondary);
+}
+
+.ticker-row .demand {
+  font-size: 0.68rem;
+  color: #34d399;
+  font-weight: 700;
+}
+
+.ship-status-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.35rem;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+}
+
+.ship-status-grid div {
+  display: flex;
+  justify-content: space-between;
+}
+
+.dock-modal-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding-top: 1rem;
+}
+
+.undock-hint {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.hud-btn.large-btn {
+  padding: 0.75rem 1.4rem;
+  font-size: 0.9rem;
+}
+

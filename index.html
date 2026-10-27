@@ -158,9 +158,68 @@
           <button id="btn-toggle-grid" class="hud-btn" title="Toggle Grid (G)">Toggle Grid</button>
         </div>
         <div class="hud-system-note">
-          <span>Week 1 Day 4 // Newtonian 2D Flight Controller // WebGL 2.0 Three.js</span>
+          <span>Week 1 Day 5 // Runnable Milestone 0.1 Check // WebGL 2.0 Three.js</span>
         </div>
       </footer>
+    </div>
+
+    <!-- Station Dock Modal (Milestone 0.1) -->
+    <div id="station-dock-modal" class="dock-modal-overlay hidden">
+      <div class="dock-modal-card">
+        <header class="dock-modal-header">
+          <div class="dock-title-block">
+            <span class="dock-badge">CLASS 1 FREE-TRADE HUB</span>
+            <h2 class="dock-station-name" id="modal-station-name">AEGIS TERMINAL // SECTOR 01</h2>
+            <span class="dock-subtext">SOL-PERIMETER LEAGUE JURISDICTION // POPULATION 42,000</span>
+          </div>
+          <div class="dock-status-tag">
+            <span class="dock-lock-icon">🔒</span>
+            <span>CLAMPS ENGAGED</span>
+          </div>
+        </header>
+
+        <div class="dock-officer-comms">
+          <div class="officer-avatar">👨‍🚀</div>
+          <div class="officer-transmission">
+            <span class="officer-name">HARBORMASTER VANCE // COMM FREQ 114.8 MHz</span>
+            <p class="officer-quote" id="modal-officer-quote">
+              "Docking clamps secured, Captain. Atmospheric seals holding at 1.0 ATM. Power couplers attached. Welcome to Aegis Terminal. We've got fresh Deuterium in the fuel depot and our industrial smelters are buying raw ore at high margins today. What's your business?"
+            </p>
+          </div>
+        </div>
+
+        <div class="dock-services-grid">
+          <div class="service-card">
+            <h4>COMMODITY EXCHANGE (MARKET PREVIEW)</h4>
+            <div class="market-ticker">
+              <div class="ticker-row"><span>Deuterium Fuel (COMM_FUEL)</span><span class="price">25 Cr</span><span class="stock">SUPPLY: HIGH</span></div>
+              <div class="ticker-row"><span>Bio-Protein (COMM_RATIONS)</span><span class="price">40 Cr</span><span class="stock">SUPPLY: NORM</span></div>
+              <div class="ticker-row"><span>Silicate Ore (COMM_ORE)</span><span class="price">68 Cr</span><span class="demand">DEMAND: HIGH</span></div>
+              <div class="ticker-row"><span>Plasteel Alloy (COMM_ALLOY)</span><span class="price">155 Cr</span><span class="stock">SUPPLY: LOW</span></div>
+            </div>
+          </div>
+
+          <div class="service-card">
+            <h4>SHIP SYSTEMS & DRY-DOCK</h4>
+            <div class="ship-status-grid">
+              <div><span>HULL ARMOR:</span> <strong>100% (PRISTINE)</strong></div>
+              <div><span>ENERGY SHIELDS:</span> <strong>100% (CHARGED)</strong></div>
+              <div><span>RESERVE FUEL:</span> <strong>100 / 100 UNITS</strong></div>
+              <div><span>CARGO CAPACITY:</span> <strong>0 / 40 m³</strong></div>
+            </div>
+            <button id="btn-quick-service" class="hud-btn" style="margin-top: 0.75rem; width: 100%;">
+              ⚡ Cycle Power & Refresh Couplers
+            </button>
+          </div>
+        </div>
+
+        <footer class="dock-modal-footer">
+          <span class="undock-hint">Press <kbd>ESC</kbd> or click button to release magnetic clamps</span>
+          <button id="btn-undock" class="hud-btn primary large-btn">
+            DISENGAGE CLAMPS & UNDOCK 🚀
+          </button>
+        </footer>
+      </div>
     </div>
 
     <script type="module" src="/src/main.ts"></script>

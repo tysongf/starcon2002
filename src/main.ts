@@ -4,7 +4,9 @@ import { ProceduralHullGenerator, type HullGenerationResult } from './procgen/Pr
 import { type FactionStyle, FACTION_STYLES } from './procgen/FactionStyles';
 import { ShipFlightController, type FlightTelemetry } from './physics/ShipFlightController';
 import { ThrusterParticleSystem } from './vfx/ThrusterParticleSystem';
-import { DockingZone, type DockingStatus } from './entities/DockingZone';
+import { SpaceStation } from './entities/SpaceStation';
+import { type DockingStatus } from './entities/DockingZone';
+import { AudioEngine } from './audio/AudioEngine';
 
 class GameEngine {
   private canvas: HTMLCanvasElement;
@@ -16,8 +18,10 @@ class GameEngine {
   // Flight Physics & Systems
   private flightController: ShipFlightController;
   private thrusters: ThrusterParticleSystem;
-  private dockingZone: DockingZone;
+  private station: SpaceStation;
+  private audio: AudioEngine;
   private cameraMode: 'CHASE' | 'ORBIT' = 'CHASE';
+  private isDocked: boolean = false;
 
   // Scene entities
   private ambientLight: THREE.AmbientLight;
@@ -59,6 +63,13 @@ class GameEngine {
   private btnToggleCam: HTMLElement | null = null;
   private btnToggleDamp: HTMLElement | null = null;
 
+  // Modal DOM Elements
+  private modalDock: HTMLElement | null = null;
+  private modalStationName: HTMLElement | null = null;
+  private modalOfficerQuote: HTMLElement | null = null;
+  private btnUndock: HTMLElement | null = null;
+  private btnQuickService: HTMLElement | null = null;
+
   // Camera tracking vectors
   private currentLookTarget = new THREE.Vector3(0, 0, 0);
 
@@ -68,7 +79,10 @@ class GameEngine {
       throw new Error('Canvas element #webgl-canvas not found.');
     }
 
-    // 1. Initialize WebGL Renderer
+    // 1. Initialize Web Audio Synthesizer
+    this.audio = new AudioEngine();
+
+    // 2. Initialize WebGL Renderer
     this.renderer = new THREE.WebGLRenderer({
       canvas: this.canvas,
       antialias: true,
@@ -79,12 +93,12 @@ class GameEngine {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.15;
 
-    // 2. Initialize Scene
+    // 3. Initialize Scene
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x06080d);
-    this.scene.fog = new THREE.FogExp2(0x06080d, 0.0025);
+    this.scene.fog = new THREE.FogExp2(0x06080d, 0.0022);
 
-    // 3. Initialize Perspective Camera
+    // 4. Initialize Perspective Camera
     this.camera = new THREE.PerspectiveCamera(
       52,
       window.innerWidth / window.innerHeight,
@@ -93,7 +107,7 @@ class GameEngine {
     );
     this.camera.position.set(0, 16, -22);
 
-    // 4. Initialize Orbit Controls (used in ORBIT mode)
+    // 5. Initialize Orbit Controls (used in ORBIT mode)
     this.controls = new OrbitControls(this.camera, this.canvas);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.05;
@@ -102,15 +116,15 @@ class GameEngine {
     this.controls.maxDistance = 250;
     this.controls.enabled = false; // Starts in CHASE mode
 
-    // 5. Lighting Setup
+    // 6. Lighting Setup
     this.ambientLight = new THREE.AmbientLight(0x28334a, 1.4);
     this.scene.add(this.ambientLight);
 
-    this.starLight = new THREE.DirectionalLight(0xfff5eb, 2.2);
+    this.starLight = new THREE.DirectionalLight(0xfff5eb, 2.3);
     this.starLight.position.set(40, 60, 30);
     this.scene.add(this.starLight);
 
-    const fillLight = new THREE.DirectionalLight(0x38bdf8, 0.9);
+    const fillLight = new THREE.DirectionalLight(0x38bdf8, 0.95);
     fillLight.position.set(-40, -15, -25);
     this.scene.add(fillLight);
 
@@ -118,26 +132,32 @@ class GameEngine {
     bounceLight.position.set(0, -20, 0);
     this.scene.add(bounceLight);
 
-    // 6. Tactical Sector Grid (X/Z plane)
+    // 7. Tactical Sector Grid (X/Z plane)
     this.sectorGrid = new THREE.GridHelper(160, 80, 0x38bdf8, 0x141e2e);
     this.sectorGrid.position.y = -0.05;
     this.scene.add(this.sectorGrid);
 
-    // 7. Background Starfield
+    // 8. Background Starfield
     this.starfield = this.createStarfield(1600);
     this.scene.add(this.starfield);
 
-    // 8. Flight Physics & Thruster VFX
+    // 9. Procedural Orbital Space Station at Origin
+    this.station = new SpaceStation({
+      stationId: 'STATION_AEGIS_01',
+      name: 'AEGIS TERMINAL',
+      portClass: 1,
+      factionId: 'FACTION_SOL',
+      position: new THREE.Vector3(0, 0, 0),
+    });
+    this.scene.add(this.station.group);
+
+    // 10. Flight Physics & Thruster VFX (Starts docked inside station landing deck)
     this.flightController = new ShipFlightController(new THREE.Vector3(0, 0, 0), 0);
     this.thrusters = new ThrusterParticleSystem();
     this.thrusters.setGlowColor(this.currentFaction.palette.engineGlow);
     this.scene.add(this.thrusters.mesh);
 
-    // 9. Tactical Docking Zone at Origin
-    this.dockingZone = new DockingZone(new THREE.Vector3(0, 0, 0));
-    this.scene.add(this.dockingZone.group);
-
-    // 10. Shared Ship Material
+    // 11. Shared Ship Material
     this.shipMaterial = new THREE.MeshStandardMaterial({
       vertexColors: true,
       roughness: this.currentFaction.materials.roughness,
@@ -145,16 +165,16 @@ class GameEngine {
       flatShading: true,
     });
 
-    // 11. Cache Telemetry DOM references
+    // 12. Cache Telemetry & Modal DOM references
     this.cacheTelemetryElements();
 
-    // 12. Generate Initial Ship Hull
+    // 13. Generate Initial Ship Hull
     this.generateShip(this.currentSeed, this.currentFaction);
 
-    // 13. Setup Event Listeners
+    // 14. Setup Event Listeners
     this.setupEventListeners();
 
-    // 14. Start Animation & Physics Loop
+    // 15. Start Animation & Physics Loop
     this.animate = this.animate.bind(this);
     requestAnimationFrame(this.animate);
   }
@@ -205,6 +225,72 @@ class GameEngine {
       this.swatchGlow.style.backgroundColor = glowHex;
       this.swatchGlow.style.boxShadow = `0 0 8px ${glowHex}`;
     }
+  }
+
+  /**
+   * Engages station magnetic docking clamps
+   */
+  public dockShip(): void {
+    if (this.isDocked) return;
+    this.isDocked = true;
+
+    // Halt vessel
+    this.flightController.velocity.set(0, 0, 0);
+
+    // Play procedural docking chime
+    this.audio.playDockingChime();
+
+    // Customize dialog transmission based on faction affiliation
+    if (this.modalOfficerQuote) {
+      switch (this.currentFaction.id) {
+        case 'FACTION_PHORID':
+          this.modalOfficerQuote.textContent =
+            '"Szzzzzt! Organic trader hull locked! Welcome to Aegis Exchange Spire! Docking fee is 8 Credits per oxygen liter, payable upon departure. What surplus moisture do you have to barter?"';
+          break;
+        case 'FACTION_LITHOS':
+          this.modalOfficerQuote.textContent =
+            '"Axiom Harmonic Resonance confirmed. The geometric lattice of Aegis Terminal welcomes your low-entropy vessel. Our prism storage arrays are ready for harmonic transfer."';
+          break;
+        case 'FACTION_VAELIC':
+          this.modalOfficerQuote.textContent =
+            '"Vessel registered under Hegemony Direct Calculus index. Docking priority granted. Ensure all kinetic discharge manifolds remain offline during refueling tithes."';
+          break;
+        default:
+          this.modalOfficerQuote.textContent =
+            '"Docking clamps secured, Captain. Atmospheric seals holding at 1.0 ATM. Power couplers attached. Welcome to Aegis Terminal. We\'ve got fresh Deuterium in the fuel depot and our industrial smelters are buying raw ore at high margins today. What\'s your business?"';
+          break;
+      }
+    }
+
+    if (this.modalStationName) {
+      this.modalStationName.textContent = `${this.station.config.name} // SECTOR 01`;
+    }
+
+    // Reveal Station Dock Modal
+    if (this.modalDock) {
+      this.modalDock.classList.remove('hidden');
+    }
+  }
+
+  /**
+   * Disengages docking clamps and releases vessel
+   */
+  public undockShip(): void {
+    if (!this.isDocked) return;
+    this.isDocked = false;
+
+    // Play undocking release sound
+    this.audio.playUndockSound();
+
+    // Hide Modal
+    if (this.modalDock) {
+      this.modalDock.classList.add('hidden');
+    }
+
+    // Give vessel gentle forward clearance impulse
+    const forwardX = Math.sin(this.flightController.yaw);
+    const forwardZ = Math.cos(this.flightController.yaw);
+    this.flightController.velocity.set(forwardX * 5.0, 0, forwardZ * 5.0);
   }
 
   private createStarfield(count: number): THREE.Points {
@@ -269,6 +355,13 @@ class GameEngine {
     this.inputSeed = document.getElementById('input-seed') as HTMLInputElement;
     this.btnToggleCam = document.getElementById('btn-toggle-cam');
     this.btnToggleDamp = document.getElementById('btn-toggle-damp');
+
+    // Modal elements
+    this.modalDock = document.getElementById('station-dock-modal');
+    this.modalStationName = document.getElementById('modal-station-name');
+    this.modalOfficerQuote = document.getElementById('modal-officer-quote');
+    this.btnUndock = document.getElementById('btn-undock');
+    this.btnQuickService = document.getElementById('btn-quick-service');
   }
 
   private setupEventListeners(): void {
@@ -280,7 +373,7 @@ class GameEngine {
       this.renderer.setSize(width, height);
     });
 
-    // Toggle Camera Mode Button & Shortcut
+    // Toggle Camera Mode
     const toggleCameraMode = () => {
       if (this.cameraMode === 'CHASE') {
         this.cameraMode = 'ORBIT';
@@ -299,7 +392,7 @@ class GameEngine {
     };
     this.btnToggleCam?.addEventListener('click', toggleCameraMode);
 
-    // Toggle Dampeners Button & Shortcut
+    // Toggle Dampeners
     const toggleDampeners = () => {
       const active = this.flightController.toggleDampeners();
       if (this.btnToggleDamp) {
@@ -312,7 +405,7 @@ class GameEngine {
     };
     this.btnToggleDamp?.addEventListener('click', toggleDampeners);
 
-    // Reset Position Button
+    // Reset Position to Docking Bay
     document.getElementById('btn-reset-pos')?.addEventListener('click', () => {
       this.flightController.reset(new THREE.Vector3(0, 0, 0));
     });
@@ -343,9 +436,39 @@ class GameEngine {
       this.generateShip(randomSeed);
     });
 
+    // Undock button click
+    this.btnUndock?.addEventListener('click', () => {
+      this.undockShip();
+    });
+
+    // Quick service button click
+    this.btnQuickService?.addEventListener('click', () => {
+      this.audio.playUiBlip();
+      if (this.btnQuickService) {
+        this.btnQuickService.textContent = '✅ COUPLERS REFRESHED & SERVICED';
+        setTimeout(() => {
+          if (this.btnQuickService) {
+            this.btnQuickService.textContent = '⚡ Cycle Power & Refresh Couplers';
+          }
+        }, 1500);
+      }
+    });
+
     // Keydown Controls
     window.addEventListener('keydown', (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) {
+        return;
+      }
+
+      if (e.code === 'Escape') {
+        if (this.isDocked) {
+          this.undockShip();
+          return;
+        }
+      }
+
+      // If docked, suppress flight movement keys
+      if (this.isDocked) {
         return;
       }
 
@@ -381,13 +504,12 @@ class GameEngine {
         case 'KeyE':
         case 'Space': {
           e.preventDefault();
-          const dockCheck = this.dockingZone.checkDocking(
+          const dockCheck = this.station.checkDocking(
             this.flightController.position,
             this.flightController.velocity.length()
           );
           if (dockCheck.canDock) {
-            this.flightController.velocity.set(0, 0, 0);
-            alert('DOCKING INITIATED // AIRLOCK ENGAGED');
+            this.dockShip();
           }
           break;
         }
@@ -452,8 +574,10 @@ class GameEngine {
       if (this.elDrawCalls) this.elDrawCalls.textContent = `${this.renderer.info.render.calls}`;
     }
 
-    // 1. Update Physics Integration
-    this.flightController.update(deltaSec);
+    // 1. Update Physics Integration (only if undocked)
+    if (!this.isDocked) {
+      this.flightController.update(deltaSec);
+    }
     const telemetry = this.flightController.getTelemetry();
 
     // 2. Sync Ship Mesh Transform
@@ -462,53 +586,59 @@ class GameEngine {
       this.shipMesh.rotation.y = this.flightController.yaw;
     }
 
-    // 3. Emit Thruster Particles
-    if (telemetry.isThrusting) {
-      this.thrusters.emitThrusterPlume(
-        this.flightController.position,
-        this.flightController.yaw,
-        this.flightController.velocity,
-        1.2
-      );
-    } else if (telemetry.isReversing) {
-      this.thrusters.emitThrusterPlume(
-        this.flightController.position,
-        this.flightController.yaw + Math.PI,
-        this.flightController.velocity,
-        0.6
-      );
-    }
+    // 3. Audio Engine Thruster State
+    this.audio.setThrusterActive(
+      !this.isDocked && (telemetry.isThrusting || telemetry.isReversing),
+      Math.abs(telemetry.throttle)
+    );
 
-    if (telemetry.isTurningLeft) {
-      this.thrusters.emitRcsPuff(this.flightController.position, this.flightController.yaw, 'left');
-    }
-    if (telemetry.isTurningRight) {
-      this.thrusters.emitRcsPuff(this.flightController.position, this.flightController.yaw, 'right');
+    // 4. Emit Thruster Particles
+    if (!this.isDocked) {
+      if (telemetry.isThrusting) {
+        this.thrusters.emitThrusterPlume(
+          this.flightController.position,
+          this.flightController.yaw,
+          this.flightController.velocity,
+          1.2
+        );
+      } else if (telemetry.isReversing) {
+        this.thrusters.emitThrusterPlume(
+          this.flightController.position,
+          this.flightController.yaw + Math.PI,
+          this.flightController.velocity,
+          0.6
+        );
+      }
+
+      if (telemetry.isTurningLeft) {
+        this.thrusters.emitRcsPuff(this.flightController.position, this.flightController.yaw, 'left');
+      }
+      if (telemetry.isTurningRight) {
+        this.thrusters.emitRcsPuff(this.flightController.position, this.flightController.yaw, 'right');
+      }
     }
 
     this.thrusters.update(deltaSec);
 
-    // 4. Update Tactical Docking Zone
-    this.dockingZone.update(deltaSec);
-    const dockStatus = this.dockingZone.checkDocking(
+    // 5. Update Orbital Space Station
+    this.station.update(deltaSec);
+    const dockStatus = this.station.checkDocking(
       this.flightController.position,
       telemetry.speed
     );
 
-    // 5. Update Camera
+    // 6. Update Camera
     if (this.cameraMode === 'CHASE') {
       const forwardX = Math.sin(this.flightController.yaw);
       const forwardZ = Math.cos(this.flightController.yaw);
 
-      // Desired camera position trails behind and elevates above the ship
       const targetCamX = this.flightController.position.x - forwardX * 18;
-      const targetCamY = 14 + (telemetry.speed / telemetry.maxSpeed) * 4; // Dynamic speed zoom
+      const targetCamY = 14 + (telemetry.speed / telemetry.maxSpeed) * 4;
       const targetCamZ = this.flightController.position.z - forwardZ * 18;
 
       const targetCamPos = new THREE.Vector3(targetCamX, targetCamY, targetCamZ);
       this.camera.position.lerp(targetCamPos, Math.min(deltaSec * 5.0, 1.0));
 
-      // Look slightly ahead of ship
       const lookAhead = 4.0;
       const desiredLook = new THREE.Vector3(
         this.flightController.position.x + forwardX * lookAhead,
@@ -522,13 +652,13 @@ class GameEngine {
       this.controls.update();
     }
 
-    // 6. Slowly Rotate Starfield for Space Ambient
+    // 7. Ambient Starfield Rotation
     this.starfield.rotation.y += 0.0001;
 
-    // 7. Update Telemetry HUD
+    // 8. Update Telemetry HUD
     this.updateFlightHUD(telemetry, dockStatus);
 
-    // 8. Render
+    // 9. Render
     this.renderer.render(this.scene, this.camera);
   }
 
@@ -545,14 +675,18 @@ class GameEngine {
     }
 
     if (this.elDockingBanner && this.elDockingMsg) {
-      this.elDockingMsg.textContent = dockStatus.message;
-
-      if (dockStatus.canDock) {
+      if (this.isDocked) {
+        this.elDockingMsg.textContent = 'STATION DOCK SECURED // MAGNETIC CLAMPS ACTIVE';
         this.elDockingBanner.className = 'hud-docking-banner ready';
-      } else if (dockStatus.inRange) {
-        this.elDockingBanner.className = 'hud-docking-banner warning';
       } else {
-        this.elDockingBanner.className = 'hud-docking-banner';
+        this.elDockingMsg.textContent = dockStatus.message;
+        if (dockStatus.canDock) {
+          this.elDockingBanner.className = 'hud-docking-banner ready';
+        } else if (dockStatus.inRange) {
+          this.elDockingBanner.className = 'hud-docking-banner warning';
+        } else {
+          this.elDockingBanner.className = 'hud-docking-banner';
+        }
       }
     }
   }
