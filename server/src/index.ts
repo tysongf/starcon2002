@@ -5,6 +5,8 @@ import dotenv from 'dotenv';
 import { db } from './db/Database';
 import { cache } from './cache/CacheManager';
 
+import { apService, AP_COSTS, type ActionType } from './services/ActionPointService';
+
 dotenv.config();
 
 const server = Fastify({
@@ -77,7 +79,49 @@ async function startServer() {
       });
     });
 
-    // 6. Listen
+    // 6. Action Point (AP) Engine Endpoints (Day 7)
+    server.get('/api/player/ap', async (req, reply) => {
+      const query = req.query as { playerId?: string };
+      const playerId = query?.playerId || 'acc_sol_captain';
+      const state = await apService.getAP(playerId);
+      reply.send({
+        ...state,
+        costs: AP_COSTS,
+      });
+    });
+
+    server.post('/api/player/ap/spend', async (req, reply) => {
+      const body = (req.body || {}) as {
+        playerId?: string;
+        action: ActionType;
+        cost?: number;
+      };
+
+      const playerId = body.playerId || 'acc_sol_captain';
+      const action = body.action || 'SECTOR_WARP';
+
+      const result = await apService.spendAP(playerId, action, body.cost);
+      if (!result.success) {
+        return reply.status(400).send(result);
+      }
+
+      reply.send(result);
+    });
+
+    server.post('/api/player/ap/debug-set', async (req, reply) => {
+      const body = (req.body || {}) as {
+        playerId?: string;
+        amount: number;
+      };
+
+      const playerId = body.playerId || 'acc_sol_captain';
+      const amount = typeof body.amount === 'number' ? body.amount : 600;
+
+      const state = await apService.debugSetAP(playerId, amount);
+      reply.send(state);
+    });
+
+    // 7. Listen
     await server.listen({ port: PORT, host: '0.0.0.0' });
     console.log(`[Wayward Void API] Server listening on http://localhost:${PORT}`);
   } catch (err) {

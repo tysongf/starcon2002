@@ -72,6 +72,32 @@ class GameEngine {
   private btnUndock: HTMLElement | null = null;
   private btnQuickService: HTMLElement | null = null;
 
+  // Action Point (AP) System (Day 7)
+  private playerAP = {
+    playerId: 'acc_sol_captain',
+    currentAP: 600,
+    maxAP: 600,
+    lastRegenAt: Date.now(),
+    nextRegenSeconds: 0,
+  };
+  private apCountdownTimer: number = 0;
+  private apSyncTimer: number = 0;
+  private notificationTimeout: number | null = null;
+
+  // AP DOM Elements
+  private elApGauge: HTMLElement | null = null;
+  private elApCounter: HTMLElement | null = null;
+  private elApTimer: HTMLElement | null = null;
+  private elApFill: HTMLElement | null = null;
+  private elApTelemetry: HTMLElement | null = null;
+  private elApRegenTelemetry: HTMLElement | null = null;
+  private modalApDisplay: HTMLElement | null = null;
+  private btnApWarp: HTMLElement | null = null;
+  private btnApScan: HTMLElement | null = null;
+  private btnApExtract: HTMLElement | null = null;
+  private btnDockHaggle: HTMLElement | null = null;
+  private elApNotification: HTMLElement | null = null;
+
   // Camera tracking vectors
   private currentLookTarget = new THREE.Vector3(0, 0, 0);
 
@@ -370,8 +396,23 @@ class GameEngine {
     this.btnUndock = document.getElementById('btn-undock');
     this.btnQuickService = document.getElementById('btn-quick-service');
 
-    // Check backend health
+    // AP HUD Elements
+    this.elApGauge = document.getElementById('hud-ap-gauge');
+    this.elApCounter = document.getElementById('hud-ap-counter');
+    this.elApTimer = document.getElementById('hud-ap-timer');
+    this.elApFill = document.getElementById('hud-ap-fill');
+    this.elApTelemetry = document.getElementById('val-ap-telemetry');
+    this.elApRegenTelemetry = document.getElementById('val-ap-regen-telemetry');
+    this.modalApDisplay = document.getElementById('modal-ap-display');
+    this.btnApWarp = document.getElementById('btn-ap-warp');
+    this.btnApScan = document.getElementById('btn-ap-scan');
+    this.btnApExtract = document.getElementById('btn-ap-extract');
+    this.btnDockHaggle = document.getElementById('btn-dock-haggle');
+    this.elApNotification = document.getElementById('ap-notification');
+
+    // Check backend health & initial AP balance
     this.checkBackendHealth();
+    this.fetchPlayerAP();
   }
 
   private async checkBackendHealth(): Promise<void> {
@@ -390,6 +431,130 @@ class GameEngine {
       if (this.elBackendBadge) {
         this.elBackendBadge.textContent = 'API: STANDALONE';
       }
+    }
+  }
+
+  public async fetchPlayerAP(): Promise<void> {
+    try {
+      const res = await fetch('/api/player/ap?playerId=acc_sol_captain');
+      if (res.ok) {
+        const data = await res.json();
+        this.playerAP = data;
+        this.updateApUI();
+      }
+    } catch (err) {
+      console.warn('[AP] Failed to fetch player AP:', err);
+    }
+  }
+
+  public async spendAP(action: string, customCost?: number): Promise<boolean> {
+    try {
+      const res = await fetch('/api/player/ap/spend', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          playerId: 'acc_sol_captain',
+          action,
+          cost: customCost,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        this.audio.playApWarningSound();
+        this.triggerApAlertShake();
+        this.showApNotification(`⚠️ ${data.error || 'INSUFFICIENT ACTION POINTS'}`, true);
+        return false;
+      }
+
+      this.playerAP.currentAP = data.currentAP;
+      this.playerAP.maxAP = data.maxAP;
+      this.playerAP.nextRegenSeconds = data.nextRegenSeconds;
+      this.updateApUI();
+      this.audio.playApSpendSound();
+      this.showApNotification(`⚡ SPENT ${data.cost} AP [${action}] // BALANCE: ${data.currentAP} AP`, false);
+      return true;
+    } catch (err) {
+      console.error('[AP] Network spend error:', err);
+      this.audio.playApWarningSound();
+      this.showApNotification('⚠️ BACKEND CONNECTION OFFLINE', true);
+      return false;
+    }
+  }
+
+  public async debugAddAP(amount: number): Promise<void> {
+    try {
+      const target = Math.min(600, this.playerAP.currentAP + amount);
+      const res = await fetch('/api/player/ap/debug-set', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId: 'acc_sol_captain', amount: target }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        this.playerAP = data;
+        this.updateApUI();
+        this.audio.playDockingChime();
+        this.showApNotification(`🔋 POWER GRID RECHARGED: +${amount} AP // BALANCE: ${data.currentAP} AP`, false);
+      }
+    } catch (err) {
+      console.error('[AP] Debug recharge error:', err);
+    }
+  }
+
+  private triggerApAlertShake(): void {
+    if (this.elApGauge) {
+      this.elApGauge.classList.remove('warning-pulse');
+      void this.elApGauge.offsetWidth; // Force CSS reflow
+      this.elApGauge.classList.add('warning-pulse');
+      setTimeout(() => {
+        this.elApGauge?.classList.remove('warning-pulse');
+      }, 500);
+    }
+  }
+
+  private showApNotification(message: string, isError: boolean): void {
+    if (!this.elApNotification) return;
+    if (this.notificationTimeout) {
+      clearTimeout(this.notificationTimeout);
+    }
+    this.elApNotification.textContent = message;
+    this.elApNotification.className = `ap-notification ${isError ? 'error' : 'success'}`;
+    this.notificationTimeout = window.setTimeout(() => {
+      if (this.elApNotification) {
+        this.elApNotification.className = 'ap-notification hidden';
+      }
+    }, 2800);
+  }
+
+  private updateApUI(): void {
+    const { currentAP, maxAP, nextRegenSeconds } = this.playerAP;
+    const pct = Math.max(0, Math.min(100, (currentAP / maxAP) * 100));
+
+    if (this.elApCounter) {
+      this.elApCounter.textContent = `${currentAP} / ${maxAP}`;
+    }
+    if (this.elApFill) {
+      this.elApFill.style.width = `${pct}%`;
+      if (currentAP < 15) {
+        this.elApFill.classList.add('low-ap');
+      } else {
+        this.elApFill.classList.remove('low-ap');
+      }
+    }
+    if (this.elApTimer) {
+      this.elApTimer.textContent = currentAP >= maxAP ? 'MAX CHARGE' : `+1 in ${nextRegenSeconds}s`;
+    }
+    if (this.elApTelemetry) {
+      this.elApTelemetry.textContent = `${currentAP} / ${maxAP}`;
+      this.elApTelemetry.style.color = currentAP < 15 ? '#f59e0b' : '#38bdf8';
+    }
+    if (this.elApRegenTelemetry) {
+      this.elApRegenTelemetry.textContent = currentAP >= maxAP ? 'MAX' : `+1 in ${nextRegenSeconds}s`;
+    }
+    if (this.modalApDisplay) {
+      this.modalApDisplay.textContent = `${currentAP} / ${maxAP} AP`;
     }
   }
 
@@ -492,17 +657,44 @@ class GameEngine {
       this.undockShip();
     });
 
-    // Quick service button click
+    // Quick service button click (Recharge AP)
     this.btnQuickService?.addEventListener('click', () => {
-      this.audio.playUiBlip();
+      this.debugAddAP(50);
       if (this.btnQuickService) {
-        this.btnQuickService.textContent = '✅ COUPLERS REFRESHED & SERVICED';
+        this.btnQuickService.textContent = '⚡ RECHARGING POWER CORE...';
         setTimeout(() => {
           if (this.btnQuickService) {
-            this.btnQuickService.textContent = '⚡ Cycle Power & Refresh Couplers';
+            this.btnQuickService.textContent = '⚡ Recharge Core (+50 AP)';
           }
-        }, 1500);
+        }, 1200);
       }
+    });
+
+    // Dock Haggle action (Costs 1 AP)
+    this.btnDockHaggle?.addEventListener('click', async () => {
+      const ok = await this.spendAP('HAGGLE', 1);
+      if (ok && this.modalOfficerQuote) {
+        const intelQuotes = [
+          `"Alright, Captain. Off the record: Smelter Station in Sec-03 has a massive silicate deficit right now. Buy cheap here, sell high there."`,
+          `"Between us, a Lithos trade caravan was spotted heading coreward with refined crystals. Watch the jump lanes."`,
+          `"Hegemony picket patrols have been probing the outer perimeter. Keep your jump capacitor charged at all times."`,
+        ];
+        const quote = intelQuotes[Math.floor(Math.random() * intelQuotes.length)];
+        this.modalOfficerQuote.textContent = quote;
+      }
+    });
+
+    // HUD AP Quick Spend Buttons
+    this.btnApWarp?.addEventListener('click', () => {
+      this.spendAP('SECTOR_WARP', 5);
+    });
+
+    this.btnApScan?.addEventListener('click', () => {
+      this.spendAP('ORBITAL_SCAN', 3);
+    });
+
+    this.btnApExtract?.addEventListener('click', () => {
+      this.spendAP('EXTRACTION', 8);
     });
 
     // Keydown Controls
@@ -623,6 +815,27 @@ class GameEngine {
       this.fpsTimer = 0;
       if (this.elFps) this.elFps.textContent = `${this.currentFps} FPS`;
       if (this.elDrawCalls) this.elDrawCalls.textContent = `${this.renderer.info.render.calls}`;
+    }
+
+    // AP Dynamic Regeneration countdown & Periodic Sync (Day 7)
+    this.apCountdownTimer += deltaSec;
+    if (this.apCountdownTimer >= 1.0) {
+      this.apCountdownTimer -= 1.0;
+      if (this.playerAP.currentAP < this.playerAP.maxAP) {
+        if (this.playerAP.nextRegenSeconds > 1) {
+          this.playerAP.nextRegenSeconds -= 1;
+          this.updateApUI();
+        } else {
+          // Time boundary reached, refresh canonical regenerated state
+          this.fetchPlayerAP();
+        }
+      }
+    }
+
+    this.apSyncTimer += deltaSec;
+    if (this.apSyncTimer >= 15.0) {
+      this.apSyncTimer = 0;
+      this.fetchPlayerAP();
     }
 
     // 1. Update Physics Integration (only if undocked)

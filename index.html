@@ -27,6 +27,23 @@
           <span class="label">SECTOR:</span>
           <span class="value" id="hud-sector">SEC-01 // SOL-PERIMETER</span>
         </div>
+        <!-- Action Point (AP) Energy Gauge Cluster -->
+        <div class="hud-ap-gauge" id="hud-ap-gauge">
+          <div class="ap-top-row">
+            <span class="ap-icon">⚡</span>
+            <span class="ap-title">AP ENERGY</span>
+            <span class="ap-counter" id="hud-ap-counter">600 / 600</span>
+            <span class="ap-timer" id="hud-ap-timer">+1 in 00s</span>
+          </div>
+          <div class="ap-track">
+            <div class="ap-fill" id="hud-ap-fill" style="width: 100%;"></div>
+          </div>
+          <div class="ap-quick-actions">
+            <button id="btn-ap-warp" class="hud-btn-tiny" title="Spend 5 AP (Simulated Sector Warp)">WARP (-5)</button>
+            <button id="btn-ap-scan" class="hud-btn-tiny" title="Spend 3 AP (Simulated Deep Scan)">SCAN (-3)</button>
+            <button id="btn-ap-extract" class="hud-btn-tiny" title="Spend 8 AP (Simulated Extraction)">EXTRACT (-8)</button>
+          </div>
+        </div>
         <!-- Docking Guidance Banner -->
         <div class="hud-docking-banner" id="hud-docking-banner">
           <div class="docking-pulse-dot"></div>
@@ -65,6 +82,14 @@
             <div class="telemetry-item">
               <span class="telemetry-label">DRAW CALLS</span>
               <span class="telemetry-val" id="val-drawcalls">0</span>
+            </div>
+            <div class="telemetry-item">
+              <span class="telemetry-label">ACTION POINTS</span>
+              <span class="telemetry-val highlight" id="val-ap-telemetry">600 / 600</span>
+            </div>
+            <div class="telemetry-item">
+              <span class="telemetry-label">AP REGEN (60s)</span>
+              <span class="telemetry-val success" id="val-ap-regen-telemetry">+1 in 00s</span>
             </div>
             <div class="telemetry-item full-width">
               <span class="telemetry-label">SHIP POSITION (X / Z)</span>
@@ -159,7 +184,7 @@
           <button id="btn-toggle-grid" class="hud-btn" title="Toggle Grid (G)">Toggle Grid</button>
         </div>
         <div class="hud-system-note">
-          <span>Week 2 Day 6 // Backend Scaffolding & Database Setup // Fastify + PostgreSQL</span>
+          <span id="hud-status-line">Week 2 Day 7 // Action Point (AP) Redis Engine & Atomic Spending</span>
         </div>
       </footer>
     </div>
@@ -205,12 +230,18 @@
             <div class="ship-status-grid">
               <div><span>HULL ARMOR:</span> <strong>100% (PRISTINE)</strong></div>
               <div><span>ENERGY SHIELDS:</span> <strong>100% (CHARGED)</strong></div>
+              <div><span>ACTION POINTS:</span> <strong id="modal-ap-display" style="color: #38bdf8;">600 / 600 AP</strong></div>
               <div><span>RESERVE FUEL:</span> <strong>100 / 100 UNITS</strong></div>
               <div><span>CARGO CAPACITY:</span> <strong>0 / 40 m³</strong></div>
             </div>
-            <button id="btn-quick-service" class="hud-btn" style="margin-top: 0.75rem; width: 100%;">
-              ⚡ Cycle Power & Refresh Couplers
-            </button>
+            <div style="display: flex; gap: 0.5rem; margin-top: 0.75rem;">
+              <button id="btn-quick-service" class="hud-btn" style="flex: 1;" title="Cycle power couplers and recharge +50 AP">
+                ⚡ Recharge Core (+50 AP)
+              </button>
+              <button id="btn-dock-haggle" class="hud-btn" style="flex: 1;" title="Haggle with Harbormaster for trade intel (Costs 1 AP)">
+                💬 Haggle (-1 AP)
+              </button>
+            </div>
           </div>
         </div>
 
@@ -222,6 +253,9 @@
         </footer>
       </div>
     </div>
+
+    <!-- Floating AP Spend / Warning Toast -->
+    <div id="ap-notification" class="ap-notification hidden"></div>
 
     <script type="module" src="/src/main.ts"></script>
   </body>
