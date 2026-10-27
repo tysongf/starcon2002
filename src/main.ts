@@ -2,6 +2,9 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { ProceduralHullGenerator, type HullGenerationResult } from './procgen/ProceduralHullGenerator';
 import { type FactionStyle, FACTION_STYLES } from './procgen/FactionStyles';
+import { ShipFlightController, type FlightTelemetry } from './physics/ShipFlightController';
+import { ThrusterParticleSystem } from './vfx/ThrusterParticleSystem';
+import { DockingZone, type DockingStatus } from './entities/DockingZone';
 
 class GameEngine {
   private canvas: HTMLCanvasElement;
@@ -9,6 +12,12 @@ class GameEngine {
   private scene: THREE.Scene;
   private camera: THREE.PerspectiveCamera;
   private controls: OrbitControls;
+
+  // Flight Physics & Systems
+  private flightController: ShipFlightController;
+  private thrusters: ThrusterParticleSystem;
+  private dockingZone: DockingZone;
+  private cameraMode: 'CHASE' | 'ORBIT' = 'CHASE';
 
   // Scene entities
   private ambientLight: THREE.AmbientLight;
@@ -21,36 +30,37 @@ class GameEngine {
   private shipMaterial: THREE.MeshStandardMaterial;
   private currentSeed: number = 12345;
   private currentFaction: FactionStyle = FACTION_STYLES.FACTION_SOL;
-  private autoRotateShip: boolean = true;
 
   // Diagnostics & Telemetry
   private lastTime: number = performance.now();
   private frameCount: number = 0;
   private fpsTimer: number = 0;
   private currentFps: number = 60;
-  private currentFrameTime: number = 16.6;
 
-  // Telemetry & UI DOM elements
+  // DOM Elements
   private elFps: HTMLElement | null = null;
-  private elFrameTime: HTMLElement | null = null;
   private elDrawCalls: HTMLElement | null = null;
-  private elTriangles: HTMLElement | null = null;
-  private elCamPos: HTMLElement | null = null;
-  private elCamTarget: HTMLElement | null = null;
+  private elSpeed: HTMLElement | null = null;
+  private elHeading: HTMLElement | null = null;
+  private elDampeners: HTMLElement | null = null;
+  private elShipPos: HTMLElement | null = null;
+  private elCamMode: HTMLElement | null = null;
   private elHullTris: HTMLElement | null = null;
   private elHullVerts: HTMLElement | null = null;
   private elGrammarStyle: HTMLElement | null = null;
   private elFactionDesc: HTMLElement | null = null;
+  private elDockingBanner: HTMLElement | null = null;
+  private elDockingMsg: HTMLElement | null = null;
   private selectFaction: HTMLSelectElement | null = null;
   private swatchPri: HTMLElement | null = null;
   private swatchSec: HTMLElement | null = null;
   private swatchGlow: HTMLElement | null = null;
   private inputSeed: HTMLInputElement | null = null;
-  private btnToggleRotate: HTMLElement | null = null;
+  private btnToggleCam: HTMLElement | null = null;
+  private btnToggleDamp: HTMLElement | null = null;
 
-  // Default camera configuration
-  private readonly defaultCamPos = new THREE.Vector3(0, 7, 14);
-  private readonly defaultCamTarget = new THREE.Vector3(0, 0, 0);
+  // Camera tracking vectors
+  private currentLookTarget = new THREE.Vector3(0, 0, 0);
 
   constructor() {
     this.canvas = document.getElementById('webgl-canvas') as HTMLCanvasElement;
@@ -72,56 +82,62 @@ class GameEngine {
     // 2. Initialize Scene
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x06080d);
-    this.scene.fog = new THREE.FogExp2(0x06080d, 0.0035);
+    this.scene.fog = new THREE.FogExp2(0x06080d, 0.0025);
 
     // 3. Initialize Perspective Camera
     this.camera = new THREE.PerspectiveCamera(
-      50,
+      52,
       window.innerWidth / window.innerHeight,
       0.1,
-      1000
+      1200
     );
-    this.camera.position.copy(this.defaultCamPos);
+    this.camera.position.set(0, 16, -22);
 
-    // 4. Initialize Orbit Controls
+    // 4. Initialize Orbit Controls (used in ORBIT mode)
     this.controls = new OrbitControls(this.camera, this.canvas);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.05;
     this.controls.screenSpacePanning = true;
-    this.controls.minDistance = 2;
-    this.controls.maxDistance = 150;
-    this.controls.maxPolarAngle = Math.PI / 2 + 0.15;
-    this.controls.target.copy(this.defaultCamTarget);
+    this.controls.minDistance = 4;
+    this.controls.maxDistance = 250;
+    this.controls.enabled = false; // Starts in CHASE mode
 
     // 5. Lighting Setup
-    this.ambientLight = new THREE.AmbientLight(0x28334a, 1.3);
+    this.ambientLight = new THREE.AmbientLight(0x28334a, 1.4);
     this.scene.add(this.ambientLight);
 
-    // Key light (primary sector star)
     this.starLight = new THREE.DirectionalLight(0xfff5eb, 2.2);
-    this.starLight.position.set(30, 45, 25);
+    this.starLight.position.set(40, 60, 30);
     this.scene.add(this.starLight);
 
-    // Fill light
     const fillLight = new THREE.DirectionalLight(0x38bdf8, 0.9);
-    fillLight.position.set(-30, -15, -20);
+    fillLight.position.set(-40, -15, -25);
     this.scene.add(fillLight);
 
-    // Bounce light for ship underbelly
     const bounceLight = new THREE.DirectionalLight(0x1e293b, 0.8);
     bounceLight.position.set(0, -20, 0);
     this.scene.add(bounceLight);
 
     // 6. Tactical Sector Grid (X/Z plane)
-    this.sectorGrid = new THREE.GridHelper(50, 50, 0x38bdf8, 0x141e2e);
-    this.sectorGrid.position.y = -2.0;
+    this.sectorGrid = new THREE.GridHelper(160, 80, 0x38bdf8, 0x141e2e);
+    this.sectorGrid.position.y = -0.05;
     this.scene.add(this.sectorGrid);
 
     // 7. Background Starfield
-    this.starfield = this.createStarfield(1400);
+    this.starfield = this.createStarfield(1600);
     this.scene.add(this.starfield);
 
-    // 8. Shared Material for Flat-Shaded Low-Poly Hulls
+    // 8. Flight Physics & Thruster VFX
+    this.flightController = new ShipFlightController(new THREE.Vector3(0, 0, 0), 0);
+    this.thrusters = new ThrusterParticleSystem();
+    this.thrusters.setGlowColor(this.currentFaction.palette.engineGlow);
+    this.scene.add(this.thrusters.mesh);
+
+    // 9. Tactical Docking Zone at Origin
+    this.dockingZone = new DockingZone(new THREE.Vector3(0, 0, 0));
+    this.scene.add(this.dockingZone.group);
+
+    // 10. Shared Ship Material
     this.shipMaterial = new THREE.MeshStandardMaterial({
       vertexColors: true,
       roughness: this.currentFaction.materials.roughness,
@@ -129,80 +145,61 @@ class GameEngine {
       flatShading: true,
     });
 
-    // 9. Cache Telemetry DOM references
+    // 11. Cache Telemetry DOM references
     this.cacheTelemetryElements();
 
-    // 10. Generate Initial Ship with Default Seed and Faction
+    // 12. Generate Initial Ship Hull
     this.generateShip(this.currentSeed, this.currentFaction);
 
-    // 11. Setup Event Listeners
+    // 13. Setup Event Listeners
     this.setupEventListeners();
 
-    // 12. Start Animation Loop
+    // 14. Start Animation & Physics Loop
     this.animate = this.animate.bind(this);
     requestAnimationFrame(this.animate);
   }
 
-  /**
-   * Generates or regenerates procedural spacecraft hull with race palette
-   */
   public generateShip(seed: number, faction?: FactionStyle): void {
     this.currentSeed = seed;
     if (faction) {
       this.currentFaction = faction;
     }
 
-    // Update material properties dynamically according to faction aesthetic
     this.shipMaterial.roughness = this.currentFaction.materials.roughness;
     this.shipMaterial.metalness = this.currentFaction.materials.metalness;
     this.shipMaterial.needsUpdate = true;
+    this.thrusters.setGlowColor(this.currentFaction.palette.engineGlow);
 
-    // Remove existing ship mesh if present
     if (this.shipMesh) {
       this.scene.remove(this.shipMesh);
       this.shipMesh.geometry.dispose();
       this.shipMesh = null;
     }
 
-    // Generate new geometry driven by faction grammar and palette
     const result: HullGenerationResult = ProceduralHullGenerator.generate({
       seed: this.currentSeed,
       faction: this.currentFaction,
     });
 
     this.shipMesh = new THREE.Mesh(result.geometry, this.shipMaterial);
-    this.shipMesh.position.set(0, 0, 0);
+    this.shipMesh.position.copy(this.flightController.position);
+    this.shipMesh.rotation.y = this.flightController.yaw;
     this.scene.add(this.shipMesh);
 
-    // Update Telemetry & UI Readouts
-    if (this.elHullTris) {
-      this.elHullTris.textContent = `${result.triangleCount}`;
-    }
-    if (this.elHullVerts) {
-      this.elHullVerts.textContent = `${result.vertexCount}`;
-    }
-    if (this.inputSeed) {
-      this.inputSeed.value = `${this.currentSeed}`;
-    }
-    if (this.selectFaction) {
-      this.selectFaction.value = this.currentFaction.id;
-    }
-    if (this.elFactionDesc) {
-      this.elFactionDesc.textContent = this.currentFaction.culturalSummary;
-    }
+    // Update UI Readouts
+    if (this.elHullTris) this.elHullTris.textContent = `${result.triangleCount}`;
+    if (this.elHullVerts) this.elHullVerts.textContent = `${result.vertexCount}`;
+    if (this.inputSeed) this.inputSeed.value = `${this.currentSeed}`;
+    if (this.selectFaction) this.selectFaction.value = this.currentFaction.id;
+    if (this.elFactionDesc) this.elFactionDesc.textContent = this.currentFaction.culturalSummary;
     if (this.elGrammarStyle) {
       const grammarName = this.currentFaction.shapeGrammar.replace('_', ' ');
       this.elGrammarStyle.textContent = `Strike Corvette // ${grammarName}`;
     }
 
-    // Update Color Swatches
     const toHexStr = (c: number) => '#' + c.toString(16).padStart(6, '0');
-    if (this.swatchPri) {
-      this.swatchPri.style.backgroundColor = toHexStr(this.currentFaction.palette.primary);
-    }
-    if (this.swatchSec) {
-      this.swatchSec.style.backgroundColor = toHexStr(this.currentFaction.palette.secondary);
-    }
+    if (this.swatchPri) this.swatchPri.style.backgroundColor = toHexStr(this.currentFaction.palette.primary);
+    if (this.swatchSec) this.swatchSec.style.backgroundColor = toHexStr(this.currentFaction.palette.secondary);
     if (this.swatchGlow) {
       const glowHex = toHexStr(this.currentFaction.palette.engineGlow);
       this.swatchGlow.style.backgroundColor = glowHex;
@@ -223,7 +220,7 @@ class GameEngine {
     ];
 
     for (let i = 0; i < count; i++) {
-      const radius = 220 + Math.random() * 220;
+      const radius = 250 + Math.random() * 250;
       const theta = Math.random() * Math.PI * 2;
       const phi = Math.acos(Math.random() * 2 - 1);
 
@@ -253,25 +250,28 @@ class GameEngine {
 
   private cacheTelemetryElements(): void {
     this.elFps = document.getElementById('val-fps');
-    this.elFrameTime = document.getElementById('val-frametime');
     this.elDrawCalls = document.getElementById('val-drawcalls');
-    this.elTriangles = document.getElementById('val-triangles');
-    this.elCamPos = document.getElementById('val-cam-pos');
-    this.elCamTarget = document.getElementById('val-cam-target');
+    this.elSpeed = document.getElementById('val-speed');
+    this.elHeading = document.getElementById('val-heading');
+    this.elDampeners = document.getElementById('val-dampeners');
+    this.elShipPos = document.getElementById('val-ship-pos');
+    this.elCamMode = document.getElementById('val-cam-mode');
     this.elHullTris = document.getElementById('val-hull-tris');
     this.elHullVerts = document.getElementById('val-hull-verts');
     this.elGrammarStyle = document.getElementById('val-grammar-style');
     this.elFactionDesc = document.getElementById('val-faction-desc');
+    this.elDockingBanner = document.getElementById('hud-docking-banner');
+    this.elDockingMsg = document.getElementById('docking-msg');
     this.selectFaction = document.getElementById('select-faction') as HTMLSelectElement;
     this.swatchPri = document.getElementById('swatch-pri');
     this.swatchSec = document.getElementById('swatch-sec');
     this.swatchGlow = document.getElementById('swatch-glow');
     this.inputSeed = document.getElementById('input-seed') as HTMLInputElement;
-    this.btnToggleRotate = document.getElementById('btn-toggle-rotate');
+    this.btnToggleCam = document.getElementById('btn-toggle-cam');
+    this.btnToggleDamp = document.getElementById('btn-toggle-damp');
   }
 
   private setupEventListeners(): void {
-    // Window Resize
     window.addEventListener('resize', () => {
       const width = window.innerWidth;
       const height = window.innerHeight;
@@ -280,30 +280,49 @@ class GameEngine {
       this.renderer.setSize(width, height);
     });
 
-    // Reset Camera
-    const resetCam = () => {
-      this.camera.position.copy(this.defaultCamPos);
-      this.controls.target.copy(this.defaultCamTarget);
-      this.controls.update();
-    };
-    document.getElementById('btn-reset-cam')?.addEventListener('click', resetCam);
-
-    // Toggle Grid
-    const toggleGrid = () => {
-      this.sectorGrid.visible = !this.sectorGrid.visible;
-    };
-    document.getElementById('btn-toggle-grid')?.addEventListener('click', toggleGrid);
-
-    // Toggle Auto-Rotate
-    const toggleRotate = () => {
-      this.autoRotateShip = !this.autoRotateShip;
-      if (this.btnToggleRotate) {
-        this.btnToggleRotate.textContent = `Auto-Rotate: ${this.autoRotateShip ? 'ON' : 'OFF'}`;
+    // Toggle Camera Mode Button & Shortcut
+    const toggleCameraMode = () => {
+      if (this.cameraMode === 'CHASE') {
+        this.cameraMode = 'ORBIT';
+        this.controls.enabled = true;
+        this.controls.target.copy(this.flightController.position);
+      } else {
+        this.cameraMode = 'CHASE';
+        this.controls.enabled = false;
+      }
+      if (this.btnToggleCam) {
+        this.btnToggleCam.textContent = `Camera: ${this.cameraMode === 'CHASE' ? 'Chase' : 'Orbit'}`;
+      }
+      if (this.elCamMode) {
+        this.elCamMode.textContent = this.cameraMode === 'CHASE' ? 'TACTICAL CHASE' : 'FREE ORBIT';
       }
     };
-    this.btnToggleRotate?.addEventListener('click', toggleRotate);
+    this.btnToggleCam?.addEventListener('click', toggleCameraMode);
 
-    // Faction Selector Dropdown Change
+    // Toggle Dampeners Button & Shortcut
+    const toggleDampeners = () => {
+      const active = this.flightController.toggleDampeners();
+      if (this.btnToggleDamp) {
+        this.btnToggleDamp.textContent = `Dampeners: ${active ? 'ON' : 'OFF'}`;
+      }
+      if (this.elDampeners) {
+        this.elDampeners.textContent = active ? 'ACTIVE' : 'OFFLINE';
+        this.elDampeners.className = `telemetry-val ${active ? 'success' : 'warn'}`;
+      }
+    };
+    this.btnToggleDamp?.addEventListener('click', toggleDampeners);
+
+    // Reset Position Button
+    document.getElementById('btn-reset-pos')?.addEventListener('click', () => {
+      this.flightController.reset(new THREE.Vector3(0, 0, 0));
+    });
+
+    // Toggle Grid
+    document.getElementById('btn-toggle-grid')?.addEventListener('click', () => {
+      this.sectorGrid.visible = !this.sectorGrid.visible;
+    });
+
+    // Faction Selector
     this.selectFaction?.addEventListener('change', () => {
       const selectedId = this.selectFaction?.value;
       if (selectedId && FACTION_STYLES[selectedId]) {
@@ -311,66 +330,117 @@ class GameEngine {
       }
     });
 
-    // Regenerate Seed from input
+    // Seed Regenerate & Randomize
     document.getElementById('btn-generate-seed')?.addEventListener('click', () => {
       if (this.inputSeed) {
         const val = parseInt(this.inputSeed.value, 10);
-        if (!isNaN(val) && val > 0) {
-          this.generateShip(val);
-        }
+        if (!isNaN(val) && val > 0) this.generateShip(val);
       }
     });
 
-    // Randomize Seed
     document.getElementById('btn-random-seed')?.addEventListener('click', () => {
       const randomSeed = Math.floor(Math.random() * 900000) + 10000;
       this.generateShip(randomSeed);
     });
 
-    // Enter key inside seed input
-    this.inputSeed?.addEventListener('keydown', (e: KeyboardEvent) => {
-      if (e.key === 'Enter') {
-        const val = parseInt(this.inputSeed!.value, 10);
-        if (!isNaN(val) && val > 0) {
-          this.generateShip(val);
-        }
-      }
-    });
-
-    // Keyboard Shortcuts
+    // Keydown Controls
     window.addEventListener('keydown', (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) {
         return;
       }
-      if (e.key === 'r' || e.key === 'R') {
-        resetCam();
-      } else if (e.key === 'g' || e.key === 'G') {
-        toggleGrid();
-      } else if (e.key === ' ') {
-        e.preventDefault();
-        toggleRotate();
-      } else if (e.key === '1') {
-        this.generateShip(this.currentSeed, FACTION_STYLES.FACTION_SOL);
-      } else if (e.key === '2') {
-        this.generateShip(this.currentSeed, FACTION_STYLES.FACTION_PHORID);
-      } else if (e.key === '3') {
-        this.generateShip(this.currentSeed, FACTION_STYLES.FACTION_LITHOS);
-      } else if (e.key === '4') {
-        this.generateShip(this.currentSeed, FACTION_STYLES.FACTION_VAELIC);
+
+      switch (e.code) {
+        case 'KeyW':
+        case 'ArrowUp':
+          this.flightController.setInput('forward', true);
+          break;
+        case 'KeyS':
+        case 'ArrowDown':
+          this.flightController.setInput('reverse', true);
+          break;
+        case 'KeyA':
+        case 'ArrowLeft':
+          this.flightController.setInput('turnLeft', true);
+          break;
+        case 'KeyD':
+        case 'ArrowRight':
+          this.flightController.setInput('turnRight', true);
+          break;
+        case 'KeyX':
+          this.flightController.setInput('brake', true);
+          break;
+        case 'KeyZ':
+          toggleDampeners();
+          break;
+        case 'KeyC':
+          toggleCameraMode();
+          break;
+        case 'KeyG':
+          this.sectorGrid.visible = !this.sectorGrid.visible;
+          break;
+        case 'KeyE':
+        case 'Space': {
+          e.preventDefault();
+          const dockCheck = this.dockingZone.checkDocking(
+            this.flightController.position,
+            this.flightController.velocity.length()
+          );
+          if (dockCheck.canDock) {
+            this.flightController.velocity.set(0, 0, 0);
+            alert('DOCKING INITIATED // AIRLOCK ENGAGED');
+          }
+          break;
+        }
+        case 'Digit1':
+          this.generateShip(this.currentSeed, FACTION_STYLES.FACTION_SOL);
+          break;
+        case 'Digit2':
+          this.generateShip(this.currentSeed, FACTION_STYLES.FACTION_PHORID);
+          break;
+        case 'Digit3':
+          this.generateShip(this.currentSeed, FACTION_STYLES.FACTION_LITHOS);
+          break;
+        case 'Digit4':
+          this.generateShip(this.currentSeed, FACTION_STYLES.FACTION_VAELIC);
+          break;
+      }
+    });
+
+    // Keyup Controls
+    window.addEventListener('keyup', (e: KeyboardEvent) => {
+      switch (e.code) {
+        case 'KeyW':
+        case 'ArrowUp':
+          this.flightController.setInput('forward', false);
+          break;
+        case 'KeyS':
+        case 'ArrowDown':
+          this.flightController.setInput('reverse', false);
+          break;
+        case 'KeyA':
+        case 'ArrowLeft':
+          this.flightController.setInput('turnLeft', false);
+          break;
+        case 'KeyD':
+        case 'ArrowRight':
+          this.flightController.setInput('turnRight', false);
+          break;
+        case 'KeyX':
+          this.flightController.setInput('brake', false);
+          break;
       }
     });
   }
 
   /**
-   * Main Render and Update Loop
+   * Main Render and Physics Update Loop
    */
   private animate(currentTime: number): void {
     requestAnimationFrame(this.animate);
 
-    // Calculate Delta & FPS
     const deltaMs = currentTime - this.lastTime;
     this.lastTime = currentTime;
-    this.currentFrameTime = deltaMs;
+    const deltaSec = deltaMs / 1000;
 
     this.frameCount++;
     this.fpsTimer += deltaMs;
@@ -378,37 +448,112 @@ class GameEngine {
       this.currentFps = Math.round((this.frameCount * 1000) / this.fpsTimer);
       this.frameCount = 0;
       this.fpsTimer = 0;
-      this.updateTelemetryDOM();
+      if (this.elFps) this.elFps.textContent = `${this.currentFps} FPS`;
+      if (this.elDrawCalls) this.elDrawCalls.textContent = `${this.renderer.info.render.calls}`;
     }
 
-    // Slowly rotate ship if enabled
-    if (this.shipMesh && this.autoRotateShip) {
-      this.shipMesh.rotation.y += 0.006;
+    // 1. Update Physics Integration
+    this.flightController.update(deltaSec);
+    const telemetry = this.flightController.getTelemetry();
+
+    // 2. Sync Ship Mesh Transform
+    if (this.shipMesh) {
+      this.shipMesh.position.copy(this.flightController.position);
+      this.shipMesh.rotation.y = this.flightController.yaw;
     }
 
-    // Ambient starfield rotation
-    this.starfield.rotation.y += 0.00015;
+    // 3. Emit Thruster Particles
+    if (telemetry.isThrusting) {
+      this.thrusters.emitThrusterPlume(
+        this.flightController.position,
+        this.flightController.yaw,
+        this.flightController.velocity,
+        1.2
+      );
+    } else if (telemetry.isReversing) {
+      this.thrusters.emitThrusterPlume(
+        this.flightController.position,
+        this.flightController.yaw + Math.PI,
+        this.flightController.velocity,
+        0.6
+      );
+    }
 
-    // Update Damped Orbit Controls
-    this.controls.update();
+    if (telemetry.isTurningLeft) {
+      this.thrusters.emitRcsPuff(this.flightController.position, this.flightController.yaw, 'left');
+    }
+    if (telemetry.isTurningRight) {
+      this.thrusters.emitRcsPuff(this.flightController.position, this.flightController.yaw, 'right');
+    }
 
-    // Render 3D Scene
+    this.thrusters.update(deltaSec);
+
+    // 4. Update Tactical Docking Zone
+    this.dockingZone.update(deltaSec);
+    const dockStatus = this.dockingZone.checkDocking(
+      this.flightController.position,
+      telemetry.speed
+    );
+
+    // 5. Update Camera
+    if (this.cameraMode === 'CHASE') {
+      const forwardX = Math.sin(this.flightController.yaw);
+      const forwardZ = Math.cos(this.flightController.yaw);
+
+      // Desired camera position trails behind and elevates above the ship
+      const targetCamX = this.flightController.position.x - forwardX * 18;
+      const targetCamY = 14 + (telemetry.speed / telemetry.maxSpeed) * 4; // Dynamic speed zoom
+      const targetCamZ = this.flightController.position.z - forwardZ * 18;
+
+      const targetCamPos = new THREE.Vector3(targetCamX, targetCamY, targetCamZ);
+      this.camera.position.lerp(targetCamPos, Math.min(deltaSec * 5.0, 1.0));
+
+      // Look slightly ahead of ship
+      const lookAhead = 4.0;
+      const desiredLook = new THREE.Vector3(
+        this.flightController.position.x + forwardX * lookAhead,
+        0,
+        this.flightController.position.z + forwardZ * lookAhead
+      );
+      this.currentLookTarget.lerp(desiredLook, Math.min(deltaSec * 8.0, 1.0));
+      this.camera.lookAt(this.currentLookTarget);
+    } else {
+      this.controls.target.copy(this.flightController.position);
+      this.controls.update();
+    }
+
+    // 6. Slowly Rotate Starfield for Space Ambient
+    this.starfield.rotation.y += 0.0001;
+
+    // 7. Update Telemetry HUD
+    this.updateFlightHUD(telemetry, dockStatus);
+
+    // 8. Render
     this.renderer.render(this.scene, this.camera);
   }
 
-  private updateTelemetryDOM(): void {
-    if (this.elFps) this.elFps.textContent = `${this.currentFps} FPS`;
-    if (this.elFrameTime) this.elFrameTime.textContent = `${this.currentFrameTime.toFixed(1)} ms`;
-    if (this.elDrawCalls) this.elDrawCalls.textContent = `${this.renderer.info.render.calls}`;
-    if (this.elTriangles) this.elTriangles.textContent = `${this.renderer.info.render.triangles}`;
-
-    if (this.elCamPos) {
-      const p = this.camera.position;
-      this.elCamPos.textContent = `X: ${p.x.toFixed(1)} Y: ${p.y.toFixed(1)} Z: ${p.z.toFixed(1)}`;
+  private updateFlightHUD(telemetry: FlightTelemetry, dockStatus: DockingStatus): void {
+    if (this.elSpeed) {
+      this.elSpeed.textContent = `${telemetry.speed.toFixed(1)} m/s`;
     }
-    if (this.elCamTarget) {
-      const t = this.controls.target;
-      this.elCamTarget.textContent = `X: ${t.x.toFixed(1)} Y: ${t.y.toFixed(1)} Z: ${t.z.toFixed(1)}`;
+    if (this.elHeading) {
+      this.elHeading.textContent = `${telemetry.headingDeg.toString().padStart(3, '0')}°`;
+    }
+    if (this.elShipPos) {
+      const p = this.flightController.position;
+      this.elShipPos.textContent = `X: ${p.x.toFixed(1)}  Z: ${p.z.toFixed(1)}`;
+    }
+
+    if (this.elDockingBanner && this.elDockingMsg) {
+      this.elDockingMsg.textContent = dockStatus.message;
+
+      if (dockStatus.canDock) {
+        this.elDockingBanner.className = 'hud-docking-banner ready';
+      } else if (dockStatus.inRange) {
+        this.elDockingBanner.className = 'hud-docking-banner warning';
+      } else {
+        this.elDockingBanner.className = 'hud-docking-banner';
+      }
     }
   }
 }

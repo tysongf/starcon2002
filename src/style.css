@@ -141,6 +141,61 @@ html, body {
   font-weight: 600;
 }
 
+/* Docking Guidance Banner */
+.hud-docking-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  background: var(--bg-panel);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  padding: 0.5rem 1.15rem;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-panel);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 600;
+  transition: all 0.3s ease;
+}
+
+.docking-pulse-dot {
+  width: 8px;
+  height: 8px;
+  background-color: var(--text-accent);
+  border-radius: 50%;
+  box-shadow: 0 0 8px var(--text-accent);
+  animation: pulse-dot 1.5s infinite ease-in-out;
+}
+
+.hud-docking-banner.ready {
+  border-color: var(--text-success);
+  background: rgba(16, 185, 129, 0.15);
+}
+
+.hud-docking-banner.ready .docking-pulse-dot {
+  background-color: var(--text-success);
+  box-shadow: 0 0 10px var(--text-success);
+}
+
+.hud-docking-banner.ready .docking-text {
+  color: #34d399;
+}
+
+.hud-docking-banner.warning {
+  border-color: var(--text-warn);
+  background: rgba(245, 158, 11, 0.15);
+}
+
+.hud-docking-banner.warning .docking-pulse-dot {
+  background-color: var(--text-warn);
+  box-shadow: 0 0 10px var(--text-warn);
+}
+
+.hud-docking-banner.warning .docking-text {
+  color: #fbbf24;
+}
+
 /* Side Panels Container */
 .hud-panels {
   display: flex;
@@ -232,6 +287,20 @@ html, body {
 .telemetry-val.mono {
   font-size: 0.78rem;
   color: var(--text-accent);
+}
+
+.telemetry-val.highlight {
+  color: #38bdf8;
+  font-weight: 700;
+  text-shadow: 0 0 10px rgba(56, 189, 248, 0.4);
+}
+
+.telemetry-val.success {
+  color: #34d399;
+}
+
+.telemetry-val.warn {
+  color: #fbbf24;
 }
 
 /* Control List */

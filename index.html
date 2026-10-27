@@ -26,39 +26,48 @@
           <span class="label">SECTOR:</span>
           <span class="value" id="hud-sector">SEC-01 // SOL-PERIMETER</span>
         </div>
+        <!-- Docking Guidance Banner -->
+        <div class="hud-docking-banner" id="hud-docking-banner">
+          <div class="docking-pulse-dot"></div>
+          <span class="docking-text" id="docking-msg">DOCKING BEACON // DIST: 0.0m</span>
+        </div>
       </header>
 
       <div class="hud-panels">
         <!-- Telemetry Panel -->
         <aside class="hud-panel telemetry-panel" id="telemetry-panel">
           <div class="panel-header">
-            <h3>DIAGNOSTICS & TELEMETRY</h3>
+            <h3>FLIGHT & DIAGNOSTICS</h3>
             <span class="live-indicator">LIVE</span>
           </div>
           <div class="telemetry-grid">
+            <div class="telemetry-item">
+              <span class="telemetry-label">SPEED</span>
+              <span class="telemetry-val highlight" id="val-speed">0.0 m/s</span>
+            </div>
+            <div class="telemetry-item">
+              <span class="telemetry-label">HEADING</span>
+              <span class="telemetry-val" id="val-heading">000°</span>
+            </div>
+            <div class="telemetry-item">
+              <span class="telemetry-label">DAMPENERS</span>
+              <span class="telemetry-val success" id="val-dampeners">ACTIVE</span>
+            </div>
+            <div class="telemetry-item">
+              <span class="telemetry-label">CAMERA MODE</span>
+              <span class="telemetry-val mono" id="val-cam-mode">TACTICAL CHASE</span>
+            </div>
             <div class="telemetry-item">
               <span class="telemetry-label">FRAME RATE</span>
               <span class="telemetry-val" id="val-fps">-- FPS</span>
             </div>
             <div class="telemetry-item">
-              <span class="telemetry-label">FRAME TIME</span>
-              <span class="telemetry-val" id="val-frametime">-- ms</span>
-            </div>
-            <div class="telemetry-item">
               <span class="telemetry-label">DRAW CALLS</span>
               <span class="telemetry-val" id="val-drawcalls">0</span>
             </div>
-            <div class="telemetry-item">
-              <span class="telemetry-label">TRIANGLES</span>
-              <span class="telemetry-val" id="val-triangles">0</span>
-            </div>
             <div class="telemetry-item full-width">
-              <span class="telemetry-label">CAMERA COORDS</span>
-              <span class="telemetry-val mono" id="val-cam-pos">X: 0.0 Y: 15.0 Z: 25.0</span>
-            </div>
-            <div class="telemetry-item full-width">
-              <span class="telemetry-label">CAMERA TARGET</span>
-              <span class="telemetry-val mono" id="val-cam-target">X: 0.0 Y: 0.0 Z: 0.0</span>
+              <span class="telemetry-label">SHIP POSITION (X / Z)</span>
+              <span class="telemetry-val mono" id="val-ship-pos">X: 0.0  Z: 0.0</span>
             </div>
           </div>
         </aside>
@@ -123,30 +132,33 @@
           </div>
         </aside>
 
-        <!-- Instructions / Status Panel -->
+        <!-- Instructions / Flight Controls Panel -->
         <aside class="hud-panel instructions-panel">
           <div class="panel-header">
-            <h3>ORBIT CONTROL SCHEME</h3>
+            <h3>FLIGHT CONTROLS (STARCON STYLE)</h3>
           </div>
           <ul class="control-list">
-            <li><kbd>Left Click + Drag</kbd> Orbit Camera</li>
-            <li><kbd>Right Click + Drag</kbd> Pan Viewport</li>
-            <li><kbd>Scroll</kbd> Zoom In / Out</li>
-            <li><kbd>R</kbd> Reset Camera to Default</li>
-            <li><kbd>G</kbd> Toggle Sector Grid</li>
-            <li><kbd>Space</kbd> Toggle Auto-Rotation</li>
+            <li><kbd>W / Up</kbd> Forward Thrust</li>
+            <li><kbd>S / Down</kbd> Reverse / Retro Thruster</li>
+            <li><kbd>A / D</kbd> Turn Left / Right</li>
+            <li><kbd>X</kbd> All-Stop Emergency Brake</li>
+            <li><kbd>Z</kbd> Toggle Inertia Dampeners</li>
+            <li><kbd>C</kbd> Toggle Camera Mode</li>
+            <li><kbd>E / Space</kbd> Dock (when in zone)</li>
+            <li><kbd>1 - 4</kbd> Switch Alien Race</li>
           </ul>
         </aside>
       </div>
 
       <footer class="hud-footer">
         <div class="hud-actions">
-          <button id="btn-reset-cam" class="hud-btn" title="Reset Camera (R)">Reset Camera</button>
+          <button id="btn-toggle-cam" class="hud-btn" title="Toggle Camera (C)">Camera: Chase</button>
+          <button id="btn-toggle-damp" class="hud-btn" title="Toggle Dampeners (Z)">Dampeners: ON</button>
+          <button id="btn-reset-pos" class="hud-btn" title="Reset Ship to Dock">Reset Position</button>
           <button id="btn-toggle-grid" class="hud-btn" title="Toggle Grid (G)">Toggle Grid</button>
-          <button id="btn-toggle-rotate" class="hud-btn" title="Toggle Hull Spin (Space)">Auto-Rotate: ON</button>
         </div>
         <div class="hud-system-note">
-          <span>Week 1 Day 3 // Flat-Shading & Race Color Palette Mapping // WebGL 2.0 Three.js</span>
+          <span>Week 1 Day 4 // Newtonian 2D Flight Controller // WebGL 2.0 Three.js</span>
         </div>
       </footer>
     </div>
