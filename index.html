@@ -91,6 +91,14 @@
               <span class="telemetry-label">AP REGEN (60s)</span>
               <span class="telemetry-val success" id="val-ap-regen-telemetry">+1 in 00s</span>
             </div>
+            <div class="telemetry-item">
+              <span class="telemetry-label">CREDITS</span>
+              <span class="telemetry-val highlight" id="val-telemetry-credits">2,500 Cr</span>
+            </div>
+            <div class="telemetry-item">
+              <span class="telemetry-label">CARGO HOLD</span>
+              <span class="telemetry-val mono" id="val-telemetry-cargo">0 / 40 m³</span>
+            </div>
             <div class="telemetry-item full-width">
               <span class="telemetry-label">SHIP POSITION (X / Z)</span>
               <span class="telemetry-val mono" id="val-ship-pos">X: 0.0  Z: 0.0</span>
@@ -185,7 +193,7 @@
           <button id="btn-toggle-grid" class="hud-btn" title="Toggle Grid (G)">Toggle Grid</button>
         </div>
         <div class="hud-system-note">
-          <span id="hud-status-line">Week 2 Day 8 // Sector Graph Jump System & Hyperspace Warp Transition</span>
+          <span id="hud-status-line">Week 2 Day 9 // Dynamic Supply/Demand Curve & Atomic Buy/Sell Transactions</span>
         </div>
       </footer>
     </div>
@@ -216,13 +224,28 @@
         </div>
 
         <div class="dock-services-grid">
-          <div class="service-card">
-            <h4>COMMODITY EXCHANGE (LIVE DATABASE FEED)</h4>
-            <div class="market-ticker" id="modal-market-ticker">
-              <div class="ticker-row"><span>Deuterium Fuel (COMM_FUEL)</span><span class="price">25 Cr</span><span class="stock">SUPPLY: HIGH</span></div>
-              <div class="ticker-row"><span>Bio-Protein (COMM_RATIONS)</span><span class="price">40 Cr</span><span class="stock">SUPPLY: NORM</span></div>
-              <div class="ticker-row"><span>Silicate Ore (COMM_ORE)</span><span class="price">68 Cr</span><span class="demand">DEMAND: HIGH</span></div>
-              <div class="ticker-row"><span>Plasteel Alloy (COMM_ALLOY)</span><span class="price">155 Cr</span><span class="stock">SUPPLY: LOW</span></div>
+          <div class="service-card commodity-service-card">
+            <div class="market-service-header">
+              <div class="market-service-titles">
+                <h4>COMMODITY EXCHANGE (AUTHORITATIVE MARKET FEED)</h4>
+                <span class="market-port-subtext" id="market-port-subtext">DYNAMIC SUPPLY/DEMAND AUTOMATED PRICING</span>
+              </div>
+              <div class="market-header-stats">
+                <div class="stat-pill credits-pill">
+                  <span class="pill-label">CREDITS:</span>
+                  <span class="pill-value" id="market-player-credits">2,500 Cr</span>
+                </div>
+                <div class="stat-pill cargo-pill">
+                  <span class="pill-label">CARGO:</span>
+                  <span class="pill-value" id="market-player-cargo">0 / 40 m³</span>
+                </div>
+              </div>
+            </div>
+
+            <div id="market-toast" class="market-toast hidden"></div>
+
+            <div class="market-exchange-container" id="modal-market-exchange">
+              <div class="market-loading-hint">Connecting to Station Commerce Uplink...</div>
             </div>
           </div>
 
@@ -233,7 +256,7 @@
               <div><span>ENERGY SHIELDS:</span> <strong>100% (CHARGED)</strong></div>
               <div><span>ACTION POINTS:</span> <strong id="modal-ap-display" style="color: #38bdf8;">600 / 600 AP</strong></div>
               <div><span>RESERVE FUEL:</span> <strong>100 / 100 UNITS</strong></div>
-              <div><span>CARGO CAPACITY:</span> <strong>0 / 40 m³</strong></div>
+              <div><span>CARGO HOLD:</span> <strong id="modal-cargo-display" style="color: #38bdf8;">0 / 40 m³</strong></div>
             </div>
             <div style="display: flex; gap: 0.5rem; margin-top: 0.75rem;">
               <button id="btn-quick-service" class="hud-btn" style="flex: 1;" title="Cycle power couplers and recharge +50 AP">

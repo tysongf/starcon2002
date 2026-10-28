@@ -7,6 +7,7 @@ import { cache } from './cache/CacheManager';
 
 import { apService, AP_COSTS, type ActionType } from './services/ActionPointService';
 import { navigationService } from './services/NavigationService';
+import { tradeService } from './services/TradeService';
 
 dotenv.config();
 
@@ -61,23 +62,68 @@ async function startServer() {
       reply.send({ sectors: rows });
     });
 
-    // 5. Port Detail Endpoint
+    // 5. Port Detail & Dynamic Market Endpoints (Day 9)
     server.get('/api/ports/:id', async (req, reply) => {
       const { id } = req.params as { id: string };
-      const portRes = await db.query('SELECT * FROM ports WHERE id = $1', [id]);
-      if (portRes.rows.length === 0) {
+      const market = await tradeService.getMarketInventory(id);
+      if (!market) {
         return reply.status(404).send({ error: 'Port not found' });
       }
 
-      const invRes = await db.query(
-        'SELECT * FROM port_inventory WHERE port_id = $1 ORDER BY commodity_id ASC',
-        [id]
+      reply.send({
+        port: market.port,
+        inventory: market.items,
+      });
+    });
+
+    server.get('/api/ports/:id/market', async (req, reply) => {
+      const { id } = req.params as { id: string };
+      const query = req.query as { playerId?: string };
+      const playerId = query?.playerId || 'acc_sol_captain';
+
+      const market = await tradeService.getMarketInventory(id, playerId);
+      if (!market) {
+        return reply.status(404).send({ error: 'Port not found' });
+      }
+
+      reply.send(market);
+    });
+
+    server.post('/api/ports/:id/trade', async (req, reply) => {
+      const { id } = req.params as { id: string };
+      const body = (req.body || {}) as {
+        playerId?: string;
+        commodityId: string;
+        quantity: number;
+        type: 'BUY' | 'SELL';
+      };
+
+      const playerId = body.playerId || 'acc_sol_captain';
+      const result = await tradeService.executeTrade(
+        playerId,
+        id,
+        body.commodityId,
+        body.quantity,
+        body.type
       );
 
-      reply.send({
-        port: portRes.rows[0],
-        inventory: invRes.rows,
-      });
+      if (!result.success) {
+        return reply.status(400).send(result);
+      }
+
+      reply.send(result);
+    });
+
+    server.get('/api/player/hold', async (req, reply) => {
+      const query = req.query as { playerId?: string };
+      const playerId = query?.playerId || 'acc_sol_captain';
+
+      const hold = await tradeService.getPlayerHold(playerId);
+      if (!hold) {
+        return reply.status(404).send({ error: 'Hold not found for player' });
+      }
+
+      reply.send(hold);
     });
 
     // 6. Action Point (AP) Engine Endpoints (Day 7)

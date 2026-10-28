@@ -95,10 +95,27 @@ class GameEngine {
   private modalDock: HTMLElement | null = null;
   private modalStationName: HTMLElement | null = null;
   private modalOfficerQuote: HTMLElement | null = null;
-  private modalMarketTicker: HTMLElement | null = null;
+  private modalMarketExchange: HTMLElement | null = null;
   private elBackendBadge: HTMLElement | null = null;
   private btnUndock: HTMLElement | null = null;
   private btnQuickService: HTMLElement | null = null;
+
+  // Economy & Cargo Hold (Day 9)
+  private playerCredits: number = 2500;
+  private playerCargoCapacity: number = 40;
+  private playerUsedCargo: number = 0;
+  private playerCargoHold: Array<{ commodity_id: string; name: string; quantity: number }> = [];
+  private currentMarketPortId: string | null = null;
+  private currentMarketItems: any[] = [];
+
+  // Market & Trade DOM Elements
+  private elTelemetryCredits: HTMLElement | null = null;
+  private elTelemetryCargo: HTMLElement | null = null;
+  private modalMarketPlayerCredits: HTMLElement | null = null;
+  private modalMarketPlayerCargo: HTMLElement | null = null;
+  private modalCargoDisplay: HTMLElement | null = null;
+  private marketToast: HTMLElement | null = null;
+  private marketToastTimer: number | null = null;
 
   // Action Point (AP) System (Day 7)
   private playerAP = {
@@ -419,10 +436,18 @@ class GameEngine {
     this.modalDock = document.getElementById('station-dock-modal');
     this.modalStationName = document.getElementById('modal-station-name');
     this.modalOfficerQuote = document.getElementById('modal-officer-quote');
-    this.modalMarketTicker = document.getElementById('modal-market-ticker');
+    this.modalMarketExchange = document.getElementById('modal-market-exchange');
     this.elBackendBadge = document.getElementById('backend-status-badge');
     this.btnUndock = document.getElementById('btn-undock');
     this.btnQuickService = document.getElementById('btn-quick-service');
+
+    // Market & Telemetry DOM Elements (Day 9)
+    this.elTelemetryCredits = document.getElementById('val-telemetry-credits');
+    this.elTelemetryCargo = document.getElementById('val-telemetry-cargo');
+    this.modalMarketPlayerCredits = document.getElementById('market-player-credits');
+    this.modalMarketPlayerCargo = document.getElementById('market-player-cargo');
+    this.modalCargoDisplay = document.getElementById('modal-cargo-display');
+    this.marketToast = document.getElementById('market-toast');
 
     // AP HUD Elements
     this.elApGauge = document.getElementById('hud-ap-gauge');
@@ -602,36 +627,308 @@ class GameEngine {
     }
   }
 
+  public async refreshPlayerHold(): Promise<void> {
+    try {
+      const res = await fetch('/api/player/hold?playerId=acc_sol_captain');
+      if (res.ok) {
+        const hold = await res.json();
+        this.playerCredits = hold.credits;
+        this.playerCargoCapacity = hold.cargoCapacity;
+        this.playerUsedCargo = hold.usedCargo;
+        this.playerCargoHold = hold.cargo || [];
+        this.updateHoldUI();
+      }
+    } catch (err) {
+      console.warn('[HOLD] Failed to load hold:', err);
+    }
+  }
+
+  private updateHoldUI(): void {
+    const formattedCredits = this.playerCredits.toLocaleString('en-US');
+    const cargoRatio = `${this.playerUsedCargo} / ${this.playerCargoCapacity} m³`;
+
+    if (this.elTelemetryCredits) {
+      this.elTelemetryCredits.textContent = `${formattedCredits} Cr`;
+    }
+    if (this.elTelemetryCargo) {
+      this.elTelemetryCargo.textContent = cargoRatio;
+    }
+    if (this.modalMarketPlayerCredits) {
+      this.modalMarketPlayerCredits.textContent = `${formattedCredits} Cr`;
+    }
+    if (this.modalMarketPlayerCargo) {
+      this.modalMarketPlayerCargo.textContent = cargoRatio;
+    }
+    if (this.modalCargoDisplay) {
+      this.modalCargoDisplay.textContent = cargoRatio;
+    }
+  }
+
+  public showMarketToast(message: string, isError: boolean = false): void {
+    if (!this.marketToast) return;
+    if (this.marketToastTimer) {
+      clearTimeout(this.marketToastTimer);
+      this.marketToastTimer = null;
+    }
+
+    this.marketToast.textContent = message;
+    this.marketToast.className = `market-toast ${isError ? 'error' : 'success'}`;
+    this.marketToastTimer = window.setTimeout(() => {
+      if (this.marketToast) {
+        this.marketToast.className = 'market-toast hidden';
+      }
+    }, 4500);
+  }
+
   private async loadPortInventory(portId?: string): Promise<void> {
     const targetPort = portId || (this.currentSectorId === 1 ? 'PORT_AEGIS_01' : this.currentSectorId === 3 ? 'PORT_SMELTER_01' : null);
+    this.currentMarketPortId = targetPort;
+
     if (!targetPort) {
-      if (this.modalMarketTicker) {
-        this.modalMarketTicker.innerHTML = `
-          <div class="ticker-row"><span>NO COMMERCIAL EXCHANGE</span><span class="price">--</span><span class="stock">UNCOLONIZED</span></div>
+      if (this.modalMarketExchange) {
+        this.modalMarketExchange.innerHTML = `
+          <div class="market-loading-hint">⚠️ NO COMMERCIAL EXCHANGE IN THIS SECTOR</div>
         `;
       }
       return;
     }
 
     try {
-      const res = await fetch(`/api/ports/${targetPort}`);
+      const res = await fetch(`/api/ports/${targetPort}/market?playerId=acc_sol_captain`);
       if (res.ok) {
         const data = await res.json();
-        if (this.modalMarketTicker && Array.isArray(data.inventory)) {
-          this.modalMarketTicker.innerHTML = data.inventory
-            .map((item: { commodity_id: string; buy_price: number; stock: number; capacity: number; demand: number }) => `
-              <div class="ticker-row">
-                <span>${item.commodity_id.replace('COMM_', '')}</span>
-                <span class="price">${item.buy_price.toFixed(1)} Cr</span>
-                <span class="stock">STOCK: ${item.stock} / ${item.capacity}</span>
-              </div>
-            `)
-            .join('');
+        this.currentMarketItems = data.items || [];
+        if (data.hold) {
+          this.playerCredits = data.hold.credits;
+          this.playerCargoCapacity = data.hold.cargoCapacity;
+          this.playerUsedCargo = data.hold.usedCargo;
+          this.playerCargoHold = data.hold.cargo || [];
+          this.updateHoldUI();
+        }
+        this.renderMarketExchange(targetPort, this.currentMarketItems);
+      } else {
+        if (this.modalMarketExchange) {
+          this.modalMarketExchange.innerHTML = `
+            <div class="market-loading-hint">Failed to load market telemetry.</div>
+          `;
         }
       }
-    } catch {
-      // Keep initial static preview
+    } catch (err) {
+      console.warn('[MARKET] Failed to load market:', err);
     }
+  }
+
+  private renderMarketExchange(portId: string, items: any[]): void {
+    if (!this.modalMarketExchange) return;
+
+    if (items.length === 0) {
+      this.modalMarketExchange.innerHTML = `
+        <div class="market-loading-hint">No commodities registered at this terminal.</div>
+      `;
+      return;
+    }
+
+    const freeSpace = Math.max(0, this.playerCargoCapacity - this.playerUsedCargo);
+
+    this.modalMarketExchange.innerHTML = items
+      .map((item) => {
+        const canAfford = this.playerCredits >= item.buy_price;
+        const canBuy = freeSpace > 0 && canAfford && item.stock > 0;
+        const canSell = item.player_cargo > 0;
+
+        return `
+          <div class="comm-item-card" data-commodity="${item.commodity_id}">
+            <div class="comm-header-row">
+              <div class="comm-name-group">
+                <span class="comm-name">${item.name}</span>
+                <span class="comm-category-badge ${item.category}">${item.category.replace('_', ' ')}</span>
+              </div>
+              <div class="comm-player-hold">
+                HOLD: <strong>${item.player_cargo}</strong>
+              </div>
+            </div>
+
+            <div class="comm-details-row">
+              <div class="comm-prices">
+                <div class="price-tag buy">
+                  <span class="p-label">BUY</span>
+                  <span class="p-val">${item.buy_price.toFixed(1)} Cr</span>
+                </div>
+                <div class="price-tag sell">
+                  <span class="p-label">SELL</span>
+                  <span class="p-val">${item.sell_price.toFixed(1)} Cr</span>
+                </div>
+              </div>
+              <div class="comm-stock-info">
+                STOCK: <span class="stock-val">${item.stock} / ${item.capacity}</span>
+              </div>
+            </div>
+
+            <div class="comm-actions-row">
+              <div class="comm-stepper">
+                <button class="stepper-btn btn-step-down" data-action="dec" title="Decrease quantity">-</button>
+                <input type="number" class="stepper-input" value="1" min="1" max="40" />
+                <button class="stepper-btn btn-step-up" data-action="inc" title="Increase quantity">+</button>
+                <button class="stepper-max-btn" data-action="max" title="Max buyable / sellable units">MAX</button>
+              </div>
+              <div class="comm-trade-buttons">
+                <button class="btn-trade buy" data-action="buy" ${!canBuy ? 'disabled' : ''} title="Purchase from Port">
+                  BUY
+                </button>
+                <button class="btn-trade sell" data-action="sell" ${!canSell ? 'disabled' : ''} title="Sell to Port">
+                  SELL
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      })
+      .join('');
+
+    // Attach interaction handlers to each item
+    const cards = this.modalMarketExchange.querySelectorAll('.comm-item-card');
+    cards.forEach((card) => {
+      const commId = card.getAttribute('data-commodity');
+      if (!commId) return;
+
+      const input = card.querySelector('.stepper-input') as HTMLInputElement;
+      const btnDec = card.querySelector('.btn-step-down') as HTMLButtonElement;
+      const btnInc = card.querySelector('.btn-step-up') as HTMLButtonElement;
+      const btnMax = card.querySelector('.stepper-max-btn') as HTMLButtonElement;
+      const btnBuy = card.querySelector('.btn-trade.buy') as HTMLButtonElement;
+      const btnSell = card.querySelector('.btn-trade.sell') as HTMLButtonElement;
+
+      const item = items.find((i) => i.commodity_id === commId);
+      if (!item) return;
+
+      const getQty = () => {
+        const val = parseInt(input.value, 10);
+        return isNaN(val) || val < 1 ? 1 : val;
+      };
+
+      btnDec?.addEventListener('click', () => {
+        const q = Math.max(1, getQty() - 1);
+        input.value = String(q);
+        this.audio.playUiBlip();
+      });
+
+      btnInc?.addEventListener('click', () => {
+        const q = getQty() + 1;
+        input.value = String(q);
+        this.audio.playUiBlip();
+      });
+
+      btnMax?.addEventListener('click', () => {
+        const currentFree = Math.max(0, this.playerCargoCapacity - this.playerUsedCargo);
+        const maxAffordable = Math.floor(this.playerCredits / item.buy_price);
+        const buyLimit = Math.min(item.stock, currentFree, maxAffordable);
+        const maxVal = Math.max(1, Math.max(buyLimit, item.player_cargo));
+        input.value = String(maxVal);
+        this.audio.playUiBlip();
+      });
+
+      input?.addEventListener('change', () => {
+        input.value = String(getQty());
+      });
+
+      btnBuy?.addEventListener('click', async () => {
+        const qty = getQty();
+        await this.executeTrade(portId, commId, qty, 'BUY');
+      });
+
+      btnSell?.addEventListener('click', async () => {
+        const qty = getQty();
+        await this.executeTrade(portId, commId, qty, 'SELL');
+      });
+    });
+  }
+
+  public async executeTrade(
+    portId: string,
+    commodityId: string,
+    quantity: number,
+    type: 'BUY' | 'SELL'
+  ): Promise<void> {
+    if (quantity <= 0) return;
+
+    try {
+      const res = await fetch(`/api/ports/${portId}/trade`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          playerId: 'acc_sol_captain',
+          commodityId,
+          quantity,
+          type,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        if (type === 'BUY') {
+          this.audio.playTradeBuySound();
+        } else {
+          this.audio.playTradeSellSound();
+        }
+
+        const actionText = type === 'BUY' ? 'Purchased' : 'Sold';
+        const costText = type === 'BUY' ? `-${data.totalCredits} Cr` : `+${data.totalCredits} Cr`;
+        this.showMarketToast(`✓ ${actionText} ${data.quantity}x ${data.commodityName} (${costText})`, false);
+
+        if (data.hold) {
+          this.playerCredits = data.hold.credits;
+          this.playerCargoCapacity = data.hold.cargoCapacity;
+          this.playerUsedCargo = data.hold.usedCargo;
+          this.playerCargoHold = data.hold.cargo || [];
+          this.updateHoldUI();
+        }
+
+        if (Array.isArray(data.updatedInventory)) {
+          this.currentMarketItems = data.updatedInventory;
+          this.renderMarketExchange(portId, this.currentMarketItems);
+        } else {
+          await this.loadPortInventory(portId);
+        }
+      } else {
+        this.audio.playApWarningSound();
+        let errMsg = 'Trade order rejected by station exchange.';
+        switch (data.error) {
+          case 'INSUFFICIENT_CREDITS':
+            errMsg = `⚠️ Insufficient Credits! Requires ${data.requiredCredits || ''} Cr.`;
+            break;
+          case 'HOLD_CAPACITY_EXCEEDED':
+          case 'CARGO_BAY_FULL':
+            errMsg = `⚠️ Cargo Bay Full! Only ${data.freeCargo || 0} m³ available.`;
+            break;
+          case 'INSUFFICIENT_STOCK':
+            errMsg = `⚠️ Station has insufficient stock (${data.availableStock || 0} available).`;
+            break;
+          case 'INSUFFICIENT_CARGO':
+            errMsg = `⚠️ Insufficient Cargo in hold to sell (${data.availableCargo || 0} in hold).`;
+            break;
+          case 'OUT_OF_RANGE':
+            errMsg = `⚠️ Trade Out of Range! Vessel must be docked in same sector.`;
+            break;
+          default:
+            errMsg = `⚠️ Trade Error: ${data.error || 'Server rejected order'}`;
+            break;
+        }
+        this.showMarketToast(errMsg, true);
+      }
+    } catch (err) {
+      console.error('[TRADE] Trade execution failed:', err);
+      this.audio.playApWarningSound();
+      this.showMarketToast('⚠️ Network failure during transaction', true);
+    }
+  }
+
+  public get cargoHold(): Array<{ commodity_id: string; name: string; quantity: number }> {
+    return this.playerCargoHold;
+  }
+
+  public get activePortId(): string | null {
+    return this.currentMarketPortId;
   }
 
   public async loadShipAndSector(): Promise<void> {
@@ -651,6 +948,7 @@ class GameEngine {
         if (this.navFuelDisplay) {
           this.navFuelDisplay.textContent = `FUEL: ${this.shipFuel} / ${this.maxShipFuel}`;
         }
+        await this.refreshPlayerHold();
       }
     } catch (err) {
       console.warn('[NAV] Failed to load ship and sector:', err);
