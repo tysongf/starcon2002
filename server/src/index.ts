@@ -6,6 +6,7 @@ import { db } from './db/Database';
 import { cache } from './cache/CacheManager';
 
 import { apService, AP_COSTS, type ActionType } from './services/ActionPointService';
+import { navigationService } from './services/NavigationService';
 
 dotenv.config();
 
@@ -121,7 +122,95 @@ async function startServer() {
       reply.send(state);
     });
 
-    // 7. Listen
+    // 7. Navigation & Hyperspace Warp Endpoints (Day 8)
+    server.get('/api/player/ship', async (req, reply) => {
+      const query = req.query as { playerId?: string };
+      const playerId = query?.playerId || 'acc_sol_captain';
+      const ship = await navigationService.getPlayerShip(playerId);
+      if (!ship) {
+        return reply.status(404).send({ error: 'Ship not found' });
+      }
+      const currentSector = await navigationService.getSector(ship.current_sector_id);
+      const adjacentSectors = await navigationService.getAdjacentSectors(ship.current_sector_id);
+      reply.send({
+        ship,
+        currentSector,
+        adjacentSectors,
+      });
+    });
+
+    server.post('/api/player/ship/refuel', async (req, reply) => {
+      const body = (req.body || {}) as {
+        playerId?: string;
+        amount?: number;
+      };
+      const playerId = body.playerId || 'acc_sol_captain';
+      const updatedShip = await navigationService.refuelShip(playerId, body.amount);
+      reply.send({
+        success: true,
+        ship: updatedShip,
+      });
+    });
+
+    server.post('/api/player/ship/debug-set', async (req, reply) => {
+      const body = (req.body || {}) as {
+        playerId?: string;
+        sectorId?: number;
+        fuel?: number;
+      };
+      const playerId = body.playerId || 'acc_sol_captain';
+      const sectorId = body.sectorId || 1;
+      const fuel = typeof body.fuel === 'number' ? body.fuel : 100;
+      const res = await db.query(
+        'UPDATE ships SET current_sector_id = $1, fuel = $2, updated_at = NOW() WHERE account_id = $3 RETURNING *',
+        [sectorId, fuel, playerId]
+      );
+      reply.send({ success: true, ship: res.rows[0] });
+    });
+
+    server.get('/api/sectors/:id', async (req, reply) => {
+      const { id } = req.params as { id: string };
+      const sectorId = parseInt(id, 10);
+      const sector = await navigationService.getSector(sectorId);
+      if (!sector) {
+        return reply.status(404).send({ error: 'Sector not found' });
+      }
+      const adjacent = await navigationService.getAdjacentSectors(sectorId);
+      const portRes = await db.query('SELECT * FROM ports WHERE sector_id = $1', [sectorId]);
+      reply.send({
+        sector,
+        adjacent,
+        port: portRes.rows[0] || null,
+      });
+    });
+
+    server.post('/api/navigate/jump', async (req, reply) => {
+      const body = (req.body || {}) as {
+        playerId?: string;
+        targetSectorId: number;
+      };
+
+      const playerId = body.playerId || 'acc_sol_captain';
+      const targetSectorId = typeof body.targetSectorId === 'number'
+        ? body.targetSectorId
+        : parseInt(body.targetSectorId, 10);
+
+      if (isNaN(targetSectorId)) {
+        return reply.status(400).send({
+          success: false,
+          error: 'targetSectorId must be a valid integer.',
+        });
+      }
+
+      const result = await navigationService.executeJump(playerId, targetSectorId);
+      if (!result.success) {
+        return reply.status(400).send(result);
+      }
+
+      reply.send(result);
+    });
+
+    // 8. Listen
     await server.listen({ port: PORT, host: '0.0.0.0' });
     console.log(`[Wayward Void API] Server listening on http://localhost:${PORT}`);
   } catch (err) {

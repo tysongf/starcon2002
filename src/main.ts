@@ -5,6 +5,7 @@ import { type FactionStyle, FACTION_STYLES } from './procgen/FactionStyles';
 import { ShipFlightController, type FlightTelemetry } from './physics/ShipFlightController';
 import { ThrusterParticleSystem } from './vfx/ThrusterParticleSystem';
 import { SpaceStation } from './entities/SpaceStation';
+import { AsteroidField } from './entities/AsteroidField';
 import { type DockingStatus } from './entities/DockingZone';
 import { AudioEngine } from './audio/AudioEngine';
 
@@ -18,10 +19,37 @@ class GameEngine {
   // Flight Physics & Systems
   private flightController: ShipFlightController;
   private thrusters: ThrusterParticleSystem;
-  private station: SpaceStation;
+  private station: SpaceStation | null = null;
+  private asteroidField: AsteroidField | null = null;
   private audio: AudioEngine;
   private cameraMode: 'CHASE' | 'ORBIT' = 'CHASE';
   private isDocked: boolean = false;
+
+  // Navigation & Sector Jump System (Day 8)
+  private currentSectorId: number = 1;
+  private currentSectorName: string = 'Sol-Perimeter Nexus';
+  private adjacentSectors: Array<{
+    id: number;
+    name: string;
+    system_seed: number;
+    controlling_faction: string;
+    connected_sectors: number[];
+  }> = [];
+  private shipFuel: number = 100;
+  private maxShipFuel: number = 100;
+  private isWarping: boolean = false;
+  private warpAnimationTime: number = 0;
+  private baseFov: number = 52;
+
+  // Nav DOM Elements
+  private modalNav: HTMLElement | null = null;
+  private btnOpenNav: HTMLElement | null = null;
+  private btnCloseNav: HTMLElement | null = null;
+  private navLanesList: HTMLElement | null = null;
+  private navCurrentSectorTitle: HTMLElement | null = null;
+  private navCurrentSectorSubtext: HTMLElement | null = null;
+  private navFuelDisplay: HTMLElement | null = null;
+  private hudSector: HTMLElement | null = null;
 
   // Scene entities
   private ambientLight: THREE.AmbientLight;
@@ -290,8 +318,8 @@ class GameEngine {
       }
     }
 
-    if (this.modalStationName) {
-      this.modalStationName.textContent = `${this.station.config.name} // SECTOR 01`;
+    if (this.modalStationName && this.station) {
+      this.modalStationName.textContent = `${this.station.config.name} // SECTOR 0${this.currentSectorId}`;
     }
 
     // Load live market inventory from backend database
@@ -410,9 +438,25 @@ class GameEngine {
     this.btnDockHaggle = document.getElementById('btn-dock-haggle');
     this.elApNotification = document.getElementById('ap-notification');
 
-    // Check backend health & initial AP balance
+    // Nav Console Elements (Day 8)
+    this.modalNav = document.getElementById('nav-modal');
+    this.btnOpenNav = document.getElementById('btn-open-nav');
+    this.btnCloseNav = document.getElementById('btn-close-nav');
+    this.navLanesList = document.getElementById('nav-lanes-list');
+    this.navCurrentSectorTitle = document.getElementById('nav-current-sector-title');
+    this.navCurrentSectorSubtext = document.getElementById('nav-current-sector-subtext');
+    this.navFuelDisplay = document.getElementById('nav-fuel-display');
+    this.hudSector = document.getElementById('hud-sector');
+
+    if (this.hudSector) {
+      this.hudSector.classList.add('clickable');
+      this.hudSector.title = 'Click to open Hyperspace Nav Computer (J)';
+    }
+
+    // Check backend health & initial AP / Sector balances
     this.checkBackendHealth();
     this.fetchPlayerAP();
+    this.loadShipAndSector();
   }
 
   private async checkBackendHealth(): Promise<void> {
@@ -558,9 +602,19 @@ class GameEngine {
     }
   }
 
-  private async loadPortInventory(): Promise<void> {
+  private async loadPortInventory(portId?: string): Promise<void> {
+    const targetPort = portId || (this.currentSectorId === 1 ? 'PORT_AEGIS_01' : this.currentSectorId === 3 ? 'PORT_SMELTER_01' : null);
+    if (!targetPort) {
+      if (this.modalMarketTicker) {
+        this.modalMarketTicker.innerHTML = `
+          <div class="ticker-row"><span>NO COMMERCIAL EXCHANGE</span><span class="price">--</span><span class="stock">UNCOLONIZED</span></div>
+        `;
+      }
+      return;
+    }
+
     try {
-      const res = await fetch('/api/ports/PORT_AEGIS_01');
+      const res = await fetch(`/api/ports/${targetPort}`);
       if (res.ok) {
         const data = await res.json();
         if (this.modalMarketTicker && Array.isArray(data.inventory)) {
@@ -578,6 +632,255 @@ class GameEngine {
     } catch {
       // Keep initial static preview
     }
+  }
+
+  public async loadShipAndSector(): Promise<void> {
+    try {
+      const res = await fetch('/api/player/ship?playerId=acc_sol_captain');
+      if (res.ok) {
+        const data = await res.json();
+        this.currentSectorId = data.ship.current_sector_id;
+        this.shipFuel = data.ship.fuel;
+        this.maxShipFuel = data.ship.max_fuel;
+        this.currentSectorName = data.currentSector.name;
+        this.adjacentSectors = data.adjacentSectors;
+
+        if (this.hudSector) {
+          this.hudSector.textContent = `SEC-0${this.currentSectorId} // ${this.currentSectorName.toUpperCase()}`;
+        }
+        if (this.navFuelDisplay) {
+          this.navFuelDisplay.textContent = `FUEL: ${this.shipFuel} / ${this.maxShipFuel}`;
+        }
+      }
+    } catch (err) {
+      console.warn('[NAV] Failed to load ship and sector:', err);
+    }
+  }
+
+  public openNavModal(): void {
+    if (this.isWarping) return;
+    if (this.modalNav) {
+      this.audio.playUiBlip();
+      this.modalNav.classList.remove('hidden');
+
+      if (this.navCurrentSectorTitle) {
+        this.navCurrentSectorTitle.textContent = `SECTOR 0${this.currentSectorId} // ${this.currentSectorName.toUpperCase()}`;
+      }
+      if (this.navCurrentSectorSubtext) {
+        const faction = this.currentSectorId === 1 ? 'SOL-PERIMETER LEAGUE' : this.currentSectorId === 2 ? 'UNCLAIMED VOID / HAZARD' : 'THE LITHOS AXIOM';
+        this.navCurrentSectorSubtext = document.getElementById('nav-current-sector-subtext');
+        if (this.navCurrentSectorSubtext) {
+          this.navCurrentSectorSubtext.textContent = `SYSTEM SEED: ${this.currentSectorId * 101} // JURISDICTION: ${faction}`;
+        }
+      }
+      if (this.navFuelDisplay) {
+        this.navFuelDisplay.textContent = `FUEL: ${this.shipFuel} / ${this.maxShipFuel}`;
+      }
+
+      // Update Topology visual nodes
+      [1, 2, 3].forEach((id) => {
+        const node = document.getElementById(`node-sec-${id}`);
+        if (node) {
+          if (id === this.currentSectorId) {
+            node.classList.add('active');
+          } else {
+            node.classList.remove('active');
+          }
+        }
+      });
+
+      // Render Jump Lanes dynamically
+      if (this.navLanesList) {
+        if (this.adjacentSectors.length === 0) {
+          this.navLanesList.innerHTML = `<div class="nav-lane-card"><span class="nav-lane-target">NO ADJACENT WARP LANES DETECTED</span></div>`;
+          return;
+        }
+
+        this.navLanesList.innerHTML = this.adjacentSectors
+          .map((sec) => `
+            <div class="nav-lane-card">
+              <div class="nav-lane-info">
+                <span class="nav-lane-target">SEC-0${sec.id} // ${sec.name.toUpperCase()}</span>
+                <span class="nav-lane-details">FACTION: ${sec.controlling_faction.replace('FACTION_', '')} // SYSTEM SEED: ${sec.system_seed}</span>
+                <span class="nav-lane-cost">⚡ Warp Cost: 5 AP + 1 Fuel</span>
+              </div>
+              <button class="hud-btn jump-btn" data-target-id="${sec.id}">
+                ENGAGE JUMP 🚀
+              </button>
+            </div>
+          `)
+          .join('');
+
+        // Attach jump click handlers to dynamically rendered buttons
+        const jumpBtns = this.navLanesList.querySelectorAll('.jump-btn');
+        jumpBtns.forEach((btn) => {
+          btn.addEventListener('click', (e) => {
+            const targetId = parseInt((e.currentTarget as HTMLElement).getAttribute('data-target-id') || '0', 10);
+            if (targetId > 0) {
+              this.executeWarpJump(targetId);
+            }
+          });
+        });
+      }
+    }
+  }
+
+  public closeNavModal(): void {
+    if (this.modalNav) {
+      this.modalNav.classList.add('hidden');
+    }
+  }
+
+  public async executeWarpJump(targetSectorId: number): Promise<void> {
+    if (this.isWarping) return;
+    this.closeNavModal();
+
+    // Check pre-conditions locally
+    if (this.playerAP.currentAP < 5) {
+      this.audio.playApWarningSound();
+      this.showApNotification('⚠️ INSUFFICIENT ACTION POINTS (Requires 5 AP to jump)', true);
+      return;
+    }
+    if (this.shipFuel < 1) {
+      this.audio.playApWarningSound();
+      this.showApNotification('⚠️ INSUFFICIENT FUEL (Requires 1 unit Deuterium)', true);
+      return;
+    }
+
+    // Begin Hyperspace Warp Transition
+    this.isWarping = true;
+    this.warpAnimationTime = 0;
+    this.audio.playWarpDriveEngage();
+    this.showApNotification(`🌌 ENGAGING HYPERSPACE JUMP -> SEC-0${targetSectorId}...`, false);
+
+    // Call server jump API in parallel
+    try {
+      const res = await fetch('/api/navigate/jump', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId: 'acc_sol_captain', targetSectorId }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        this.isWarping = false;
+        this.camera.fov = this.baseFov;
+        this.camera.updateProjectionMatrix();
+        this.audio.playApWarningSound();
+        this.showApNotification(`⚠️ ${data.error || 'WARP JUMP REJECTED'}`, true);
+        return;
+      }
+
+      // Smooth delay for warp animation climax (~1.1s)
+      await new Promise((resolve) => setTimeout(resolve, 1100));
+
+      // Update state from server response
+      this.currentSectorId = data.toSector.id;
+      this.currentSectorName = data.toSector.name;
+      this.shipFuel = data.remainingFuel;
+      this.playerAP.currentAP = data.currentAP;
+      this.updateApUI();
+
+      // Switch Sector Entities in Three.js Scene
+      this.loadSectorScene(this.currentSectorId, data.toSector.system_seed);
+
+      // Refresh ship and adjacent sectors
+      await this.loadShipAndSector();
+
+      // Breakout audio & finish warp animation
+      this.audio.playWarpExitChime();
+      this.showApNotification(`🚀 WARP COMPLETE // ENTERED SEC-0${this.currentSectorId} (${this.currentSectorName})`, false);
+
+      setTimeout(() => {
+        this.isWarping = false;
+        this.camera.fov = this.baseFov;
+        this.camera.updateProjectionMatrix();
+      }, 500);
+
+    } catch (err) {
+      this.isWarping = false;
+      this.camera.fov = this.baseFov;
+      this.camera.updateProjectionMatrix();
+      console.error('[WARP] Jump failed:', err);
+      this.showApNotification('⚠️ SUB-SPACE TRANSIT COLLAPSE', true);
+    }
+  }
+
+  public loadSectorScene(sectorId: number, seed: number): void {
+    // 1. Remove & clean up old entities
+    if (this.station) {
+      this.scene.remove(this.station.group);
+      this.station = null;
+    }
+    if (this.asteroidField) {
+      this.scene.remove(this.asteroidField.group);
+      this.asteroidField.dispose();
+      this.asteroidField = null;
+    }
+
+    // 2. Adjust lighting & fog per sector atmosphere
+    if (sectorId === 1) {
+      // Sol-Perimeter: Crisp blue/cyan starlight, clean industrial fog
+      this.scene.background = new THREE.Color(0x06080d);
+      this.scene.fog = new THREE.FogExp2(0x06080d, 0.0022);
+      this.starLight.color.setHex(0xfff5eb);
+      this.ambientLight.color.setHex(0x28334a);
+
+      // Aegis Terminal Space Station
+      this.station = new SpaceStation({
+        stationId: 'STATION_AEGIS_01',
+        name: 'AEGIS TERMINAL',
+        portClass: 1,
+        factionId: 'FACTION_SOL',
+        position: new THREE.Vector3(0, 0, 0),
+      });
+      this.scene.add(this.station.group);
+
+      if (this.modalStationName) {
+        this.modalStationName.textContent = 'AEGIS TERMINAL // SECTOR 01';
+      }
+      this.loadPortInventory('PORT_AEGIS_01');
+    } else if (sectorId === 2) {
+      // Void Expanse Hazard Zone: Violet/amber asteroid belt, eerie deep nebula
+      this.scene.background = new THREE.Color(0x06050b);
+      this.scene.fog = new THREE.FogExp2(0x06050b, 0.0035);
+      this.starLight.color.setHex(0xd8b4fe);
+      this.ambientLight.color.setHex(0x1e152d);
+
+      // Procedural Asteroid Field
+      this.asteroidField = new AsteroidField(seed, 45);
+      this.scene.add(this.asteroidField.group);
+
+      if (this.modalStationName) {
+        this.modalStationName.textContent = 'NO STATION IN ORBIT // DEEP VOID';
+      }
+      this.loadPortInventory();
+    } else if (sectorId === 3) {
+      // Obsidian Smelter Station: High-temperature fiery volcanic glow
+      this.scene.background = new THREE.Color(0x0d0707);
+      this.scene.fog = new THREE.FogExp2(0x0d0707, 0.0028);
+      this.starLight.color.setHex(0xff7b54);
+      this.ambientLight.color.setHex(0x351919);
+
+      // Smelter Space Station
+      this.station = new SpaceStation({
+        stationId: 'PORT_SMELTER_01',
+        name: 'OBSIDIAN FOUNDRY 3',
+        portClass: 2,
+        factionId: 'FACTION_LITHOS',
+        position: new THREE.Vector3(0, 0, 0),
+      });
+      this.scene.add(this.station.group);
+
+      if (this.modalStationName) {
+        this.modalStationName.textContent = 'OBSIDIAN FOUNDRY 3 // SECTOR 03';
+      }
+      this.loadPortInventory('PORT_SMELTER_01');
+    }
+
+    // Reset ship position slightly forward in the sector
+    this.flightController.reset(new THREE.Vector3(0, 0, 18));
   }
 
   private setupEventListeners(): void {
@@ -686,7 +989,7 @@ class GameEngine {
 
     // HUD AP Quick Spend Buttons
     this.btnApWarp?.addEventListener('click', () => {
-      this.spendAP('SECTOR_WARP', 5);
+      this.openNavModal();
     });
 
     this.btnApScan?.addEventListener('click', () => {
@@ -697,21 +1000,47 @@ class GameEngine {
       this.spendAP('EXTRACTION', 8);
     });
 
+    // Navigation & Hyperspace Modal Triggers (Day 8)
+    this.btnOpenNav?.addEventListener('click', () => {
+      this.openNavModal();
+    });
+
+    this.hudSector?.addEventListener('click', () => {
+      this.openNavModal();
+    });
+
+    this.btnCloseNav?.addEventListener('click', () => {
+      this.closeNavModal();
+    });
+
     // Keydown Controls
     window.addEventListener('keydown', (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) {
         return;
       }
 
+      if (e.code === 'KeyJ') {
+        if (this.modalNav && !this.modalNav.classList.contains('hidden')) {
+          this.closeNavModal();
+        } else {
+          this.openNavModal();
+        }
+        return;
+      }
+
       if (e.code === 'Escape') {
+        if (this.modalNav && !this.modalNav.classList.contains('hidden')) {
+          this.closeNavModal();
+          return;
+        }
         if (this.isDocked) {
           this.undockShip();
           return;
         }
       }
 
-      // If docked, suppress flight movement keys
-      if (this.isDocked) {
+      // If docked or currently warping, suppress flight movement keys
+      if (this.isDocked || this.isWarping) {
         return;
       }
 
@@ -747,12 +1076,14 @@ class GameEngine {
         case 'KeyE':
         case 'Space': {
           e.preventDefault();
-          const dockCheck = this.station.checkDocking(
-            this.flightController.position,
-            this.flightController.velocity.length()
-          );
-          if (dockCheck.canDock) {
-            this.dockShip();
+          if (this.station) {
+            const dockCheck = this.station.checkDocking(
+              this.flightController.position,
+              this.flightController.velocity.length()
+            );
+            if (dockCheck.canDock) {
+              this.dockShip();
+            }
           }
           break;
         }
@@ -884,14 +1215,32 @@ class GameEngine {
 
     this.thrusters.update(deltaSec);
 
-    // 5. Update Orbital Space Station
-    this.station.update(deltaSec);
-    const dockStatus = this.station.checkDocking(
-      this.flightController.position,
-      telemetry.speed
-    );
+    // 5. Update Orbital Space Station or Asteroid Field
+    if (this.station) {
+      this.station.update(deltaSec);
+    }
+    if (this.asteroidField) {
+      this.asteroidField.update(deltaSec);
+    }
 
-    // 6. Update Camera
+    const dockStatus = this.station
+      ? this.station.checkDocking(this.flightController.position, telemetry.speed)
+      : { inRange: false, canDock: false, distance: 999, message: 'NO STATION IN ORBIT // UNCLAIMED VOID SECTOR' };
+
+    // 6. Hyperspace Warp Camera Distortion FX
+    if (this.isWarping) {
+      this.warpAnimationTime += deltaSec;
+      const progress = Math.min(1.0, this.warpAnimationTime / 1.1);
+      const targetFov = this.baseFov + Math.sin(progress * Math.PI) * 44;
+      this.camera.fov = targetFov;
+      this.camera.updateProjectionMatrix();
+
+      // Relativistic camera vibration
+      this.camera.position.x += (Math.random() - 0.5) * 0.4;
+      this.camera.position.y += (Math.random() - 0.5) * 0.4;
+    }
+
+    // 7. Update Camera Tracking
     if (this.cameraMode === 'CHASE') {
       const forwardX = Math.sin(this.flightController.yaw);
       const forwardZ = Math.cos(this.flightController.yaw);

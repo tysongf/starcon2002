@@ -171,20 +171,21 @@
             <li><kbd>Z</kbd> Toggle Inertia Dampeners</li>
             <li><kbd>C</kbd> Toggle Camera Mode</li>
             <li><kbd>E / Space</kbd> Dock (when in zone)</li>
+            <li><kbd>J</kbd> Hyperspace Warp Nav</li>
             <li><kbd>1 - 4</kbd> Switch Alien Race</li>
           </ul>
         </aside>
       </div>
 
-      <footer class="hud-footer">
         <div class="hud-actions">
+          <button id="btn-open-nav" class="hud-btn primary" title="Open Hyperspace Nav Console (J)">🚀 Warp Nav (J)</button>
           <button id="btn-toggle-cam" class="hud-btn" title="Toggle Camera (C)">Camera: Chase</button>
           <button id="btn-toggle-damp" class="hud-btn" title="Toggle Dampeners (Z)">Dampeners: ON</button>
           <button id="btn-reset-pos" class="hud-btn" title="Reset Ship to Dock">Reset Position</button>
           <button id="btn-toggle-grid" class="hud-btn" title="Toggle Grid (G)">Toggle Grid</button>
         </div>
         <div class="hud-system-note">
-          <span id="hud-status-line">Week 2 Day 7 // Action Point (AP) Redis Engine & Atomic Spending</span>
+          <span id="hud-status-line">Week 2 Day 8 // Sector Graph Jump System & Hyperspace Warp Transition</span>
         </div>
       </footer>
     </div>
@@ -249,6 +250,62 @@
           <span class="undock-hint">Press <kbd>ESC</kbd> or click button to release magnetic clamps</span>
           <button id="btn-undock" class="hud-btn primary large-btn">
             DISENGAGE CLAMPS & UNDOCK 🚀
+          </button>
+        </footer>
+      </div>
+    </div>
+
+    <!-- Hyperspace Navigation & Sector Jump Console Modal (Day 8) -->
+    <div id="nav-modal" class="dock-modal-overlay hidden">
+      <div class="dock-modal-card nav-modal-card">
+        <header class="dock-modal-header">
+          <div class="dock-title-block">
+            <span class="dock-badge">HYPERSPACE NAV-COMPUTER</span>
+            <h2 class="dock-station-name" id="nav-current-sector-title">SECTOR 01 // SOL-PERIMETER NEXUS</h2>
+            <span class="dock-subtext" id="nav-current-sector-subtext">SYSTEM SEED: 101 // JURISDICTION: SOL-PERIMETER LEAGUE</span>
+          </div>
+          <div class="dock-status-tag" id="nav-jump-status-tag">
+            <span class="dock-lock-icon">⚡</span>
+            <span id="nav-fuel-display">FUEL: 100 / 100</span>
+          </div>
+        </header>
+
+        <!-- Sector Graph Visualization / Jump Lanes -->
+        <div class="nav-lanes-container">
+          <div class="nav-lanes-header">
+            <h4>WARP LANES // VECTOR TARGETS</h4>
+            <span class="jump-cost-hint">Jump Cost: 5 AP + 1 Fuel</span>
+          </div>
+          <div class="nav-lanes-list" id="nav-lanes-list">
+            <!-- Dynamic Sector Lanes populated via TS -->
+          </div>
+        </div>
+
+        <!-- Sector Topography Visual Map -->
+        <div class="nav-map-topology">
+          <div class="sector-node active" id="node-sec-1">
+            <div class="node-icon">🛰️</div>
+            <span class="node-id">SEC-01</span>
+            <span class="node-name">Sol-Perimeter</span>
+          </div>
+          <div class="lane-connector active" id="lane-1-2"></div>
+          <div class="sector-node" id="node-sec-2">
+            <div class="node-icon">☄️</div>
+            <span class="node-id">SEC-02</span>
+            <span class="node-name">Void Expanse</span>
+          </div>
+          <div class="lane-connector active" id="lane-2-3"></div>
+          <div class="sector-node" id="node-sec-3">
+            <div class="node-icon">🏭</div>
+            <span class="node-id">SEC-03</span>
+            <span class="node-name">Smelter Station</span>
+          </div>
+        </div>
+
+        <footer class="dock-modal-footer">
+          <span class="undock-hint">Direct jumps between non-adjacent sectors are prevented by subspace topology</span>
+          <button id="btn-close-nav" class="hud-btn large-btn">
+            DISMISS CONSOLE [ESC]
           </button>
         </footer>
       </div>

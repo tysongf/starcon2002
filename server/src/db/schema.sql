@@ -61,27 +61,52 @@ CREATE TABLE IF NOT EXISTS port_inventory (
   PRIMARY KEY (port_id, commodity_id)
 );
 
--- Seed Initial Static Sectors if empty
-INSERT INTO sectors (id, name, system_seed, controlling_faction, connected_sectors)
-VALUES 
-  (1, 'Sol-Perimeter Nexus', 101, 'FACTION_SOL', '[2, 3]'::jsonb),
-  (2, 'Phorid Deep Outpost', 102, 'FACTION_PHORID', '[1, 3]'::jsonb),
-  (3, 'Iron Forge Smelter', 103, 'FACTION_SOL', '[1, 2]'::jsonb)
+-- Seed Initial Pilot Account & Ship
+INSERT INTO accounts (id, username, callsign, credits, faction_id)
+VALUES ('acc_sol_captain', 'cmdr_vance', 'Vance', 2500, 'FACTION_SOL')
 ON CONFLICT (id) DO NOTHING;
 
--- Seed Initial Ports
+INSERT INTO ships (id, account_id, hull_class, hull_seed, current_sector_id, fuel, max_fuel, armor, max_armor, shield, max_shield, cargo_capacity)
+VALUES ('ship_sol_flagship', 'acc_sol_captain', 'CORVETTE', 12345, 1, 100, 100, 100, 100, 100, 100, 40)
+ON CONFLICT (id) DO NOTHING;
+
+-- Seed Initial Static 3-Sector Graph (Sector 1 <-> Sector 2 <-> Sector 3)
+INSERT INTO sectors (id, name, system_seed, controlling_faction, connected_sectors)
+VALUES 
+  (1, 'Sol-Perimeter Nexus', 101, 'FACTION_SOL', '[2]'::jsonb),
+  (2, 'Void Expanse Hazard Zone', 202, 'FACTION_SOL', '[1, 3]'::jsonb),
+  (3, 'Obsidian Smelter Station', 303, 'FACTION_LITHOS', '[2]'::jsonb)
+ON CONFLICT (id) DO UPDATE SET 
+  name = EXCLUDED.name,
+  system_seed = EXCLUDED.system_seed,
+  controlling_faction = EXCLUDED.controlling_faction,
+  connected_sectors = EXCLUDED.connected_sectors;
+
+-- Seed Initial Ports (Sector 1: Aegis Terminal, Sector 3: Obsidian Foundry)
 INSERT INTO ports (id, name, sector_id, port_class, faction_id, tariff_rate)
 VALUES 
   ('PORT_AEGIS_01', 'Aegis Terminal', 1, 1, 'FACTION_SOL', 0.05),
-  ('PORT_PHORID_01', 'Phorid Bargain-Spire 9', 2, 4, 'FACTION_PHORID', 0.08),
-  ('PORT_SMELTER_01', 'Iron Forge Smelter 3', 3, 3, 'FACTION_SOL', 0.04)
-ON CONFLICT (id) DO NOTHING;
+  ('PORT_SMELTER_01', 'Obsidian Foundry 3', 3, 2, 'FACTION_LITHOS', 0.06)
+ON CONFLICT (id) DO UPDATE SET 
+  name = EXCLUDED.name,
+  sector_id = EXCLUDED.sector_id,
+  port_class = EXCLUDED.port_class,
+  tariff_rate = EXCLUDED.tariff_rate;
 
--- Seed Initial Commodity Stock at Aegis Terminal
+-- Seed Commodity Stock at Ports
 INSERT INTO port_inventory (port_id, commodity_id, stock, demand, capacity, buy_price, sell_price)
 VALUES 
   ('PORT_AEGIS_01', 'COMM_FUEL', 2450, 500, 4000, 24.5, 26.2),
   ('PORT_AEGIS_01', 'COMM_RATIONS', 1200, 600, 2000, 38.0, 41.5),
   ('PORT_AEGIS_01', 'COMM_ORE', 400, 1800, 2500, 62.0, 68.0),
-  ('PORT_AEGIS_01', 'COMM_ALLOY', 450, 900, 1500, 152.0, 160.0)
-ON CONFLICT (port_id, commodity_id) DO NOTHING;
+  ('PORT_AEGIS_01', 'COMM_ALLOY', 450, 900, 1500, 152.0, 160.0),
+  ('PORT_SMELTER_01', 'COMM_FUEL', 750, 1200, 2500, 32.0, 35.0),
+  ('PORT_SMELTER_01', 'COMM_RATIONS', 550, 1400, 2000, 52.0, 56.5),
+  ('PORT_SMELTER_01', 'COMM_ORE', 2300, 300, 4000, 35.0, 38.0),
+  ('PORT_SMELTER_01', 'COMM_ALLOY', 1250, 400, 2500, 115.0, 122.0)
+ON CONFLICT (port_id, commodity_id) DO UPDATE SET 
+  stock = EXCLUDED.stock,
+  demand = EXCLUDED.demand,
+  buy_price = EXCLUDED.buy_price,
+  sell_price = EXCLUDED.sell_price;
+
