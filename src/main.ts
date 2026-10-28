@@ -117,6 +117,19 @@ class GameEngine {
   private marketToast: HTMLElement | null = null;
   private marketToastTimer: number | null = null;
 
+  // Milestone 0.2 Economic Arbitrage & Sector Intel
+  private initialSessionCredits: number = 2500;
+  private hasInitialCreditsSet: boolean = false;
+  private sessionArbitrageProfit: number = 0;
+  private elTelemetryNetWorth: HTMLElement | null = null;
+  private elTelemetryProfit: HTMLElement | null = null;
+  private navRadarRoutes: HTMLElement | null = null;
+  private modalOfficerAvatar: HTMLElement | null = null;
+  private modalOfficerName: HTMLElement | null = null;
+  private modalDockBadge: HTMLElement | null = null;
+  private modalDockSubtext: HTMLElement | null = null;
+  private hasInitialSceneLoaded: boolean = false;
+
   // Action Point (AP) System (Day 7)
   private playerAP = {
     playerId: 'acc_sol_captain',
@@ -313,30 +326,43 @@ class GameEngine {
     // Play procedural docking chime
     this.audio.playDockingChime();
 
-    // Customize dialog transmission based on faction affiliation
-    if (this.modalOfficerQuote) {
-      switch (this.currentFaction.id) {
-        case 'FACTION_PHORID':
-          this.modalOfficerQuote.textContent =
-            '"Szzzzzt! Organic trader hull locked! Welcome to Aegis Exchange Spire! Docking fee is 8 Credits per oxygen liter, payable upon departure. What surplus moisture do you have to barter?"';
-          break;
-        case 'FACTION_LITHOS':
-          this.modalOfficerQuote.textContent =
-            '"Axiom Harmonic Resonance confirmed. The geometric lattice of Aegis Terminal welcomes your low-entropy vessel. Our prism storage arrays are ready for harmonic transfer."';
-          break;
-        case 'FACTION_VAELIC':
-          this.modalOfficerQuote.textContent =
-            '"Vessel registered under Hegemony Direct Calculus index. Docking priority granted. Ensure all kinetic discharge manifolds remain offline during refueling tithes."';
-          break;
-        default:
-          this.modalOfficerQuote.textContent =
-            '"Docking clamps secured, Captain. Atmospheric seals holding at 1.0 ATM. Power couplers attached. Welcome to Aegis Terminal. We\'ve got fresh Deuterium in the fuel depot and our industrial smelters are buying raw ore at high margins today. What\'s your business?"';
-          break;
+    // Customize station comms & dialog per active sector
+    if (this.currentSectorId === 3) {
+      if (this.modalStationName) this.modalStationName.textContent = 'OBSIDIAN FOUNDRY 3 // SECTOR 03';
+      if (this.modalDockBadge) this.modalDockBadge.textContent = 'CLASS 2 INDUSTRIAL SMELTER';
+      if (this.modalDockSubtext) this.modalDockSubtext.textContent = 'THE LITHOS AXIOM JURISDICTION // POPULATION 18,500';
+      if (this.modalOfficerAvatar) this.modalOfficerAvatar.textContent = '🦾';
+      if (this.modalOfficerName) this.modalOfficerName.textContent = 'FOUNDRY MASTER IGNIS // COMM FREQ 142.4 MHz';
+      if (this.modalOfficerQuote) {
+        this.modalOfficerQuote.textContent =
+          '"Industrial clamps engaged. Core temperatures holding at 1,850 Kelvin. Welcome to Obsidian Foundry 3. We have surplus Silicate Ore and Plasteel Alloy ready for export, but our fuel reserves are dangerously low. Sell us Deuterium or buy our refined ore!"';
       }
-    }
-
-    if (this.modalStationName && this.station) {
-      this.modalStationName.textContent = `${this.station.config.name} // SECTOR 0${this.currentSectorId}`;
+    } else {
+      if (this.modalStationName && this.station) this.modalStationName.textContent = `${this.station.config.name} // SECTOR 0${this.currentSectorId}`;
+      if (this.modalDockBadge) this.modalDockBadge.textContent = 'CLASS 1 FREE-TRADE HUB';
+      if (this.modalDockSubtext) this.modalDockSubtext.textContent = 'SOL-PERIMETER LEAGUE JURISDICTION // POPULATION 42,000';
+      if (this.modalOfficerAvatar) this.modalOfficerAvatar.textContent = '👨‍🚀';
+      if (this.modalOfficerName) this.modalOfficerName.textContent = 'HARBORMASTER VANCE // COMM FREQ 114.8 MHz';
+      if (this.modalOfficerQuote) {
+        switch (this.currentFaction.id) {
+          case 'FACTION_PHORID':
+            this.modalOfficerQuote.textContent =
+              '"Szzzzzt! Organic trader hull locked! Welcome to Aegis Exchange Spire! Docking fee is 8 Credits per oxygen liter, payable upon departure. What surplus moisture do you have to barter?"';
+            break;
+          case 'FACTION_LITHOS':
+            this.modalOfficerQuote.textContent =
+              '"Axiom Harmonic Resonance confirmed. The geometric lattice of Aegis Terminal welcomes your low-entropy vessel. Our prism storage arrays are ready for harmonic transfer."';
+            break;
+          case 'FACTION_VAELIC':
+            this.modalOfficerQuote.textContent =
+              '"Vessel registered under Hegemony Direct Calculus index. Docking priority granted. Ensure all kinetic discharge manifolds remain offline during refueling tithes."';
+            break;
+          default:
+            this.modalOfficerQuote.textContent =
+              '"Docking clamps secured, Captain. Atmospheric seals holding at 1.0 ATM. Power couplers attached. Welcome to Aegis Terminal. We\'ve got fresh Deuterium in the fuel depot and our industrial smelters are buying raw ore at high margins today. What\'s your business?"';
+            break;
+        }
+      }
     }
 
     // Load live market inventory from backend database
@@ -441,13 +467,20 @@ class GameEngine {
     this.btnUndock = document.getElementById('btn-undock');
     this.btnQuickService = document.getElementById('btn-quick-service');
 
-    // Market & Telemetry DOM Elements (Day 9)
+    // Market & Telemetry DOM Elements (Day 9 & 10)
     this.elTelemetryCredits = document.getElementById('val-telemetry-credits');
     this.elTelemetryCargo = document.getElementById('val-telemetry-cargo');
+    this.elTelemetryNetWorth = document.getElementById('val-telemetry-networth');
+    this.elTelemetryProfit = document.getElementById('val-telemetry-profit');
     this.modalMarketPlayerCredits = document.getElementById('market-player-credits');
     this.modalMarketPlayerCargo = document.getElementById('market-player-cargo');
     this.modalCargoDisplay = document.getElementById('modal-cargo-display');
     this.marketToast = document.getElementById('market-toast');
+    this.navRadarRoutes = document.getElementById('nav-radar-routes');
+    this.modalOfficerAvatar = document.getElementById('modal-officer-avatar');
+    this.modalOfficerName = document.getElementById('modal-officer-name');
+    this.modalDockBadge = document.getElementById('modal-dock-badge');
+    this.modalDockSubtext = document.getElementById('modal-dock-subtext');
 
     // AP HUD Elements
     this.elApGauge = document.getElementById('hud-ap-gauge');
@@ -632,10 +665,15 @@ class GameEngine {
       const res = await fetch('/api/player/hold?playerId=acc_sol_captain');
       if (res.ok) {
         const hold = await res.json();
+        if (!this.hasInitialCreditsSet) {
+          this.initialSessionCredits = hold.credits;
+          this.hasInitialCreditsSet = true;
+        }
         this.playerCredits = hold.credits;
         this.playerCargoCapacity = hold.cargoCapacity;
         this.playerUsedCargo = hold.usedCargo;
         this.playerCargoHold = hold.cargo || [];
+        this.sessionArbitrageProfit = this.playerCredits - this.initialSessionCredits;
         this.updateHoldUI();
       }
     } catch (err) {
@@ -647,11 +685,27 @@ class GameEngine {
     const formattedCredits = this.playerCredits.toLocaleString('en-US');
     const cargoRatio = `${this.playerUsedCargo} / ${this.playerCargoCapacity} m³`;
 
+    // Calculate Net Worth = Credits + Cargo liquidation value
+    const estimatedCargoVal = this.playerCargoHold.reduce((sum, item) => {
+      const match = this.currentMarketItems.find((i) => i.commodity_id === item.commodity_id);
+      const unitVal = match ? match.sell_price : 35;
+      return sum + item.quantity * unitVal;
+    }, 0);
+    const netWorth = Math.round(this.playerCredits + estimatedCargoVal);
+
     if (this.elTelemetryCredits) {
       this.elTelemetryCredits.textContent = `${formattedCredits} Cr`;
     }
     if (this.elTelemetryCargo) {
       this.elTelemetryCargo.textContent = cargoRatio;
+    }
+    if (this.elTelemetryNetWorth) {
+      this.elTelemetryNetWorth.textContent = `${netWorth.toLocaleString('en-US')} Cr`;
+    }
+    if (this.elTelemetryProfit) {
+      const sign = this.sessionArbitrageProfit >= 0 ? '+' : '';
+      this.elTelemetryProfit.textContent = `${sign}${this.sessionArbitrageProfit.toLocaleString('en-US')} Cr`;
+      this.elTelemetryProfit.style.color = this.sessionArbitrageProfit > 0 ? '#34d399' : '#94a3b8';
     }
     if (this.modalMarketPlayerCredits) {
       this.modalMarketPlayerCredits.textContent = `${formattedCredits} Cr`;
@@ -936,7 +990,11 @@ class GameEngine {
       const res = await fetch('/api/player/ship?playerId=acc_sol_captain');
       if (res.ok) {
         const data = await res.json();
-        this.currentSectorId = data.ship.current_sector_id;
+        const loadedSectorId = data.ship.current_sector_id;
+        const initialLoad = !this.hasInitialSceneLoaded;
+        this.hasInitialSceneLoaded = true;
+
+        this.currentSectorId = loadedSectorId;
         this.shipFuel = data.ship.fuel;
         this.maxShipFuel = data.ship.max_fuel;
         this.currentSectorName = data.currentSector.name;
@@ -948,6 +1006,12 @@ class GameEngine {
         if (this.navFuelDisplay) {
           this.navFuelDisplay.textContent = `FUEL: ${this.shipFuel} / ${this.maxShipFuel}`;
         }
+
+        // On initial page load, if ship is persisted in Sector 2 or 3, render that environment!
+        if (initialLoad && loadedSectorId !== 1) {
+          this.loadSectorScene(loadedSectorId, data.currentSector.system_seed);
+        }
+
         await this.refreshPlayerHold();
       }
     } catch (err) {
@@ -1020,6 +1084,37 @@ class GameEngine {
           });
         });
       }
+
+      // Fetch and render Sub-Space Commerce Radar
+      this.loadMarketRadar();
+    }
+  }
+
+  private async loadMarketRadar(): Promise<void> {
+    if (!this.navRadarRoutes) return;
+    try {
+      const res = await fetch('/api/market/intel');
+      if (res.ok) {
+        const intel = await res.json();
+        if (intel.arbitrage && intel.arbitrage.length > 0) {
+          this.navRadarRoutes.innerHTML = intel.arbitrage.slice(0, 4).map((arb: any) => `
+            <div class="radar-arbitrage-card">
+              <div class="radar-route-info">
+                <span class="radar-route-title">${arb.commodityName}</span>
+                <span class="radar-route-path">SEC-0${arb.fromSectorId} (${arb.fromPortName}) ➔ SEC-0${arb.toSectorId} (${arb.toPortName})</span>
+              </div>
+              <div class="radar-route-profit">
+                <span class="profit-badge">+${arb.profitPerUnit.toFixed(1)} Cr</span>
+                <span class="profit-label">SPREAD / UNIT</span>
+              </div>
+            </div>
+          `).join('');
+        } else {
+          this.navRadarRoutes.innerHTML = `<div class="radar-loading">No active market disparities detected.</div>`;
+        }
+      }
+    } catch {
+      this.navRadarRoutes.innerHTML = `<div class="radar-loading">Subspace commerce relay offline.</div>`;
     }
   }
 

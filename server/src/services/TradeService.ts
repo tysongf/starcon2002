@@ -436,6 +436,140 @@ export class TradeService {
       releaseLock();
     }
   }
+
+  /**
+   * Retrieves trade intelligence across all ports and calculates cross-sector arbitrage routes
+   */
+  public async getSectorTradeIntel(): Promise<{
+    ports: Array<{
+      portId: string;
+      name: string;
+      sectorId: number;
+      factionId: string;
+      inventory: Array<{
+        commodityId: string;
+        name: string;
+        buyPrice: number;
+        sellPrice: number;
+        stock: number;
+        demand: number;
+      }>;
+    }>;
+    arbitrage: Array<{
+      fromPortId: string;
+      fromPortName: string;
+      fromSectorId: number;
+      toPortId: string;
+      toPortName: string;
+      toSectorId: number;
+      commodityId: string;
+      commodityName: string;
+      buyPrice: number;
+      sellPrice: number;
+      profitPerUnit: number;
+    }>;
+  }> {
+    const portsRes = await db.query<any>('SELECT * FROM ports ORDER BY sector_id ASC');
+    const portDataList: Array<{
+      portId: string;
+      name: string;
+      sectorId: number;
+      factionId: string;
+      inventory: Array<{
+        commodityId: string;
+        name: string;
+        buyPrice: number;
+        sellPrice: number;
+        stock: number;
+        demand: number;
+      }>;
+    }> = [];
+
+    for (const p of portsRes.rows) {
+      const invRes = await db.query<any>(
+        'SELECT * FROM port_inventory WHERE port_id = $1 ORDER BY commodity_id ASC',
+        [p.id]
+      );
+
+      const items = invRes.rows.map((r) => {
+        const def = COMMODITIES[r.commodity_id];
+        const prices = this.calculatePrices(
+          r.commodity_id,
+          r.stock,
+          r.demand,
+          r.capacity,
+          p.tariff_rate,
+          0.06
+        );
+        return {
+          commodityId: r.commodity_id,
+          name: def ? def.name : r.commodity_id,
+          buyPrice: prices.buyPrice,
+          sellPrice: prices.sellPrice,
+          stock: r.stock,
+          demand: r.demand,
+        };
+      });
+
+      portDataList.push({
+        portId: p.id,
+        name: p.name,
+        sectorId: p.sector_id,
+        factionId: p.faction_id,
+        inventory: items,
+      });
+    }
+
+    // Find cross-sector arbitrage routes where toPort.sellPrice > fromPort.buyPrice
+    const arbitrage: Array<{
+      fromPortId: string;
+      fromPortName: string;
+      fromSectorId: number;
+      toPortId: string;
+      toPortName: string;
+      toSectorId: number;
+      commodityId: string;
+      commodityName: string;
+      buyPrice: number;
+      sellPrice: number;
+      profitPerUnit: number;
+    }> = [];
+
+    for (const sourcePort of portDataList) {
+      for (const destPort of portDataList) {
+        if (sourcePort.portId === destPort.portId) continue;
+
+        for (const sItem of sourcePort.inventory) {
+          const dItem = destPort.inventory.find((di) => di.commodityId === sItem.commodityId);
+          if (!dItem) continue;
+
+          const profit = Math.round((dItem.sellPrice - sItem.buyPrice) * 10) / 10;
+          if (profit > 1.0) {
+            arbitrage.push({
+              fromPortId: sourcePort.portId,
+              fromPortName: sourcePort.name,
+              fromSectorId: sourcePort.sectorId,
+              toPortId: destPort.portId,
+              toPortName: destPort.name,
+              toSectorId: destPort.sectorId,
+              commodityId: sItem.commodityId,
+              commodityName: sItem.name,
+              buyPrice: sItem.buyPrice,
+              sellPrice: dItem.sellPrice,
+              profitPerUnit: profit,
+            });
+          }
+        }
+      }
+    }
+
+    arbitrage.sort((a, b) => b.profitPerUnit - a.profitPerUnit);
+
+    return {
+      ports: portDataList,
+      arbitrage,
+    };
+  }
 }
 
 export const tradeService = new TradeService();

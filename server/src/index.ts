@@ -126,6 +126,11 @@ async function startServer() {
       reply.send(hold);
     });
 
+    server.get('/api/market/intel', async (_req, reply) => {
+      const intel = await tradeService.getSectorTradeIntel();
+      reply.send(intel);
+    });
+
     // 6. Action Point (AP) Engine Endpoints (Day 7)
     server.get('/api/player/ap', async (req, reply) => {
       const query = req.query as { playerId?: string };

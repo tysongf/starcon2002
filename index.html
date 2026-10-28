@@ -99,6 +99,14 @@
               <span class="telemetry-label">CARGO HOLD</span>
               <span class="telemetry-val mono" id="val-telemetry-cargo">0 / 40 m³</span>
             </div>
+            <div class="telemetry-item">
+              <span class="telemetry-label">NET WORTH</span>
+              <span class="telemetry-val highlight" id="val-telemetry-networth">2,500 Cr</span>
+            </div>
+            <div class="telemetry-item">
+              <span class="telemetry-label">ARBITRAGE RUN</span>
+              <span class="telemetry-val success" id="val-telemetry-profit">+0 Cr</span>
+            </div>
             <div class="telemetry-item full-width">
               <span class="telemetry-label">SHIP POSITION (X / Z)</span>
               <span class="telemetry-val mono" id="val-ship-pos">X: 0.0  Z: 0.0</span>
@@ -193,7 +201,7 @@
           <button id="btn-toggle-grid" class="hud-btn" title="Toggle Grid (G)">Toggle Grid</button>
         </div>
         <div class="hud-system-note">
-          <span id="hud-status-line">Week 2 Day 9 // Dynamic Supply/Demand Curve & Atomic Buy/Sell Transactions</span>
+          <span id="hud-status-line">Milestone 0.2 // Playable Persistent Economic Loop & Multi-Sector Arbitrage</span>
         </div>
       </footer>
     </div>
@@ -203,9 +211,9 @@
       <div class="dock-modal-card">
         <header class="dock-modal-header">
           <div class="dock-title-block">
-            <span class="dock-badge">CLASS 1 FREE-TRADE HUB</span>
+            <span class="dock-badge" id="modal-dock-badge">CLASS 1 FREE-TRADE HUB</span>
             <h2 class="dock-station-name" id="modal-station-name">AEGIS TERMINAL // SECTOR 01</h2>
-            <span class="dock-subtext">SOL-PERIMETER LEAGUE JURISDICTION // POPULATION 42,000</span>
+            <span class="dock-subtext" id="modal-dock-subtext">SOL-PERIMETER LEAGUE JURISDICTION // POPULATION 42,000</span>
           </div>
           <div class="dock-status-tag">
             <span class="dock-lock-icon">🔒</span>
@@ -214,9 +222,9 @@
         </header>
 
         <div class="dock-officer-comms">
-          <div class="officer-avatar">👨‍🚀</div>
+          <div class="officer-avatar" id="modal-officer-avatar">👨‍🚀</div>
           <div class="officer-transmission">
-            <span class="officer-name">HARBORMASTER VANCE // COMM FREQ 114.8 MHz</span>
+            <span class="officer-name" id="modal-officer-name">HARBORMASTER VANCE // COMM FREQ 114.8 MHz</span>
             <p class="officer-quote" id="modal-officer-quote">
               "Docking clamps secured, Captain. Atmospheric seals holding at 1.0 ATM. Power couplers attached. Welcome to Aegis Terminal. We've got fresh Deuterium in the fuel depot and our industrial smelters are buying raw ore at high margins today. What's your business?"
             </p>
@@ -322,6 +330,17 @@
             <div class="node-icon">🏭</div>
             <span class="node-id">SEC-03</span>
             <span class="node-name">Smelter Station</span>
+          </div>
+        </div>
+
+        <!-- Sector Commerce Intel & Arbitrage Radar (Milestone 0.2) -->
+        <div class="nav-radar-panel">
+          <div class="nav-radar-header">
+            <h4>🛰️ SUB-SPACE COMMERCE RADAR & ARBITRAGE INTEL</h4>
+            <span class="radar-live-badge">FEED: ACTIVE</span>
+          </div>
+          <div class="nav-radar-routes" id="nav-radar-routes">
+            <div class="radar-loading">Scanning local subspace trade relays...</div>
           </div>
         </div>
 
