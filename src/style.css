@@ -1599,4 +1599,125 @@ kbd {
   text-transform: uppercase;
 }
 
+/* ==========================================================================
+   MILESTONE 0.3: TACTICAL TARGET RETICLE & COMBAT GAUGES
+   ========================================================================== */
+
+.tactical-reticle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 15;
+  transform: translate(-50%, -50%);
+  transition: opacity 0.15s ease-out;
+}
+
+.tactical-reticle.hidden {
+  display: none !important;
+}
+
+.reticle-box {
+  position: relative;
+  width: 84px;
+  height: 84px;
+  border: 1px solid rgba(255, 42, 95, 0.4);
+  box-shadow: 0 0 15px rgba(255, 42, 95, 0.25), inset 0 0 15px rgba(255, 42, 95, 0.1);
+  animation: reticle-pulse 2s infinite ease-in-out;
+}
+
+@keyframes reticle-pulse {
+  0%, 100% { border-color: rgba(255, 42, 95, 0.5); box-shadow: 0 0 12px rgba(255, 42, 95, 0.25); }
+  50% { border-color: rgba(255, 42, 95, 0.85); box-shadow: 0 0 20px rgba(255, 42, 95, 0.5); }
+}
+
+.reticle-corner {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-color: #ff2a5f;
+  border-style: solid;
+}
+
+.reticle-corner.top-left {
+  top: -2px;
+  left: -2px;
+  border-width: 2px 0 0 2px;
+}
+
+.reticle-corner.top-right {
+  top: -2px;
+  right: -2px;
+  border-width: 2px 2px 0 0;
+}
+
+.reticle-corner.bottom-left {
+  bottom: -2px;
+  left: -2px;
+  border-width: 0 0 2px 2px;
+}
+
+.reticle-corner.bottom-right {
+  bottom: -2px;
+  right: -2px;
+  border-width: 0 2px 2px 0;
+}
+
+.reticle-target-info {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+}
+
+.reticle-target-name {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #ff2a5f;
+  letter-spacing: 0.08em;
+  text-shadow: 0 0 8px rgba(255, 42, 95, 0.6);
+}
+
+.reticle-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 80px;
+}
+
+.reticle-bar-wrap {
+  width: 100%;
+  height: 3px;
+  background: rgba(15, 23, 42, 0.8);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.reticle-bar-fill.shield {
+  height: 100%;
+  background: #38bdf8;
+  width: 100%;
+  transition: width 0.1s linear;
+}
+
+.reticle-bar-fill.hull {
+  height: 100%;
+  background: #ff2a5f;
+  width: 100%;
+  transition: width 0.1s linear;
+}
+
+.reticle-range {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: #94a3b8;
+}
+
 

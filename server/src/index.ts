@@ -8,6 +8,7 @@ import { cache } from './cache/CacheManager';
 import { apService, AP_COSTS, type ActionType } from './services/ActionPointService';
 import { navigationService } from './services/NavigationService';
 import { tradeService } from './services/TradeService';
+import { combatManager } from './services/SectorCombatManager';
 
 dotenv.config();
 
@@ -261,7 +262,21 @@ async function startServer() {
       reply.send(result);
     });
 
-    // 8. Listen
+    // 8. Authoritative 20Hz WebSocket Combat Room (Milestone 0.3)
+    server.get('/ws/combat', { websocket: true }, async (socket, req) => {
+      const query = (req.query || {}) as { playerId?: string; sectorId?: string };
+      const playerId = query.playerId || 'acc_sol_captain';
+      const sectorId = parseInt(query.sectorId || '1', 10);
+
+      try {
+        const ship = await navigationService.getPlayerShip(playerId);
+        combatManager.handleConnection(socket, sectorId, playerId, ship);
+      } catch (err) {
+        combatManager.handleConnection(socket, sectorId, playerId);
+      }
+    });
+
+    // 9. Listen
     await server.listen({ port: PORT, host: '0.0.0.0' });
     console.log(`[Wayward Void API] Server listening on http://localhost:${PORT}`);
   } catch (err) {

@@ -130,6 +130,33 @@ class GameEngine {
   private modalDockSubtext: HTMLElement | null = null;
   private hasInitialSceneLoaded: boolean = false;
 
+  // Milestone 0.3 Authoritative 20Hz Combat & AI Entities
+  private combatSocket: WebSocket | null = null;
+  private combatInputs = {
+    forward: false,
+    reverse: false,
+    turnLeft: false,
+    turnRight: false,
+    brake: false,
+    firePrimary: false,
+    fireTactical: false,
+  };
+  private droneMeshes: Map<string, THREE.Mesh> = new Map();
+  private projectileMeshes: Map<string, THREE.Mesh> = new Map();
+  private projectileGeom = new THREE.CylinderGeometry(0.16, 0.16, 2.0, 6);
+  private projectileMatCyan = new THREE.MeshBasicMaterial({ color: 0x00f0ff });
+  private projectileMatRed = new THREE.MeshBasicMaterial({ color: 0xff2a5f });
+  private elTelemetryShields: HTMLElement | null = null;
+  private elTelemetryHull: HTMLElement | null = null;
+  private elTelemetryEnergy: HTMLElement | null = null;
+  private elTelemetryCombat: HTMLElement | null = null;
+  private elTacticalReticle: HTMLElement | null = null;
+  private elReticleName: HTMLElement | null = null;
+  private elReticleShieldFill: HTMLElement | null = null;
+  private elReticleHullFill: HTMLElement | null = null;
+  private elReticleRange: HTMLElement | null = null;
+  private primaryDroneTarget: { id: string; x: number; z: number; hp: number; maxHp: number; shields: number; maxShields: number; name: string } | null = null;
+
   // Action Point (AP) System (Day 7)
   private playerAP = {
     playerId: 'acc_sol_captain',
@@ -505,6 +532,17 @@ class GameEngine {
     this.navCurrentSectorSubtext = document.getElementById('nav-current-sector-subtext');
     this.navFuelDisplay = document.getElementById('nav-fuel-display');
     this.hudSector = document.getElementById('hud-sector');
+
+    // Milestone 0.3 Combat Elements
+    this.elTelemetryShields = document.getElementById('val-telemetry-shields');
+    this.elTelemetryHull = document.getElementById('val-telemetry-hull');
+    this.elTelemetryEnergy = document.getElementById('val-telemetry-energy');
+    this.elTelemetryCombat = document.getElementById('val-telemetry-combat');
+    this.elTacticalReticle = document.getElementById('tactical-target-reticle');
+    this.elReticleName = document.getElementById('reticle-name');
+    this.elReticleShieldFill = document.getElementById('reticle-shield-fill');
+    this.elReticleHullFill = document.getElementById('reticle-hull-fill');
+    this.elReticleRange = document.getElementById('reticle-range');
 
     if (this.hudSector) {
       this.hudSector.classList.add('clickable');
@@ -1007,6 +1045,9 @@ class GameEngine {
           this.navFuelDisplay.textContent = `FUEL: ${this.shipFuel} / ${this.maxShipFuel}`;
         }
 
+        // Connect Authoritative 20Hz Combat WebSocket (Milestone 0.3)
+        this.initCombatWebSocket(this.currentSectorId);
+
         // On initial page load, if ship is persisted in Sector 2 or 3, render that environment!
         if (initialLoad && loadedSectorId !== 1) {
           this.loadSectorScene(loadedSectorId, data.currentSector.system_seed);
@@ -1274,6 +1315,9 @@ class GameEngine {
 
     // Reset ship position slightly forward in the sector
     this.flightController.reset(new THREE.Vector3(0, 0, 18));
+
+    // Connect Authoritative 20Hz Combat WebSocket for new sector (Milestone 0.3)
+    this.initCombatWebSocket(sectorId);
   }
 
   private setupEventListeners(): void {
@@ -1441,21 +1485,42 @@ class GameEngine {
         case 'KeyW':
         case 'ArrowUp':
           this.flightController.setInput('forward', true);
+          this.combatInputs.forward = true;
+          this.sendCombatInputs();
           break;
         case 'KeyS':
         case 'ArrowDown':
           this.flightController.setInput('reverse', true);
+          this.combatInputs.reverse = true;
+          this.sendCombatInputs();
           break;
         case 'KeyA':
         case 'ArrowLeft':
           this.flightController.setInput('turnLeft', true);
+          this.combatInputs.turnLeft = true;
+          this.sendCombatInputs();
           break;
         case 'KeyD':
         case 'ArrowRight':
           this.flightController.setInput('turnRight', true);
+          this.combatInputs.turnRight = true;
+          this.sendCombatInputs();
           break;
         case 'KeyX':
           this.flightController.setInput('brake', true);
+          this.combatInputs.brake = true;
+          this.sendCombatInputs();
+          break;
+        case 'Space':
+          e.preventDefault();
+          this.combatInputs.firePrimary = true;
+          this.sendCombatInputs();
+          this.audio.playLaserFire(false);
+          break;
+        case 'ShiftLeft':
+        case 'ShiftRight':
+          this.combatInputs.fireTactical = true;
+          this.sendCombatInputs();
           break;
         case 'KeyZ':
           toggleDampeners();
@@ -1466,8 +1531,7 @@ class GameEngine {
         case 'KeyG':
           this.sectorGrid.visible = !this.sectorGrid.visible;
           break;
-        case 'KeyE':
-        case 'Space': {
+        case 'KeyE': {
           e.preventDefault();
           if (this.station) {
             const dockCheck = this.station.checkDocking(
@@ -1501,21 +1565,40 @@ class GameEngine {
         case 'KeyW':
         case 'ArrowUp':
           this.flightController.setInput('forward', false);
+          this.combatInputs.forward = false;
+          this.sendCombatInputs();
           break;
         case 'KeyS':
         case 'ArrowDown':
           this.flightController.setInput('reverse', false);
+          this.combatInputs.reverse = false;
+          this.sendCombatInputs();
           break;
         case 'KeyA':
         case 'ArrowLeft':
           this.flightController.setInput('turnLeft', false);
+          this.combatInputs.turnLeft = false;
+          this.sendCombatInputs();
           break;
         case 'KeyD':
         case 'ArrowRight':
           this.flightController.setInput('turnRight', false);
+          this.combatInputs.turnRight = false;
+          this.sendCombatInputs();
           break;
         case 'KeyX':
           this.flightController.setInput('brake', false);
+          this.combatInputs.brake = false;
+          this.sendCombatInputs();
+          break;
+        case 'Space':
+          this.combatInputs.firePrimary = false;
+          this.sendCombatInputs();
+          break;
+        case 'ShiftLeft':
+        case 'ShiftRight':
+          this.combatInputs.fireTactical = false;
+          this.sendCombatInputs();
           break;
       }
     });
@@ -1664,7 +1747,10 @@ class GameEngine {
     // 8. Update Telemetry HUD
     this.updateFlightHUD(telemetry, dockStatus);
 
-    // 9. Render
+    // 9. Update Tactical Target Reticle (Milestone 0.3)
+    this.updateTacticalReticle();
+
+    // 10. Render
     this.renderer.render(this.scene, this.camera);
   }
 
@@ -1694,6 +1780,251 @@ class GameEngine {
           this.elDockingBanner.className = 'hud-docking-banner';
         }
       }
+    }
+  }
+
+  // ============================================================================
+  // MILESTONE 0.3: REAL-TIME COMBAT WEBSOCKET & TACTICAL RETICLE ENGINE
+  // ============================================================================
+
+  public initCombatWebSocket(sectorId: number): void {
+    if (this.combatSocket) {
+      try {
+        this.combatSocket.close();
+      } catch (e) {}
+      this.combatSocket = null;
+    }
+
+    // Clean up old drone meshes and projectiles
+    for (const mesh of this.droneMeshes.values()) {
+      this.scene.remove(mesh);
+      mesh.geometry.dispose();
+    }
+    this.droneMeshes.clear();
+
+    for (const pMesh of this.projectileMeshes.values()) {
+      this.scene.remove(pMesh);
+    }
+    this.projectileMeshes.clear();
+
+    const host = window.location.hostname || 'localhost';
+    const wsUrl = `ws://${host}:3000/ws/combat?playerId=acc_sol_captain&sectorId=${sectorId}`;
+
+    try {
+      this.combatSocket = new WebSocket(wsUrl);
+
+      this.combatSocket.onopen = () => {
+        console.log(`[COMBAT-WS] Connected to Sector ${sectorId} 20Hz combat room.`);
+        if (this.elTelemetryCombat) {
+          this.elTelemetryCombat.textContent = 'ONLINE // 20Hz';
+          this.elTelemetryCombat.style.color = '#38bdf8';
+        }
+      };
+
+      this.combatSocket.onmessage = (event) => {
+        try {
+          const snapshot = JSON.parse(event.data);
+          if (snapshot.type === 'TICK_SNAPSHOT') {
+            this.handleCombatSnapshot(snapshot);
+          }
+        } catch (err) {
+          console.error('[COMBAT-WS] Parse error:', err);
+        }
+      };
+
+      this.combatSocket.onclose = () => {
+        console.warn(`[COMBAT-WS] Disconnected from Sector ${sectorId}`);
+      };
+
+      this.combatSocket.onerror = (err) => {
+        console.warn('[COMBAT-WS] Socket error:', err);
+      };
+    } catch (err) {
+      console.error('[COMBAT-WS] Failed to connect:', err);
+    }
+  }
+
+  public sendCombatInputs(): void {
+    if (this.combatSocket && this.combatSocket.readyState === WebSocket.OPEN) {
+      this.combatSocket.send(
+        JSON.stringify({
+          type: 'INPUT',
+          inputs: this.combatInputs,
+        })
+      );
+    }
+  }
+
+  private handleCombatSnapshot(snapshot: any): void {
+    // 1. Player Telemetry Update
+    const playerEntity = snapshot.entities.find((e: any) => e.type === 'PLAYER');
+    if (playerEntity) {
+      if (this.elTelemetryShields) {
+        this.elTelemetryShields.textContent = `${playerEntity.shields} / ${playerEntity.maxShields}`;
+      }
+      if (this.elTelemetryHull) {
+        this.elTelemetryHull.textContent = `${playerEntity.hp} / ${playerEntity.maxHp}`;
+        this.elTelemetryHull.style.color = playerEntity.hp < 30 ? '#ef4444' : '#10b981';
+      }
+      if (this.elTelemetryEnergy) {
+        this.elTelemetryEnergy.textContent = `${playerEntity.energy} / ${playerEntity.maxEnergy}`;
+      }
+    }
+
+    // 2. Drone Mesh Synchronization
+    const drones = snapshot.entities.filter((e: any) => e.type === 'DRONE' && e.state !== 'DESTROYED');
+    const droneIds = new Set(drones.map((d: any) => d.id));
+
+    // Remove defunct meshes
+    for (const [id, mesh] of this.droneMeshes.entries()) {
+      if (!droneIds.has(id)) {
+        this.scene.remove(mesh);
+        mesh.geometry.dispose();
+        this.droneMeshes.delete(id);
+      }
+    }
+
+    // Update or spawn drones
+    let nearestDrone: any = null;
+    let minDroneDist = Infinity;
+
+    for (const drone of drones) {
+      let mesh = this.droneMeshes.get(drone.id);
+      if (!mesh) {
+        const droneStyle = FACTION_STYLES.FACTION_VAELIC;
+        const res = ProceduralHullGenerator.generate({
+          seed: drone.hullSeed || 98765,
+          faction: droneStyle,
+        });
+
+        const mat = new THREE.MeshStandardMaterial({
+          color: droneStyle.palette.primary,
+          roughness: 0.35,
+          metalness: 0.85,
+          flatShading: true,
+          emissive: droneStyle.palette.engineGlow,
+          emissiveIntensity: 0.4,
+        });
+
+        mesh = new THREE.Mesh(res.geometry, mat);
+        mesh.scale.set(0.9, 0.9, 0.9);
+        this.scene.add(mesh);
+        this.droneMeshes.set(drone.id, mesh);
+      }
+
+      // Smooth position lerp
+      mesh.position.x = mesh.position.x + (drone.x - mesh.position.x) * 0.45;
+      mesh.position.z = mesh.position.z + (drone.z - mesh.position.z) * 0.45;
+      mesh.rotation.y = drone.yaw;
+
+      const pPos = this.flightController.position;
+      const dist = Math.sqrt((drone.x - pPos.x) ** 2 + (drone.z - pPos.z) ** 2);
+      if (dist < minDroneDist) {
+        minDroneDist = dist;
+        nearestDrone = drone;
+      }
+    }
+
+    this.primaryDroneTarget = nearestDrone;
+
+    if (this.elTelemetryCombat) {
+      if (drones.length > 0) {
+        this.elTelemetryCombat.textContent = `ALERT: ${drones.length} HOSTILE`;
+        this.elTelemetryCombat.style.color = '#ef4444';
+      } else {
+        this.elTelemetryCombat.textContent = 'CLEAR // 20Hz';
+        this.elTelemetryCombat.style.color = '#38bdf8';
+      }
+    }
+
+    // 3. Projectile Mesh Synchronization
+    const activeProjIds = new Set(snapshot.projectiles.map((p: any) => p.id));
+    for (const [id, pMesh] of this.projectileMeshes.entries()) {
+      if (!activeProjIds.has(id)) {
+        this.scene.remove(pMesh);
+        this.projectileMeshes.delete(id);
+      }
+    }
+
+    for (const proj of snapshot.projectiles) {
+      let pMesh = this.projectileMeshes.get(proj.id);
+      if (!pMesh) {
+        pMesh = new THREE.Mesh(
+          this.projectileGeom,
+          proj.color === '#ff2a5f' ? this.projectileMatRed : this.projectileMatCyan
+        );
+        this.scene.add(pMesh);
+        this.projectileMeshes.set(proj.id, pMesh);
+      }
+
+      pMesh.position.set(proj.x, 0.4, proj.z);
+
+      // Orient cylinder along velocity vector
+      const angle = Math.atan2(proj.vx, proj.vz);
+      pMesh.rotation.y = angle;
+      pMesh.rotation.x = Math.PI / 2;
+    }
+
+    // 4. Process Combat Events
+    if (snapshot.events && snapshot.events.length > 0) {
+      for (const ev of snapshot.events) {
+        if (ev.type === 'HIT') {
+          this.audio.playShieldDeflection();
+        } else if (ev.type === 'DESTROYED') {
+          this.audio.playExplosion();
+          this.showApNotification('💥 HOSTILE TARGET DESTROYED!', false);
+        } else if (ev.type === 'POD_EJECTED') {
+          this.audio.playExplosion();
+          this.showApNotification('🚨 CRITICAL HULL BREACH // EJECTED IN ESCAPE POD', true);
+        }
+      }
+    }
+  }
+
+  private updateTacticalReticle(): void {
+    if (!this.primaryDroneTarget || !this.elTacticalReticle) {
+      if (this.elTacticalReticle) this.elTacticalReticle.classList.add('hidden');
+      return;
+    }
+
+    const targetPos = new THREE.Vector3(this.primaryDroneTarget.x, 0, this.primaryDroneTarget.z);
+    const pPos = this.flightController.position;
+    const dist = pPos.distanceTo(targetPos);
+
+    if (dist > 150) {
+      this.elTacticalReticle.classList.add('hidden');
+      return;
+    }
+
+    // Project 3D target coordinates to 2D screen coordinates
+    const screenCoord = targetPos.clone().project(this.camera);
+
+    // Behind camera check
+    if (screenCoord.z > 1.0) {
+      this.elTacticalReticle.classList.add('hidden');
+      return;
+    }
+
+    const x = (screenCoord.x * 0.5 + 0.5) * window.innerWidth;
+    const y = (-(screenCoord.y * 0.5) + 0.5) * window.innerHeight;
+
+    this.elTacticalReticle.style.left = `${Math.round(x)}px`;
+    this.elTacticalReticle.style.top = `${Math.round(y)}px`;
+    this.elTacticalReticle.classList.remove('hidden');
+
+    if (this.elReticleName) {
+      this.elReticleName.textContent = this.primaryDroneTarget.name.toUpperCase();
+    }
+    if (this.elReticleRange) {
+      this.elReticleRange.textContent = `RANGE: ${dist.toFixed(1)}u`;
+    }
+    if (this.elReticleShieldFill) {
+      const shieldPct = Math.max(0, Math.min(100, (this.primaryDroneTarget.shields / this.primaryDroneTarget.maxShields) * 100));
+      this.elReticleShieldFill.style.width = `${shieldPct}%`;
+    }
+    if (this.elReticleHullFill) {
+      const hullPct = Math.max(0, Math.min(100, (this.primaryDroneTarget.hp / this.primaryDroneTarget.maxHp) * 100));
+      this.elReticleHullFill.style.width = `${hullPct}%`;
     }
   }
 }

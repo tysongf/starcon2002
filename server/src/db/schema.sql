@@ -110,3 +110,55 @@ ON CONFLICT (port_id, commodity_id) DO UPDATE SET
   buy_price = EXCLUDED.buy_price,
   sell_price = EXCLUDED.sell_price;
 
+-- ============================================================================
+-- MILESTONE 0.3: REAL-TIME COMBAT, PERSISTENT WRECKS & SCAVENGER TABLES
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS equipment_blueprints (
+  id VARCHAR(64) PRIMARY KEY,
+  name VARCHAR(128) NOT NULL,
+  slot_type VARCHAR(32) NOT NULL, -- 'WEAPON', 'TACTICAL', 'SHIELD', 'REACTOR', 'MINING'
+  base_rarity VARCHAR(16) NOT NULL DEFAULT 'COMMON', -- 'COMMON', 'UNCOMMON', 'RARE', 'EPIC', 'LEGENDARY'
+  power_grid_cost NUMERIC(8, 2) NOT NULL, -- MW
+  cpu_cost NUMERIC(8, 2) NOT NULL,        -- tf
+  base_stats JSONB NOT NULL,              -- { damage, fireRate, shieldCapacity, energyRegen, etc }
+  description TEXT
+);
+
+CREATE TABLE IF NOT EXISTS player_inventory (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id VARCHAR(64) REFERENCES accounts(id) ON DELETE CASCADE,
+  blueprint_id VARCHAR(64) REFERENCES equipment_blueprints(id),
+  rarity VARCHAR(16) NOT NULL,
+  affixes JSONB DEFAULT '[]'::jsonb,
+  is_fitted BOOLEAN DEFAULT false,
+  fit_slot_index INT DEFAULT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS sector_wrecks (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  sector_id INT REFERENCES sectors(id) ON DELETE CASCADE,
+  original_hull_type VARCHAR(64) NOT NULL,
+  pos_x NUMERIC(10, 2) NOT NULL,
+  pos_z NUMERIC(10, 2) NOT NULL,
+  remaining_materials INT NOT NULL DEFAULT 50,
+  towed_by_account_id VARCHAR(64) DEFAULT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS persistent_scavengers (
+  id VARCHAR(64) PRIMARY KEY,
+  sector_id INT REFERENCES sectors(id) ON DELETE CASCADE,
+  faction_id VARCHAR(32) NOT NULL,
+  hull_type VARCHAR(64) NOT NULL,
+  current_hp INT NOT NULL,
+  current_shields INT NOT NULL,
+  pos_x NUMERIC(10, 2) NOT NULL,
+  pos_z NUMERIC(10, 2) NOT NULL,
+  looted_cargo JSONB DEFAULT '[]'::jsonb,
+  transponder_active BOOLEAN DEFAULT false,
+  victim_account_id VARCHAR(64) DEFAULT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
