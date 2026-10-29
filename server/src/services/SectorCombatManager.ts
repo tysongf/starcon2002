@@ -3,8 +3,10 @@ import { LootGenerator } from './LootGenerator';
 import { outfittingService } from './OutfittingService';
 import { ContractService } from './ContractService';
 import { wreckService, SectorWreck } from './WreckService';
+import { reputationService } from './ReputationService';
 
 export const contractService = new ContractService();
+
 
 export interface SectorWreckEntity {
   id: string;
@@ -69,7 +71,7 @@ export interface SectorEntity {
   powerGridUsed: number;
   cpuMax: number;          // tf
   cpuUsed: number;
-  state: 'IDLE' | 'PATROL' | 'ENGAGE' | 'SCAVENGE' | 'FLEE' | 'DESTROYED';
+  state: 'IDLE' | 'PATROL' | 'ENGAGE' | 'TRUCE' | 'SCAVENGE' | 'FLEE' | 'DESTROYED';
   inputs: CombatInputs;
   lastHitTime: number;
   fireCooldown: number;
@@ -107,7 +109,8 @@ export interface Projectile {
 }
 
 export interface CombatEvent {
-  type: 'HIT' | 'SHIELD_BREAK' | 'DESTROYED' | 'LOOT_SPAWNED' | 'LOOT_COLLECTED' | 'POD_EJECTED' | 'CONTAINER_SCOOPED' | 'WRECK_SPAWNED' | 'TOW_ATTACHED' | 'TOW_RELEASED' | 'SALVAGE_BEAM_TICK' | 'WRECK_DISINTEGRATED';
+  type: 'HIT' | 'SHIELD_BREAK' | 'DESTROYED' | 'LOOT_SPAWNED' | 'LOOT_COLLECTED' | 'POD_EJECTED' | 'CONTAINER_SCOOPED' | 'WRECK_SPAWNED' | 'TOW_ATTACHED' | 'TOW_RELEASED' | 'SALVAGE_BEAM_TICK' | 'WRECK_DISINTEGRATED' | 'TRUCE_DECLARED' | 'TRUCE_BROKEN' | 'LIFE_SUPPORT_EXHAUSTED';
+
   sourceId?: string;
   targetId?: string;
   damage?: number;
@@ -205,8 +208,37 @@ export class SectorRoom {
   private lastTickTimestamp: number = Date.now();
   private tickCount: number = 0;
   private projectileSeq: number = 0;
+  private activeTruces: Map<string, number> = new Map(); // `${playerId}:${factionId}` -> expiryTimestamp
+
+  public setTruce(playerId: string, factionId: string, durationMs: number = 300000): void {
+    const normalized = factionId === 'FACTION_VAELIC' ? 'FACTION_HEGEMONY' : factionId;
+    this.activeTruces.set(`${playerId}:${normalized}`, Date.now() + durationMs);
+    this.pendingEvents.push({
+      type: 'TRUCE_DECLARED',
+      sourceId: playerId,
+      targetId: normalized,
+      data: { factionId: normalized, durationMs, expiresAt: Date.now() + durationMs },
+    });
+  }
+
+  public clearTruce(playerId: string, factionId: string): void {
+    const normalized = factionId === 'FACTION_VAELIC' ? 'FACTION_HEGEMONY' : factionId;
+    this.activeTruces.delete(`${playerId}:${normalized}`);
+  }
+
+  public isTruceActive(playerId: string, factionId: string): boolean {
+    const normalized = factionId === 'FACTION_VAELIC' ? 'FACTION_HEGEMONY' : factionId;
+    const expiry = this.activeTruces.get(`${playerId}:${normalized}`);
+    if (!expiry) return false;
+    if (Date.now() > expiry) {
+      this.activeTruces.delete(`${playerId}:${normalized}`);
+      return false;
+    }
+    return true;
+  }
 
   constructor(sectorId: number) {
+
     this.sectorId = sectorId;
     this.seedSectorEntities();
   }
@@ -792,10 +824,39 @@ export class SectorRoom {
       }
     }
 
+    const hasTruce = targetPlayer ? this.isTruceActive(targetPlayer.id, 'FACTION_HEGEMONY') : false;
+
     for (const drone of this.entities.values()) {
       if (drone.type !== 'DRONE' || drone.state === 'DESTROYED') continue;
 
+      if (hasTruce) {
+        // TRUCE MODE: Stand down weapons, display non-aggression transponder & passive patrol
+        drone.state = 'TRUCE';
+        drone.inputs.firePrimary = false;
+        drone.inputs.fireTactical = false;
+        drone.aiPatrolAngle = (drone.aiPatrolAngle || 0) + 0.2 * dt;
+        const radius = 32.0;
+        const center = drone.aiPatrolCenter || { x: 20, z: -20 };
+        const targetX = center.x + Math.sin(drone.aiPatrolAngle) * radius;
+        const targetZ = center.z + Math.cos(drone.aiPatrolAngle) * radius;
+
+        const dx = targetX - drone.x;
+        const dz = targetZ - drone.z;
+        const desiredYaw = Math.atan2(dx, dz);
+
+        let yawDiff = desiredYaw - drone.yaw;
+        while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
+        while (yawDiff > Math.PI) yawDiff -= Math.PI * 2;
+
+        drone.inputs.turnLeft = yawDiff > 0.1;
+        drone.inputs.turnRight = yawDiff < -0.1;
+        drone.inputs.forward = true;
+        drone.inputs.brake = false;
+        continue;
+      }
+
       if (targetPlayer && minDistance < 140.0) {
+
         // ENGAGE MODE: Orbital strafing & predictive dogfight
         drone.state = 'ENGAGE';
         const dx = targetPlayer.x - drone.x;
@@ -1125,7 +1186,22 @@ export class SectorRoom {
       z: proj.z,
     });
 
+    // Check if player attacked a drone during an active ceasefire truce
+    if (proj.ownerId && target.type === 'DRONE' && this.isTruceActive(proj.ownerId, 'FACTION_HEGEMONY')) {
+      this.clearTruce(proj.ownerId, 'FACTION_HEGEMONY');
+      reputationService.breakTruce(proj.ownerId, this.sectorId, 'FACTION_HEGEMONY').catch(() => {});
+      reputationService.modifyStanding(proj.ownerId, 'FACTION_HEGEMONY', -25, 'Truce broken: fired upon Hegemony patrol').catch(() => {});
+      this.pendingEvents.push({
+        type: 'TRUCE_BROKEN',
+        sourceId: proj.ownerId,
+        targetId: target.id,
+        x: target.x,
+        z: target.z,
+      });
+    }
+
     // Check Destruction
+
     if (target.hp <= 0 && target.state !== 'DESTROYED') {
       this.handleEntityDestruction(target, proj.ownerId);
     }
@@ -1142,7 +1218,13 @@ export class SectorRoom {
       z: target.z,
     });
 
+    // Day 17: Faction standing penalty for destroying Hegemony patrol drone
+    if (killerId && (target.factionId === 'FACTION_VAELIC' || target.factionId === 'FACTION_HEGEMONY')) {
+      reputationService.modifyStanding(killerId, 'FACTION_HEGEMONY', -15, `Destroyed ${target.name}`).catch(() => {});
+    }
+
     // Day 15: Spawn Persistent 3D Ship Wreck for Laser Scrap Mining & Towing
+
     const wreckId = `wreck_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
     const wreckEntity: SectorWreckEntity = {
       id: wreckId,
@@ -1495,7 +1577,15 @@ export class SectorCombatManager {
     }
   }
 
+  public notifyTruce(sectorId: number, playerId: string, factionId: string, durationMs: number = 300000): void {
+    const room = this.rooms.get(sectorId);
+    if (room) {
+      room.setTruce(playerId, factionId, durationMs);
+    }
+  }
+
   public handleConnection(socket: WebSocket, sectorId: number, playerId: string, shipData?: any): void {
+
     const room = this.getOrCreateRoom(sectorId);
     room.addPlayer(playerId, socket, shipData);
 

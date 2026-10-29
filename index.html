@@ -27,6 +27,16 @@
           <span class="label">SECTOR:</span>
           <span class="value" id="hud-sector">SEC-01 // SOL-PERIMETER</span>
         </div>
+        <!-- Dynamic Faction Allegiance & Truce HUD Badge (Day 17) -->
+        <div class="hud-faction-badge" id="hud-faction-badge">
+          <span class="faction-crest" id="hud-faction-crest">🚀</span>
+          <div class="faction-info">
+            <span class="faction-name" id="hud-faction-name">SOL ALLIANCE</span>
+            <span class="standing-tier-pill tier-friendly" id="hud-faction-standing-tier">FRIENDLY (+35)</span>
+          </div>
+          <span class="truce-timer-pill hidden" id="hud-truce-timer-pill">🕊️ TRUCE: 05:00</span>
+        </div>
+
         <!-- Action Point (AP) Energy Gauge Cluster -->
         <div class="hud-ap-gauge" id="hud-ap-gauge">
           <div class="ap-top-row">
@@ -674,31 +684,20 @@
           </div>
         </div>
 
-        <!-- Tab View 6: Diplomatic Envoys Lounge (Day 16) -->
+        <!-- Tab View 6: Diplomatic Envoys Lounge & Faction Dossier (Day 16-17) -->
         <div id="view-tab-diplomacy" class="station-tab-content hidden">
           <div class="salvage-grid">
-            <!-- Left: Diplomatic Overview -->
+            <!-- Left: Faction Reputation Matrix Dossier -->
             <div class="salvage-panel">
               <div class="salvage-header">
-                <h5>🕊️ SECTOR EMBASSIES & DIPLOMATIC ATTACHÉS</h5>
-                <span class="salvage-badge" style="background: rgba(56, 189, 248, 0.15); border-color: #38bdf8; color: #38bdf8;">SUB-SPACE COMM ARRAY READY</span>
+                <h5>📊 FACTION REPUTATION MATRIX & DIPLOMATIC DOSSIER</h5>
+                <span class="salvage-badge" style="background: rgba(56, 189, 248, 0.15); border-color: #38bdf8; color: #38bdf8;">AUTHORITATIVE STANDINGS</span>
               </div>
               <p class="salvage-desc">
-                Aegis Terminal maintains neutral subspace diplomatic relays with the major spacefaring civilizations in the cluster. Establishing dialogue allows pilots to negotiate safe passage, gather intelligence, settle bounty rivalries, and trade rare cultural relics.
+                Your standing with each spacefaring power dictates trade tariffs, market discounts, security patrols, and station docking clearances. Combat kills and tribute bribes dynamically cascade reputation shifts.
               </p>
-              <div class="salvage-metrics-row">
-                <div class="salvage-metric-box">
-                  <span class="metric-label">KNOWN SPECIES:</span>
-                  <span class="metric-val" style="color: #38bdf8;">4 FACTIONS</span>
-                </div>
-                <div class="salvage-metric-box">
-                  <span class="metric-label">COMM FREQUENCY:</span>
-                  <span class="metric-val" style="color: #a855f7;">SUB-BAND 28.4 GHz</span>
-                </div>
-                <div class="salvage-metric-box">
-                  <span class="metric-label">DIPLOMATIC CODE:</span>
-                  <span class="metric-val" style="color: #10b981;">GENEVA-VOX III</span>
-                </div>
+              <div class="faction-dossier-list" id="faction-dossier-list">
+                <!-- Dynamically populated faction reputation meters -->
               </div>
             </div>
 
@@ -714,6 +713,7 @@
             </div>
           </div>
         </div>
+
 
         <footer class="dock-modal-footer">
           <span class="undock-hint">Press <kbd>ESC</kbd> or click button to release magnetic clamps</span>

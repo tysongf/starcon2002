@@ -1,4 +1,5 @@
 import { db } from '../db/Database';
+import { reputationService } from './ReputationService';
 
 export type AlienSpecies = 'VAELIC' | 'PHORID' | 'KRYLL' | 'SOL';
 export type AlienMood = 'AGGRESSIVE' | 'SUSPICIOUS' | 'AMUSED' | 'POETIC' | 'NEUTRAL' | 'TERRIFIED';
@@ -12,9 +13,10 @@ export interface DialogOption {
     requiredFlag?: string;
     forbiddenFlag?: string;
   };
-  action?: 'GIVE_CREDITS' | 'TAKE_CREDITS' | 'GIVE_CARGO' | 'TAKE_CARGO' | 'SET_FLAG' | 'PROVOKE_ATTACK';
+  action?: 'GIVE_CREDITS' | 'TAKE_CREDITS' | 'GIVE_CARGO' | 'TAKE_CARGO' | 'SET_FLAG' | 'PROVOKE_ATTACK' | 'DIPLOMATIC_TRUCE';
   actionPayload?: any;
 }
+
 
 export interface DialogNode {
   id: string;
@@ -70,7 +72,6 @@ const VORASH_TREE: NpcDialogTree = {
         {
           text: '"I am prepared to pay the Hegemony transit tariff to ensure safe flight."',
           nextNodeId: 'vorash_tariff',
-          condition: { minCredits: 400 },
         },
       ],
     },
@@ -95,7 +96,6 @@ const VORASH_TREE: NpcDialogTree = {
         {
           text: '"I withdraw my provocation. What will it take for you to stand down?"',
           nextNodeId: 'vorash_tariff',
-          condition: { minCredits: 400 },
         },
       ],
     },
@@ -115,7 +115,6 @@ const VORASH_TREE: NpcDialogTree = {
         {
           text: '"I salvaged plasteel alloys from an ancient wreck. I can remit an imperial processing cut."',
           nextNodeId: 'vorash_tariff',
-          condition: { minCredits: 400 },
         },
         {
           text: '"Your Tithe Forges will fall soon enough, imperial dog."',
@@ -163,13 +162,21 @@ const VORASH_TREE: NpcDialogTree = {
       title: 'Vaelic Hegemony Sector Overseer',
       mood: 'AMUSED',
       dialogueText:
-        'Ah, so reason penetrates your cranial shell. The standard border tariff is 400 Credits. In exchange, an Imperial Seal will be broadcast to our patrol drones.',
+        'Ah, so reason penetrates your cranial shell. The standard border tariff is 400 Credits, or 6 Plasteel Alloy ingots for drone maintenance. In exchange, an Imperial Seal will be broadcast to our patrol drones.',
       options: [
         {
           text: '"Agreed. Transferring 400 Credits to Imperial Treasury."',
           nextNodeId: 'vorash_tariff_paid',
-          action: 'TAKE_CREDITS',
-          actionPayload: { amount: 400, flag: 'hegemony_tariff_paid' },
+          condition: { minCredits: 400 },
+          action: 'DIPLOMATIC_TRUCE',
+          actionPayload: { tributeType: 'CREDITS', factionId: 'FACTION_HEGEMONY', sectorId: 2, flag: 'hegemony_tariff_paid' },
+        },
+        {
+          text: '"Transfer 6 Plasteel Alloy ingots as military tithe material."',
+          nextNodeId: 'vorash_tariff_paid',
+          condition: { requiredCommodity: { commodityId: 'COMM_ALLOY', quantity: 6 } },
+          action: 'DIPLOMATIC_TRUCE',
+          actionPayload: { tributeType: 'ALLOYS', factionId: 'FACTION_HEGEMONY', sectorId: 2, flag: 'hegemony_tariff_paid' },
         },
         {
           text: '"That is outright extortion. I refuse."',
@@ -181,6 +188,7 @@ const VORASH_TREE: NpcDialogTree = {
       id: 'vorash_tariff_paid',
       speakerName: 'Commander Vorash',
       species: 'VAELIC',
+
       title: 'Vaelic Hegemony Sector Overseer',
       mood: 'NEUTRAL',
       dialogueText:
@@ -753,6 +761,14 @@ export class DialogService {
       case 'PROVOKE_ATTACK': {
         flags.hostile_provoked = true;
         return 'Hostility declared! Weapons powered up!';
+      }
+      case 'DIPLOMATIC_TRUCE': {
+        const sectorId = payload.sectorId || 2;
+        const factionId = payload.factionId || 'FACTION_HEGEMONY';
+        const tributeType = payload.tributeType || 'CREDITS';
+        const truceRes = await reputationService.requestCeasefireTruce(accountId, sectorId, factionId, tributeType);
+        if (payload.flag) flags[payload.flag] = true;
+        return truceRes.message;
       }
       default:
         return '';

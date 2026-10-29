@@ -387,7 +387,19 @@ class GameEngine {
   private alienCurrentOptions: any[] = [];
   private alienPortraitTime: number = 0;
 
+  // Day 17: Faction Reputation Matrix & Diplomatic Ceasefire Truces
+  private elFactionDossierList: HTMLElement | null = null;
+  private elHudFactionBadge: HTMLElement | null = null;
+  private elHudFactionCrest: HTMLElement | null = null;
+  private elHudFactionName: HTMLElement | null = null;
+  private elHudFactionStandingTier: HTMLElement | null = null;
+  private elHudTruceTimerPill: HTMLElement | null = null;
+  private activeTruceExpiresAt: number | null = null;
+  private truceTimerInterval: any = null;
+  private playerStandings: any[] = [];
+
   public isEscapePod: boolean = false;
+
   private lastKlaxonTime: number = 0;
   private escapePodMesh: THREE.Group | null = null;
   private scavengerMeshes: Map<string, THREE.Group> = new Map();
@@ -577,7 +589,16 @@ class GameEngine {
       return;
     }
 
-    // Customize station comms & dialog per active sector
+    // Day 17: Check Nemesis station docking lockdown
+    const controllingFaction = this.currentSectorId === 2 || this.currentSectorId === 3 ? 'FACTION_HEGEMONY' : 'FACTION_SOL';
+    const currentRep = this.playerStandings.find((s: any) => s.factionId === controllingFaction);
+    if (currentRep && currentRep.tier === 'NEMESIS') {
+      this.showApNotification('⛔ DOCKING REJECTED: Station shields active! Designated NEMESIS of controlling faction.', true);
+      this.audio.playApWarningSound();
+      return;
+    }
+
+    // Customize station comms & dialog per active sector & reputation standing
     if (this.currentSectorId === 3) {
       if (this.modalStationName) this.modalStationName.textContent = 'OBSIDIAN FOUNDRY 3 // SECTOR 03';
       if (this.modalDockBadge) this.modalDockBadge.textContent = 'CLASS 2 INDUSTRIAL SMELTER';
@@ -585,8 +606,13 @@ class GameEngine {
       if (this.modalOfficerAvatar) this.modalOfficerAvatar.textContent = '🦾';
       if (this.modalOfficerName) this.modalOfficerName.textContent = 'FOUNDRY MASTER IGNIS // COMM FREQ 142.4 MHz';
       if (this.modalOfficerQuote) {
-        this.modalOfficerQuote.textContent =
-          '"Industrial clamps engaged. Core temperatures holding at 1,850 Kelvin. Welcome to Obsidian Foundry 3. We have surplus Silicate Ore and Plasteel Alloy ready for export, but our fuel reserves are dangerously low. Sell us Deuterium or buy our refined ore!"';
+        if (currentRep && currentRep.tier === 'HOSTILE') {
+          this.modalOfficerQuote.textContent =
+            '"⚠️ SECURITY WARNING: You enter Foundry 3 under military escort. A 25% Hegemony tariff surcharge has been levied against your account. Maintain low thruster output."';
+        } else {
+          this.modalOfficerQuote.textContent =
+            '"Industrial clamps engaged. Core temperatures holding at 1,850 Kelvin. Welcome to Obsidian Foundry 3. We have surplus Silicate Ore and Plasteel Alloy ready for export, but our fuel reserves are dangerously low. Sell us Deuterium or buy our refined ore!"';
+        }
       }
     } else {
       if (this.modalStationName && this.station) this.modalStationName.textContent = `${this.station.config.name} // SECTOR 0${this.currentSectorId}`;
@@ -595,26 +621,22 @@ class GameEngine {
       if (this.modalOfficerAvatar) this.modalOfficerAvatar.textContent = '👨‍🚀';
       if (this.modalOfficerName) this.modalOfficerName.textContent = 'HARBORMASTER VANCE // COMM FREQ 114.8 MHz';
       if (this.modalOfficerQuote) {
-        switch (this.currentFaction.id) {
-          case 'FACTION_PHORID':
-            this.modalOfficerQuote.textContent =
-              '"Szzzzzt! Organic trader hull locked! Welcome to Aegis Exchange Spire! Docking fee is 8 Credits per oxygen liter, payable upon departure. What surplus moisture do you have to barter?"';
-            break;
-          case 'FACTION_LITHOS':
-            this.modalOfficerQuote.textContent =
-              '"Axiom Harmonic Resonance confirmed. The geometric lattice of Aegis Terminal welcomes your low-entropy vessel. Our prism storage arrays are ready for harmonic transfer."';
-            break;
-          case 'FACTION_VAELIC':
-            this.modalOfficerQuote.textContent =
-              '"Vessel registered under Hegemony Direct Calculus index. Docking priority granted. Ensure all kinetic discharge manifolds remain offline during refueling tithes."';
-            break;
-          default:
-            this.modalOfficerQuote.textContent =
-              '"Docking clamps secured, Captain. Atmospheric seals holding at 1.0 ATM. Power couplers attached. Welcome to Aegis Terminal. We\'ve got fresh Deuterium in the fuel depot and our industrial smelters are buying raw ore at high margins today. What\'s your business?"';
-            break;
+        if (currentRep && currentRep.tier === 'HONORED') {
+          this.modalOfficerQuote.textContent =
+            '"Priority docking clamps engaged, Commander! It is an honor to receive such a decorated champion of the Sol Alliance. All tariffs are discounted 15% during your stay. What are your orders?"';
+        } else if (currentRep && currentRep.tier === 'FRIENDLY') {
+          this.modalOfficerQuote.textContent =
+            '"Welcome back to Aegis Terminal, Captain Vance. Standard diplomatic courtesy applied — 5% merchant discount active across all terminal bays."';
+        } else if (currentRep && currentRep.tier === 'HOSTILE') {
+          this.modalOfficerQuote.textContent =
+            '"⚠️ CAUTION: Automated rail defense batteries are tracking your signature. A +25% Hostile Tariff Surcharge is active on all commodities and outfitting."';
+        } else {
+          this.modalOfficerQuote.textContent =
+            '"Docking clamps secured, Captain. Atmospheric seals holding at 1.0 ATM. Power couplers attached. Welcome to Aegis Terminal. We\'ve got fresh Deuterium in the fuel depot and our industrial smelters are buying raw ore at high margins today. What\'s your business?"';
         }
       }
     }
+
 
     // Load live station inventory from backend database based on active tab
     if (this.activeStationTab === 'outfitting') {
@@ -969,6 +991,16 @@ class GameEngine {
     this.btnHudHailTarget?.addEventListener('click', () => this.hailCurrentTargetOrEnvoy());
     this.elBtnCloseAlienComms?.addEventListener('click', () => this.closeAlienComms());
 
+    // Day 17: Faction Reputation & Allegiance DOM Lookups
+    this.elFactionDossierList = document.getElementById('faction-dossier-list');
+    this.elHudFactionBadge = document.getElementById('hud-faction-badge');
+    this.elHudFactionCrest = document.getElementById('hud-faction-crest');
+    this.elHudFactionName = document.getElementById('hud-faction-name');
+    this.elHudFactionStandingTier = document.getElementById('hud-faction-standing-tier');
+    this.elHudTruceTimerPill = document.getElementById('hud-truce-timer-pill');
+    this.refreshFactionStandings();
+
+
     this.btnPostBounty?.addEventListener('click', () => this.postRevengeBounty());
     this.btnCopyKmUrl?.addEventListener('click', () => {
       if (this.elKmShareUrl) {
@@ -1303,12 +1335,14 @@ class GameEngine {
                 <div class="price-tag buy">
                   <span class="p-label">BUY</span>
                   <span class="p-val">${item.buy_price.toFixed(1)} Cr</span>
+                  ${item.rep_modifier_label ? `<span class="rep-tariff-badge ${item.rep_multiplier < 1.0 ? 'discount' : 'tariff'}">${item.rep_modifier_label}</span>` : ''}
                 </div>
                 <div class="price-tag sell">
                   <span class="p-label">SELL</span>
                   <span class="p-val">${item.sell_price.toFixed(1)} Cr</span>
                 </div>
               </div>
+
               <div class="comm-stock-info">
                 STOCK: <span class="stock-val">${item.stock} / ${item.capacity}</span>
               </div>
@@ -1679,6 +1713,8 @@ class GameEngine {
 
       // Refresh ship and adjacent sectors
       await this.loadShipAndSector();
+      this.updateHudSectorAllegiance();
+
 
       // Breakout audio & finish warp animation
       this.audio.playWarpExitChime();
@@ -2952,10 +2988,24 @@ class GameEngine {
           this.showApNotification(`⚡ EXTRACTED ${ev.data?.extracted || 10}x SCRAP ALLOY`, false);
         } else if (ev.type === 'WRECK_DISINTEGRATED') {
           this.showApNotification('💨 DERELICT DISINTEGRATED // REPOSITORIES EXHAUSTED', false);
+        } else if (ev.type === 'TRUCE_DECLARED') {
+          this.startTruceCountdown(Math.floor((ev.data?.durationMs || 300000) / 1000));
+          this.showApNotification('🕊️ CEASEFIRE TRUCE CONFIRMED // PATROLS DISARMED', false);
+          this.refreshFactionStandings();
+        } else if (ev.type === 'TRUCE_BROKEN') {
+          if (this.truceTimerInterval) clearInterval(this.truceTimerInterval);
+          this.activeTruceExpiresAt = null;
+          if (this.elHudTruceTimerPill) this.elHudTruceTimerPill.classList.add('hidden');
+          this.showApNotification('⚠️ CEASEFIRE VIOLATED! Hostile patrols engaging!', true);
+          this.audio.playApWarningSound();
+          this.refreshFactionStandings();
+        } else if (ev.type === 'DESTROYED') {
+          this.refreshFactionStandings();
         }
       }
     }
   }
+
 
   private updateTacticalReticle(): void {
     if (!this.primaryDroneTarget) {
@@ -2981,8 +3031,10 @@ class GameEngine {
         this.elTargetName.textContent = this.primaryDroneTarget.name.toUpperCase();
       }
       if (this.elTargetFaction) {
-        this.elTargetFaction.textContent = this.primaryDroneTarget.faction || 'HEGEMONY';
+        const truceSuffix = (this.primaryDroneTarget as any).state === 'TRUCE' ? ' [🕊️ TRUCE]' : '';
+        this.elTargetFaction.textContent = (this.primaryDroneTarget.faction || 'HEGEMONY') + truceSuffix;
       }
+
       if (this.elTargetDistance) {
         this.elTargetDistance.textContent = `${dist.toFixed(1)} u`;
       }
@@ -3022,8 +3074,10 @@ class GameEngine {
     this.elTacticalReticle.classList.remove('hidden');
 
     if (this.elReticleName) {
-      this.elReticleName.textContent = this.primaryDroneTarget.name.toUpperCase();
+      const isTruce = (this.primaryDroneTarget as any).state === 'TRUCE';
+      this.elReticleName.textContent = this.primaryDroneTarget.name.toUpperCase() + (isTruce ? ' [🕊️ TRUCE]' : '');
     }
+
     if (this.elReticleRange) {
       this.elReticleRange.textContent = `RANGE: ${dist.toFixed(1)}u`;
     }
@@ -4278,12 +4332,14 @@ class GameEngine {
   // ========================================================================
 
   public async loadDiplomacyData(): Promise<void> {
+    this.renderFactionDossier();
     if (!this.elDiplomacyEnvoysList) return;
     try {
       const res = await fetch('/api/dialog/npcs');
       if (!res.ok) return;
       const data = await res.json();
       const npcs = data.npcs || [];
+
 
       if (this.elDiplomacyEnvoysCount) {
         this.elDiplomacyEnvoysCount.textContent = `${npcs.length} CHANNELS ONLINE`;
@@ -4473,6 +4529,10 @@ class GameEngine {
       if (data.actionMessage) {
         this.showApNotification(data.actionMessage, false);
         this.refreshPlayerHold();
+        if (data.actionMessage.includes('ceasefire') || data.actionMessage.includes('disarmed') || data.actionMessage.includes('Seal')) {
+          this.startTruceCountdown(300);
+        }
+        this.refreshFactionStandings();
       }
 
       if (data.nextNode) {
@@ -4482,6 +4542,148 @@ class GameEngine {
       console.error('[Alien Comms] Error selecting option:', err);
     }
   }
+
+  // ========================================================================
+  // Day 17: Faction Reputation Matrix & Truce Helpers
+  // ========================================================================
+
+  public async refreshFactionStandings(): Promise<void> {
+    try {
+      const res = await fetch('/api/reputation/standings?accountId=acc_sol_captain');
+      if (!res.ok) return;
+      const data = await res.json();
+      this.playerStandings = data.standings || [];
+      this.renderFactionDossier();
+      this.updateHudSectorAllegiance();
+    } catch (err) {
+      console.warn('[REPUTATION] Failed to fetch standings:', err);
+    }
+  }
+
+  public renderFactionDossier(): void {
+    if (!this.elFactionDossierList) return;
+    if (!this.playerStandings || this.playerStandings.length === 0) {
+      this.elFactionDossierList.innerHTML = `
+        <div class="market-loading-hint">Loading Cluster Diplomatic Standings...</div>
+      `;
+      return;
+    }
+
+    this.elFactionDossierList.innerHTML = this.playerStandings.map((f: any) => {
+      const score = Math.max(-100, Math.min(100, f.standing || 0));
+      const isPos = score >= 0;
+      const widthPct = Math.round(Math.abs(score) / 2); // 0 to 50%
+      const leftPos = isPos ? 50 : 50 - widthPct;
+
+      const tierClass = `tier-${(f.tier || 'neutral').toLowerCase()}`;
+      const sign = score > 0 ? `+${score}` : `${score}`;
+
+      let tariffText = '';
+      if (f.discountPercent > 0) {
+        tariffText = `<span style="color: #10b981;">-${f.discountPercent}% Market & Outfitting Discount</span>`;
+      } else if (f.surchargePercent > 0) {
+        tariffText = `<span style="color: #ef4444;">+${f.surchargePercent}% Hostile Tariff Surcharge</span>`;
+      } else {
+        tariffText = `<span style="color: #94a3b8;">Standard Cluster Rates</span>`;
+      }
+
+      const dockingPill = f.isDockingPermitted
+        ? `<span class="faction-docking-status permitted">✓ DOCKING PERMITTED</span>`
+        : `<span class="faction-docking-status lockdown">⚠️ SHIELDS ACTIVE (LOCKDOWN)</span>`;
+
+      return `
+        <div class="faction-card" data-faction="${f.factionId}">
+          <div class="faction-card-header">
+            <div class="faction-card-left">
+              <span class="faction-card-crest">${f.crestIcon}</span>
+              <div class="faction-card-title-group">
+                <span class="faction-card-name">${f.name}</span>
+                <span class="faction-card-score">STANDING: <strong style="color: ${f.primaryColor}">${sign} / 100</strong></span>
+              </div>
+            </div>
+            <span class="standing-tier-pill ${tierClass}">${f.tier} (${sign})</span>
+          </div>
+
+          <div class="faction-meter-wrapper">
+            <div class="faction-meter-track">
+              <div class="faction-meter-center-line"></div>
+              <div class="faction-meter-fill ${isPos ? 'positive' : 'negative'}" style="left: ${leftPos}%; width: ${widthPct}%;"></div>
+            </div>
+          </div>
+
+          <div class="faction-perks-row">
+            <span class="faction-perk-text">${tariffText}</span>
+            ${dockingPill}
+          </div>
+          <div style="font-size: 0.65rem; color: #64748b; line-height: 1.3;">${f.perkDesc}</div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  public updateHudSectorAllegiance(): void {
+    if (!this.elHudFactionBadge || !this.elHudFactionName || !this.elHudFactionCrest || !this.elHudFactionStandingTier) return;
+
+    let factionId = 'FACTION_SOL';
+    let factionName = 'SOL-PERIMETER ALLIANCE';
+    let crest = '🚀';
+
+    if (this.currentSectorId === 2) {
+      factionId = 'FACTION_HEGEMONY';
+      factionName = 'VAELIC HEGEMONY (OCCUPIED)';
+      crest = '🦅';
+    } else if (this.currentSectorId === 3) {
+      factionId = 'FACTION_HEGEMONY';
+      factionName = 'LITHOS FORGE CLUSTER';
+      crest = '🦾';
+    } else if (this.currentSectorId === 4) {
+      factionId = 'FACTION_PHORID';
+      factionName = 'PHORID SPORE BIOSPHERE';
+      crest = '🍄';
+    } else if (this.currentSectorId === 5) {
+      factionId = 'FACTION_KRYLL';
+      factionName = 'KRYLL SCRAP EXCHANGE';
+      crest = '🐀';
+    }
+
+    const standingObj = this.playerStandings.find((s: any) => s.factionId === factionId);
+    const score = standingObj ? standingObj.standing : 0;
+    const tier = standingObj ? standingObj.tier : 'NEUTRAL';
+    const sign = score > 0 ? `+${score}` : `${score}`;
+
+    this.elHudFactionCrest.textContent = crest;
+    this.elHudFactionName.textContent = factionName;
+    this.elHudFactionStandingTier.textContent = `${tier} (${sign})`;
+    this.elHudFactionStandingTier.className = `standing-tier-pill tier-${tier.toLowerCase()}`;
+  }
+
+  public startTruceCountdown(durationSeconds: number = 300): void {
+    this.activeTruceExpiresAt = Date.now() + durationSeconds * 1000;
+    if (this.truceTimerInterval) clearInterval(this.truceTimerInterval);
+
+    if (this.elHudTruceTimerPill) {
+      this.elHudTruceTimerPill.classList.remove('hidden');
+    }
+
+    this.truceTimerInterval = setInterval(() => {
+      if (!this.activeTruceExpiresAt || !this.elHudTruceTimerPill) return;
+      const remainingMs = this.activeTruceExpiresAt - Date.now();
+      if (remainingMs <= 0) {
+        clearInterval(this.truceTimerInterval);
+        this.truceTimerInterval = null;
+        this.activeTruceExpiresAt = null;
+        this.elHudTruceTimerPill.classList.add('hidden');
+        this.showApNotification('⚠️ DIPLOMATIC CEASEFIRE EXPIRED: Patrol drones resumed alert status.', true);
+        this.audio.playApWarningSound();
+        return;
+      }
+      const totalSec = Math.ceil(remainingMs / 1000);
+      const min = Math.floor(totalSec / 60);
+      const sec = totalSec % 60;
+      this.elHudTruceTimerPill.textContent = `🕊️ TRUCE: ${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
+    }, 500);
+  }
+
 
   public closeAlienComms(): void {
     if (this.elAlienCommsModal) {

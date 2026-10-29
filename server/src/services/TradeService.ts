@@ -1,4 +1,6 @@
 import { db } from '../db/Database';
+import { reputationService } from './ReputationService';
+
 
 export interface CommodityDef {
   id: string;
@@ -47,10 +49,15 @@ export interface MarketItem {
   stock: number;
   demand: number;
   capacity: number;
-  buy_price: number;   // Price player pays to purchase 1 unit
-  sell_price: number;  // Price player receives when selling 1 unit
+  buy_price: number;   // Effective price player pays to purchase 1 unit
+  sell_price: number;  // Effective price player receives when selling 1 unit
+  base_buy_price?: number;
+  base_sell_price?: number;
+  rep_multiplier?: number;
+  rep_modifier_label?: string; // e.g. "[SOL ALLIANCE DISCOUNT -5%]" or "[HEGEMONY TARIFF +25%]"
   player_cargo: number;// Units currently in player ship hold
 }
+
 
 export interface PlayerHoldStatus {
   playerId: string;
@@ -195,6 +202,19 @@ export class TradeService {
       [portId]
     );
 
+    // Calculate dynamic faction tariff / discount modifier
+    const repMultiplier = await reputationService.calculateMarketMultiplier(playerId, port.faction_id);
+    let repModifierLabel = '';
+    if (repMultiplier <= 0.85) {
+      repModifierLabel = '[-15% ALLIANCE DISCOUNT]';
+    } else if (repMultiplier <= 0.95) {
+      repModifierLabel = '[-5% FRIENDLY DISCOUNT]';
+    } else if (repMultiplier >= 1.50) {
+      repModifierLabel = '[+50% NEMESIS TARIFF]';
+    } else if (repMultiplier >= 1.25) {
+      repModifierLabel = '[+25% HOSTILE TARIFF]';
+    }
+
     const items: MarketItem[] = invRes.rows.map((row) => {
       const def = COMMODITIES[row.commodity_id];
       const { buyPrice, sellPrice } = this.calculatePrices(
@@ -206,6 +226,9 @@ export class TradeService {
         0.06
       );
 
+      const effectiveBuyPrice = Math.round(buyPrice * repMultiplier);
+      const effectiveSellPrice = Math.max(1, Math.round(sellPrice / repMultiplier));
+
       return {
         commodity_id: row.commodity_id,
         name: def ? def.name : row.commodity_id,
@@ -214,14 +237,19 @@ export class TradeService {
         stock: row.stock,
         demand: row.demand,
         capacity: row.capacity,
-        buy_price: buyPrice,
-        sell_price: sellPrice,
+        buy_price: effectiveBuyPrice,
+        sell_price: effectiveSellPrice,
+        base_buy_price: buyPrice,
+        base_sell_price: sellPrice,
+        rep_multiplier: repMultiplier,
+        rep_modifier_label: repModifierLabel,
         player_cargo: holdMap.get(row.commodity_id) || 0,
       };
     });
 
     return { port, items, hold };
   }
+
 
   /**
    * Atomically executes a BUY or SELL order at a port
@@ -276,7 +304,7 @@ export class TradeService {
       }
       const inv = invRes.rows[0];
 
-      // 4. Calculate Live Authoritative Price
+      // 4. Calculate Live Authoritative Price with Faction Reputation Multiplier
       const { buyPrice, sellPrice } = this.calculatePrices(
         commodityId,
         inv.stock,
@@ -285,6 +313,9 @@ export class TradeService {
         port.tariff_rate,
         0.06
       );
+      const repMultiplier = await reputationService.calculateMarketMultiplier(playerId, port.faction_id);
+      const effectiveBuyPrice = Math.round(buyPrice * repMultiplier);
+      const effectiveSellPrice = Math.max(1, Math.round(sellPrice / repMultiplier));
 
       // 5. Fetch Hold & Credit Status
       const hold = await this.getPlayerHold(playerId);
@@ -308,7 +339,7 @@ export class TradeService {
           };
         }
 
-        const totalCost = Math.round(buyPrice * quantity);
+        const totalCost = Math.round(effectiveBuyPrice * quantity);
         if (hold.credits < totalCost) {
           return {
             success: false,
@@ -317,6 +348,7 @@ export class TradeService {
         }
 
         // Deduct Credits & Port Stock
+
         await db.query('UPDATE accounts SET credits = credits - $1 WHERE id = $2', [totalCost, playerId]);
         await db.query(
           'UPDATE port_inventory SET stock = stock - $1 WHERE port_id = $2 AND commodity_id = $3',
@@ -355,7 +387,7 @@ export class TradeService {
           commodityId,
           commodityName: def.name,
           quantity,
-          unitPrice: buyPrice,
+          unitPrice: effectiveBuyPrice,
           totalCredits: totalCost,
           newCredits: updatedHold ? updatedHold.credits : hold.credits - totalCost,
           hold: updatedHold || undefined,
@@ -380,7 +412,8 @@ export class TradeService {
           };
         }
 
-        const totalPayout = Math.round(sellPrice * quantity);
+        const totalPayout = Math.round(effectiveSellPrice * quantity);
+
 
         // Add Credits & Port Stock
         await db.query('UPDATE accounts SET credits = credits + $1 WHERE id = $2', [totalPayout, playerId]);
@@ -425,12 +458,13 @@ export class TradeService {
           commodityId,
           commodityName: def.name,
           quantity,
-          unitPrice: sellPrice,
+          unitPrice: effectiveSellPrice,
           totalCredits: totalPayout,
           newCredits: updatedHold ? updatedHold.credits : hold.credits + totalPayout,
           hold: updatedHold || undefined,
           updatedInventory: marketData ? marketData.items : undefined,
         };
+
       }
     } finally {
       releaseLock();

@@ -322,3 +322,30 @@ CREATE TABLE IF NOT EXISTS player_dialog_state (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     PRIMARY KEY (account_id, npc_id)
 );
+
+-- Day 17: Faction Reputation Matrix & Diplomatic Ceasefire Truces
+CREATE TABLE IF NOT EXISTS faction_standings (
+    account_id VARCHAR(64) NOT NULL,
+    faction_id VARCHAR(32) NOT NULL,
+    standing INT NOT NULL DEFAULT 0, -- -100 to +100
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    PRIMARY KEY (account_id, faction_id)
+);
+
+CREATE TABLE IF NOT EXISTS diplomatic_truces (
+    id VARCHAR(64) PRIMARY KEY,
+    account_id VARCHAR(64) NOT NULL,
+    sector_id INT NOT NULL,
+    faction_id VARCHAR(32) NOT NULL,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Seed Baseline Faction Standings for Player
+INSERT INTO faction_standings (account_id, faction_id, standing)
+VALUES
+    ('acc_sol_captain', 'FACTION_SOL', 35),
+    ('acc_sol_captain', 'FACTION_HEGEMONY', -25),
+    ('acc_sol_captain', 'FACTION_PHORID', 15),
+    ('acc_sol_captain', 'FACTION_KRYLL', 5)
+ON CONFLICT (account_id, faction_id) DO NOTHING;

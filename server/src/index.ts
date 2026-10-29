@@ -13,6 +13,8 @@ import { outfittingService } from './services/OutfittingService';
 import { contractService } from './services/ContractService';
 import { wreckService } from './services/WreckService';
 import { dialogService, DIALOG_TREES } from './services/DialogService';
+import { reputationService, FACTION_METADATA } from './services/ReputationService';
+
 
 dotenv.config();
 
@@ -91,8 +93,21 @@ async function startServer() {
         return reply.status(404).send({ error: 'Port not found' });
       }
 
+      // Check Nemesis station docking lockdown
+      const dockCheck = await reputationService.canDockAtStation(playerId, market.port.faction_id);
+      if (!dockCheck.permitted) {
+        return reply.status(403).send({
+          error: 'STATION_LOCKDOWN',
+          reason: dockCheck.reason,
+          standing: dockCheck.standing,
+          tier: dockCheck.tier,
+          port: market.port,
+        });
+      }
+
       reply.send(market);
     });
+
 
     server.post('/api/ports/:id/trade', async (req, reply) => {
       const { id } = req.params as { id: string };
@@ -574,6 +589,110 @@ async function startServer() {
         reply.status(400).send({ success: false, error: err.message });
       }
     });
+
+    // Wire Ceasefire Truce listener to Combat Manager
+    reputationService.onTruceDeclared((accountId, sectorId, factionId, durationMs) => {
+      combatManager.notifyTruce(sectorId, accountId, factionId, durationMs);
+    });
+
+    // Day 17: Faction Reputation Matrix & Diplomatic Ceasefire Truces (Milestone 0.4)
+    server.get('/api/reputation/standings', async (req, reply) => {
+      const query = (req.query || {}) as { accountId?: string };
+      const accountId = query.accountId || 'acc_sol_captain';
+      try {
+        const standings = await reputationService.getStandings(accountId);
+        reply.send({ success: true, standings, metadata: FACTION_METADATA });
+      } catch (err: any) {
+        reply.status(500).send({ success: false, error: err.message });
+      }
+    });
+
+    server.post('/api/reputation/modify', async (req, reply) => {
+      const body = (req.body || {}) as {
+        accountId?: string;
+        factionId: any;
+        amount: number;
+        reason?: string;
+      };
+      const accountId = body.accountId || 'acc_sol_captain';
+      try {
+        const result = await reputationService.modifyStanding(
+          accountId,
+          body.factionId,
+          body.amount,
+          body.reason || 'Diplomatic incident'
+        );
+        reply.send({ success: true, ...result });
+      } catch (err: any) {
+        reply.status(400).send({ success: false, error: err.message });
+      }
+    });
+
+    server.post('/api/reputation/debug-set', async (req, reply) => {
+      const body = (req.body || {}) as {
+        accountId?: string;
+        factionId: any;
+        standing: number;
+      };
+      const accountId = body.accountId || 'acc_sol_captain';
+      try {
+        const updatedStandings = await reputationService.debugSetStanding(
+          accountId,
+          body.factionId,
+          body.standing
+        );
+        reply.send({ success: true, standings: updatedStandings });
+      } catch (err: any) {
+        reply.status(400).send({ success: false, error: err.message });
+      }
+    });
+
+    server.post('/api/reputation/truce', async (req, reply) => {
+      const body = (req.body || {}) as {
+        accountId?: string;
+        sectorId: number;
+        factionId: any;
+        tributeType?: 'CREDITS' | 'ALLOYS';
+      };
+      const accountId = body.accountId || 'acc_sol_captain';
+      try {
+        const result = await reputationService.requestCeasefireTruce(
+          accountId,
+          body.sectorId,
+          body.factionId,
+          body.tributeType || 'CREDITS'
+        );
+        reply.send(result);
+      } catch (err: any) {
+        reply.status(400).send({ success: false, error: err.message });
+      }
+    });
+
+    server.get('/api/reputation/check-docking', async (req, reply) => {
+      const query = (req.query || {}) as {
+        accountId?: string;
+        factionId?: string;
+      };
+      const accountId = query.accountId || 'acc_sol_captain';
+      const factionId = query.factionId || 'FACTION_SOL';
+      try {
+        const result = await reputationService.canDockAtStation(accountId, factionId);
+        reply.send({ success: true, ...result });
+      } catch (err: any) {
+        reply.status(500).send({ success: false, error: err.message });
+      }
+    });
+
+    server.post('/api/player/debug-credits', async (req, reply) => {
+
+      const body = (req.body || {}) as { accountId?: string; credits?: number };
+      const accountId = body.accountId || 'acc_sol_captain';
+      const credits = typeof body.credits === 'number' ? body.credits : 2500;
+      await db.query('UPDATE accounts SET credits = $1 WHERE id = $2', [credits, accountId]);
+      reply.send({ success: true, credits });
+    });
+
+
 
     // 10. Authoritative 20Hz WebSocket Combat Room (Milestone 0.3)
     server.get('/ws/combat', { websocket: true }, async (socket, req) => {
