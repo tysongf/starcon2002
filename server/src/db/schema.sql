@@ -282,4 +282,35 @@ VALUES
   ('a1b2c3d4-e5f6-7890-abcd-888888888888', 'acc_sol_captain', 'MOD_CARGO_01', 'Expanded Hold Nanofiber Rig', 'COMMON', '[]'::jsonb, false, NULL)
 ON CONFLICT (id) DO NOTHING;
 
+-- ============================================================================
+-- Day 15: Persistent Sector Ship Wrecks, In-Situ Salvage & Elastic Towing
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS wrecks (
+    id VARCHAR(64) PRIMARY KEY,
+    sector_id INT NOT NULL REFERENCES sectors(id),
+    ship_name VARCHAR(64) NOT NULL,
+    ship_class VARCHAR(32) NOT NULL,
+    faction VARCHAR(32) NOT NULL,
+    x FLOAT NOT NULL,
+    y FLOAT NOT NULL,
+    z FLOAT NOT NULL,
+    rotation FLOAT DEFAULT 0.0,
+    scrap_remaining INT DEFAULT 100,
+    max_scrap INT DEFAULT 100,
+    hull_intactness FLOAT DEFAULT 1.0,
+    is_towed BOOLEAN DEFAULT false,
+    towed_by_account_id VARCHAR(64),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Seed Initial Derelict Wrecks in Sector 2 (Hazard Zone)
+INSERT INTO wrecks (id, sector_id, ship_name, ship_class, faction, x, y, z, rotation, scrap_remaining, max_scrap, hull_intactness)
+VALUES 
+  ('wreck_ancient_cruiser_01', 2, 'Derelict Hegemony Cruiser', 'Hegemony Vanguard', 'Hegemony Drone Fleet', 35.0, 0.0, -45.0, 0.78, 250, 250, 0.85),
+  ('wreck_freighter_derelict_02', 2, 'Shattered Bulk Hauler Wreck', 'Mammoth Industrial', 'Independent Traders', -50.0, 0.0, 25.0, 2.35, 180, 180, 0.60)
+ON CONFLICT (id) DO UPDATE SET
+  scrap_remaining = EXCLUDED.scrap_remaining,
+  max_scrap = EXCLUDED.max_scrap,
+  hull_intactness = EXCLUDED.hull_intactness;
+
 

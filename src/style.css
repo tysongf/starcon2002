@@ -3168,5 +3168,314 @@ kbd {
   color: #cbd5e1;
 }
 
+/* ==========================================================================
+   DAY 15: PERSISTENT SHIP WRECKS, LASER MINING, ELASTIC TOWING & SALVAGE BAY
+   ========================================================================== */
+
+/* Target Quick-Actions (Salvage Beam & Tow Tether) */
+.target-quick-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  width: 100%;
+}
+
+.target-action-btn {
+  flex: 1;
+  padding: 0.35rem 0.6rem;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 700;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+}
+
+.target-action-btn.beam-btn {
+  background: rgba(245, 158, 11, 0.2);
+  border-color: rgba(245, 158, 11, 0.6);
+  color: #fbbf24;
+}
+
+.target-action-btn.beam-btn:hover {
+  background: rgba(245, 158, 11, 0.35);
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.4);
+}
+
+.target-action-btn.tow-btn {
+  background: rgba(6, 182, 212, 0.2);
+  border-color: rgba(6, 182, 212, 0.6);
+  color: #22d3ee;
+}
+
+.target-action-btn.tow-btn:hover {
+  background: rgba(6, 182, 212, 0.35);
+  box-shadow: 0 0 12px rgba(6, 182, 212, 0.4);
+}
+
+/* Day 15: Tow Cable Active HUD Banner */
+.tow-cable-hud {
+  position: absolute;
+  top: 95px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.45rem 1rem;
+  background: rgba(15, 23, 42, 0.88);
+  border: 1px solid rgba(6, 182, 212, 0.6);
+  box-shadow: 0 0 20px rgba(6, 182, 212, 0.3);
+  backdrop-filter: blur(8px);
+  border-radius: 6px;
+  z-index: 85;
+}
+
+.tow-badge {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #22d3ee;
+  letter-spacing: 0.05em;
+}
+
+.tow-info {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+}
+
+.tow-target-name {
+  color: #f8fafc;
+  font-weight: 700;
+}
+
+.tow-dist-metric {
+  color: #94a3b8;
+}
+
+.tow-status-badge {
+  padding: 0.15rem 0.45rem;
+  border-radius: 3px;
+  font-size: 0.65rem;
+  font-weight: 800;
+}
+
+.tow-status-badge.tension-nominal {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.4);
+}
+
+.tow-status-badge.tension-strain {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.5);
+  animation: pulse-danger 0.6s infinite alternate;
+}
+
+.tow-release-btn {
+  padding: 0.25rem 0.6rem;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #f87171;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.tow-release-btn:hover {
+  background: rgba(239, 68, 68, 0.3);
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
+}
+
+/* Station Salvage Bay Layout */
+.salvage-columns-grid {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr;
+  gap: 1.25rem;
+  min-height: 380px;
+}
+
+.salvage-panel {
+  display: flex;
+  flex-direction: column;
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.salvage-tether-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.salvage-empty-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 2.5rem 1.5rem;
+  background: rgba(30, 41, 59, 0.4);
+  border: 1px dashed rgba(148, 163, 184, 0.25);
+  border-radius: 8px;
+}
+
+.salvage-empty-card .empty-icon {
+  font-size: 2.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.salvage-empty-card h4 {
+  font-family: var(--font-heading);
+  font-size: 0.95rem;
+  color: #cbd5e1;
+  margin-bottom: 0.4rem;
+}
+
+.salvage-empty-card p {
+  font-size: 0.78rem;
+  color: #94a3b8;
+  max-width: 320px;
+  line-height: 1.4;
+}
+
+.salvage-wreck-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  background: rgba(30, 41, 59, 0.65);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  box-shadow: 0 0 25px rgba(245, 158, 11, 0.15);
+  border-radius: 8px;
+  padding: 1.25rem;
+}
+
+.wreck-card-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.wreck-badge {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 800;
+  color: #f59e0b;
+  letter-spacing: 0.05em;
+}
+
+.wreck-card-header h3 {
+  font-family: var(--font-heading);
+  font-size: 1.15rem;
+  color: #f8fafc;
+}
+
+.wreck-class {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+
+.wreck-metrics-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+  padding: 0.85rem;
+}
+
+.metric-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.metric-lbl {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  color: #94a3b8;
+  letter-spacing: 0.05em;
+}
+
+.metric-val {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.salvage-actions-row {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.salvage-actions-row button {
+  flex: 1;
+  padding: 0.75rem 0.85rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.derelict-card-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(30, 41, 59, 0.6);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 6px;
+  padding: 0.75rem 0.9rem;
+  margin-bottom: 0.5rem;
+  transition: all 0.2s ease;
+}
+
+.derelict-card-item:hover {
+  background: rgba(30, 41, 59, 0.85);
+  border-color: rgba(245, 158, 11, 0.6);
+  transform: translateY(-1px);
+}
+
+.derelict-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.derelict-card-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.derelict-card-sub {
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  color: #94a3b8;
+}
+
+.derelict-card-scrap {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: #f59e0b;
+}
+
+
 
 

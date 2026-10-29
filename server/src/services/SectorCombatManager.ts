@@ -2,8 +2,28 @@ import type { WebSocket } from 'ws';
 import { LootGenerator } from './LootGenerator';
 import { outfittingService } from './OutfittingService';
 import { ContractService } from './ContractService';
+import { wreckService, SectorWreck } from './WreckService';
 
 export const contractService = new ContractService();
+
+export interface SectorWreckEntity {
+  id: string;
+  sectorId: number;
+  shipName: string;
+  shipClass: string;
+  faction: string;
+  x: number;
+  y: number;
+  z: number;
+  vx: number;
+  vz: number;
+  rotation: number;
+  scrapRemaining: number;
+  maxScrap: number;
+  hullIntactness: number;
+  isTowed: boolean;
+  towedByAccountId: string | null;
+}
 
 export interface CombatInputs {
   forward: boolean;
@@ -67,6 +87,10 @@ export interface SectorEntity {
   transponderActive?: boolean;
   targetCanisterId?: string | null;
   scoopCooldown?: number;
+  // Day 15 Towing & Salvage Mining
+  towedWreckId?: string | null;
+  miningWreckId?: string | null;
+  miningTimer?: number;
 }
 
 export interface Projectile {
@@ -83,7 +107,7 @@ export interface Projectile {
 }
 
 export interface CombatEvent {
-  type: 'HIT' | 'SHIELD_BREAK' | 'DESTROYED' | 'LOOT_SPAWNED' | 'LOOT_COLLECTED' | 'POD_EJECTED';
+  type: 'HIT' | 'SHIELD_BREAK' | 'DESTROYED' | 'LOOT_SPAWNED' | 'LOOT_COLLECTED' | 'POD_EJECTED' | 'CONTAINER_SCOOPED' | 'WRECK_SPAWNED' | 'TOW_ATTACHED' | 'TOW_RELEASED' | 'SALVAGE_BEAM_TICK' | 'WRECK_DISINTEGRATED';
   sourceId?: string;
   targetId?: string;
   damage?: number;
@@ -91,6 +115,8 @@ export interface CombatEvent {
   x?: number;
   z?: number;
   data?: any;
+  canisterId?: string;
+  title?: string;
 }
 
 export interface SnapshotPayload {
@@ -122,6 +148,12 @@ export interface SnapshotPayload {
     cpuUsed: number;
     state: string;
     transponderActive?: boolean;
+    afterburnerActive?: boolean;
+    isEscapePod?: boolean;
+    lifeSupportSeconds?: number;
+    targetCanisterId?: string | null;
+    towedWreckId?: string | null;
+    isMiningWreckId?: string | null;
   }>;
   projectiles: Array<{
     id: string;
@@ -142,6 +174,21 @@ export interface SnapshotPayload {
     rarity: string;
     items: any[];
   }>;
+  wrecks: Array<{
+    id: string;
+    shipName: string;
+    shipClass: string;
+    faction: string;
+    x: number;
+    y: number;
+    z: number;
+    rotation: number;
+    scrapRemaining: number;
+    maxScrap: number;
+    hullIntactness: number;
+    isTowed: boolean;
+    towedByAccountId: string | null;
+  }>;
   events: CombatEvent[];
 }
 
@@ -149,6 +196,7 @@ export class SectorRoom {
   public readonly sectorId: number;
   public readonly clients: Map<string, WebSocket> = new Map();
   public readonly entities: Map<string, SectorEntity> = new Map();
+  public readonly wrecks: Map<string, SectorWreckEntity> = new Map();
   public projectiles: Projectile[] = [];
   public containers: SectorLootContainer[] = [];
   public pendingEvents: CombatEvent[] = [];
@@ -283,6 +331,45 @@ export class SectorRoom {
         ],
         createdAt: Date.now()
       });
+
+      // Day 15: Seed initial persistent sector wrecks
+      this.wrecks.set('wreck_ancient_cruiser_01', {
+        id: 'wreck_ancient_cruiser_01',
+        sectorId: 2,
+        shipName: 'Derelict Hegemony Cruiser',
+        shipClass: 'Hegemony Vanguard',
+        faction: 'Hegemony Drone Fleet',
+        x: 35.0,
+        y: 0.0,
+        z: -45.0,
+        vx: 0.0,
+        vz: 0.0,
+        rotation: 0.78,
+        scrapRemaining: 250,
+        maxScrap: 250,
+        hullIntactness: 0.85,
+        isTowed: false,
+        towedByAccountId: null,
+      });
+
+      this.wrecks.set('wreck_freighter_derelict_02', {
+        id: 'wreck_freighter_derelict_02',
+        sectorId: 2,
+        shipName: 'Shattered Bulk Hauler Wreck',
+        shipClass: 'Mammoth Industrial',
+        faction: 'Independent Traders',
+        x: -50.0,
+        y: 0.0,
+        z: 25.0,
+        vx: 0.0,
+        vz: 0.0,
+        rotation: 2.35,
+        scrapRemaining: 180,
+        maxScrap: 180,
+        hullIntactness: 0.60,
+        isTowed: false,
+        towedByAccountId: null,
+      });
     }
   }
 
@@ -405,8 +492,202 @@ export class SectorRoom {
     // 4. Advance Projectiles and Check Hit Collisions
     this.advanceProjectiles(dt);
 
-    // 5. Broadcast 50ms Snapshot to Connected Clients
+    // 5. Day 15: Elastic Tow Cable Physics & Laser Salvage Mining
+    this.processTowPhysics(dt);
+    this.processSalvageMining(dt);
+
+    // 6. Broadcast 50ms Snapshot to Connected Clients
     this.broadcastSnapshot(now);
+  }
+
+  public attachTow(playerId: string, wreckId: string): boolean {
+    const pEntity = this.entities.get(`player_${playerId}`);
+    const wreck = this.wrecks.get(wreckId);
+    if (!pEntity || !wreck) return false;
+
+    const dist = Math.hypot(pEntity.x - wreck.x, pEntity.z - wreck.z);
+    if (dist > 35.0) return false;
+
+    // Release any previously towed wreck
+    if (pEntity.towedWreckId && pEntity.towedWreckId !== wreckId) {
+      const prevWreck = this.wrecks.get(pEntity.towedWreckId);
+      if (prevWreck) {
+        prevWreck.isTowed = false;
+        prevWreck.towedByAccountId = null;
+      }
+    }
+
+    pEntity.towedWreckId = wreckId;
+    wreck.isTowed = true;
+    wreck.towedByAccountId = playerId;
+
+    this.pendingEvents.push({
+      type: 'TOW_ATTACHED',
+      sourceId: pEntity.id,
+      targetId: wreck.id,
+      x: wreck.x,
+      z: wreck.z,
+      data: { wreckName: wreck.shipName, wreckId: wreck.id },
+    });
+
+    wreckService.setTowed(wreckId, playerId).catch(console.error);
+    return true;
+  }
+
+  public releaseTow(playerId: string): void {
+    const pEntity = this.entities.get(`player_${playerId}`);
+    if (!pEntity || !pEntity.towedWreckId) return;
+
+    const wreckId = pEntity.towedWreckId;
+    pEntity.towedWreckId = null;
+
+    const wreck = this.wrecks.get(wreckId);
+    if (wreck) {
+      wreck.isTowed = false;
+      wreck.towedByAccountId = null;
+      this.pendingEvents.push({
+        type: 'TOW_RELEASED',
+        sourceId: pEntity.id,
+        targetId: wreck.id,
+        x: wreck.x,
+        z: wreck.z,
+      });
+    }
+
+    wreckService.setTowed(wreckId, null).catch(console.error);
+  }
+
+  public startSalvageBeam(playerId: string, wreckId: string): boolean {
+    const pEntity = this.entities.get(`player_${playerId}`);
+    const wreck = this.wrecks.get(wreckId);
+    if (!pEntity || !wreck) return false;
+
+    const dist = Math.hypot(pEntity.x - wreck.x, pEntity.z - wreck.z);
+    if (dist > 30.0) return false;
+
+    pEntity.miningWreckId = wreckId;
+    pEntity.miningTimer = 0;
+    return true;
+  }
+
+  public stopSalvageBeam(playerId: string): void {
+    const pEntity = this.entities.get(`player_${playerId}`);
+    if (pEntity) {
+      pEntity.miningWreckId = null;
+      pEntity.miningTimer = 0;
+    }
+  }
+
+  private processTowPhysics(dt: number): void {
+    for (const entity of this.entities.values()) {
+      if (!entity.towedWreckId) continue;
+      const wreck = this.wrecks.get(entity.towedWreckId);
+      if (!wreck) {
+        entity.towedWreckId = null;
+        continue;
+      }
+
+      const dx = wreck.x - entity.x;
+      const dz = wreck.z - entity.z;
+      const dist = Math.hypot(dx, dz);
+      const restLength = 12.0;
+
+      if (dist > restLength) {
+        const delta = dist - restLength;
+        const nx = dx / dist;
+        const nz = dz / dist;
+
+        // Hooke's Law Spring Force
+        const k = 4.0;
+        const springF = k * delta;
+
+        // Damping along tether axis
+        const damping = 1.2;
+        const relVx = wreck.vx - entity.vx;
+        const relVz = wreck.vz - entity.vz;
+        const dampF = (relVx * nx + relVz * nz) * damping;
+
+        const netF = springF + dampF;
+        wreck.vx -= netF * nx * dt;
+        wreck.vz -= netF * nz * dt;
+      }
+
+      // Wreck friction & positional integration
+      wreck.vx *= 0.94;
+      wreck.vz *= 0.94;
+      wreck.x += wreck.vx * dt;
+      wreck.z += wreck.vz * dt;
+
+      // Rotate wreck toward towing ship
+      wreck.rotation = Math.atan2(entity.x - wreck.x, entity.z - wreck.z);
+
+      // Inertial drag on towing player
+      entity.vx *= 0.85;
+      entity.vz *= 0.85;
+    }
+
+    // Also integrate untowed wrecks with residual drift and drag
+    for (const wreck of this.wrecks.values()) {
+      if (wreck.isTowed) continue;
+      wreck.vx *= 0.92;
+      wreck.vz *= 0.92;
+      wreck.x += wreck.vx * dt;
+      wreck.z += wreck.vz * dt;
+    }
+  }
+
+  private processSalvageMining(dt: number): void {
+    for (const entity of this.entities.values()) {
+      if (!entity.miningWreckId) continue;
+      const wreck = this.wrecks.get(entity.miningWreckId);
+      if (!wreck) {
+        entity.miningWreckId = null;
+        continue;
+      }
+
+      const dist = Math.hypot(wreck.x - entity.x, wreck.z - entity.z);
+      if (dist > 30.0) {
+        // Break beam if out of range
+        entity.miningWreckId = null;
+        continue;
+      }
+
+      entity.miningTimer = (entity.miningTimer || 0) + dt;
+      if (entity.miningTimer >= 1.0) {
+        entity.miningTimer = 0;
+        const extract = Math.min(wreck.scrapRemaining, 10);
+        wreck.scrapRemaining -= extract;
+        wreck.hullIntactness = Math.max(0.0, wreck.scrapRemaining / wreck.maxScrap);
+        entity.energy = Math.max(0, entity.energy - 6);
+
+        this.pendingEvents.push({
+          type: 'SALVAGE_BEAM_TICK',
+          sourceId: entity.id,
+          targetId: wreck.id,
+          x: wreck.x,
+          z: wreck.z,
+          data: {
+            scrapRemaining: wreck.scrapRemaining,
+            extracted: extract,
+          },
+        });
+
+        const playerId = entity.id.replace('player_', '');
+        wreckService.mineScrap(wreck.id, playerId, extract).catch(console.error);
+
+        if (wreck.scrapRemaining <= 0) {
+          this.wrecks.delete(wreck.id);
+          if (entity.towedWreckId === wreck.id) entity.towedWreckId = null;
+          entity.miningWreckId = null;
+          this.pendingEvents.push({
+            type: 'WRECK_DISINTEGRATED',
+            targetId: wreck.id,
+            x: wreck.x,
+            z: wreck.z,
+          });
+        }
+      }
+    }
   }
 
   private integrateEntityPhysics(entity: SectorEntity, dt: number, now: number): void {
@@ -861,6 +1142,47 @@ export class SectorRoom {
       z: target.z,
     });
 
+    // Day 15: Spawn Persistent 3D Ship Wreck for Laser Scrap Mining & Towing
+    const wreckId = `wreck_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const wreckEntity: SectorWreckEntity = {
+      id: wreckId,
+      sectorId: this.sectorId,
+      shipName: `${target.name} Derelict Wreck`,
+      shipClass: target.hullClass || 'Frigate Wreck',
+      faction: target.factionId || 'Unknown',
+      x: Math.round(target.x * 10) / 10,
+      y: 0.0,
+      z: Math.round(target.z * 10) / 10,
+      vx: (Math.random() - 0.5) * 1.5,
+      vz: (Math.random() - 0.5) * 1.5,
+      rotation: target.yaw,
+      scrapRemaining: 120,
+      maxScrap: 120,
+      hullIntactness: 0.75,
+      isTowed: false,
+      towedByAccountId: null,
+    };
+    this.wrecks.set(wreckId, wreckEntity);
+    this.pendingEvents.push({
+      type: 'WRECK_SPAWNED',
+      targetId: wreckId,
+      x: wreckEntity.x,
+      z: wreckEntity.z,
+      data: wreckEntity,
+    });
+    wreckService.createWreck(
+      this.sectorId,
+      wreckEntity.shipName,
+      wreckEntity.shipClass,
+      wreckEntity.faction,
+      wreckEntity.x,
+      0,
+      wreckEntity.z,
+      wreckEntity.rotation,
+      wreckEntity.maxScrap,
+      wreckEntity.hullIntactness
+    ).catch((err) => console.error('[WreckService] Error persisting wreck:', err));
+
     if (target.type === 'PLAYER') {
       const killer = this.entities.get(killerId);
       const killerName = killer ? killer.name : 'Hegemony Hunter Drone [ELITE]';
@@ -1078,6 +1400,9 @@ export class SectorRoom {
         isEscapePod: e.isEscapePod || e.hullClass === 'ESCAPE_POD',
         lifeSupportSeconds: typeof e.lifeSupportSeconds === 'number' ? Math.round(e.lifeSupportSeconds) : undefined,
         targetCanisterId: e.targetCanisterId,
+        // Day 15 Towing & Salvage Mining
+        towedWreckId: e.towedWreckId || null,
+        isMiningWreckId: e.miningWreckId || null,
       })),
       projectiles: this.projectiles.map((p) => ({
         id: p.id,
@@ -1097,6 +1422,21 @@ export class SectorRoom {
         title: c.title,
         rarity: c.rarity,
         items: c.items,
+      })),
+      wrecks: Array.from(this.wrecks.values()).map((w) => ({
+        id: w.id,
+        shipName: w.shipName,
+        shipClass: w.shipClass,
+        faction: w.faction,
+        x: Math.round(w.x * 100) / 100,
+        y: Math.round(w.y * 100) / 100,
+        z: Math.round(w.z * 100) / 100,
+        rotation: Math.round(w.rotation * 1000) / 1000,
+        scrapRemaining: Math.round(w.scrapRemaining),
+        maxScrap: w.maxScrap,
+        hullIntactness: Math.round(w.hullIntactness * 100) / 100,
+        isTowed: w.isTowed,
+        towedByAccountId: w.towedByAccountId,
       })),
       events: [...this.pendingEvents],
     };
@@ -1166,6 +1506,14 @@ export class SectorCombatManager {
           room.setPlayerInput(playerId, msg.inputs);
         } else if (msg.type === 'LOOT_CONTAINER') {
           room.lootContainer(playerId, msg.containerId);
+        } else if (msg.type === 'ATTACH_TOW') {
+          room.attachTow(playerId, msg.wreckId);
+        } else if (msg.type === 'RELEASE_TOW') {
+          room.releaseTow(playerId);
+        } else if (msg.type === 'START_SALVAGE_BEAM') {
+          room.startSalvageBeam(playerId, msg.wreckId);
+        } else if (msg.type === 'STOP_SALVAGE_BEAM') {
+          room.stopSalvageBeam(playerId);
         }
       } catch (err) {
         // Ignore malformed client frames

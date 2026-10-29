@@ -11,6 +11,7 @@ import { tradeService } from './services/TradeService';
 import { combatManager } from './services/SectorCombatManager';
 import { outfittingService } from './services/OutfittingService';
 import { contractService } from './services/ContractService';
+import { wreckService } from './services/WreckService';
 
 dotenv.config();
 
@@ -412,6 +413,107 @@ async function startServer() {
         message: 'Pilot emergency medical recall complete. Transferred to Aegis Terminal Station Clinic.',
         ship: result.ship,
       });
+    });
+
+    // ========================================================================
+    // Day 15: Persistent Sector Wrecks, In-Situ Laser Mining & Salvage Bay
+    // ========================================================================
+    server.get('/api/combat/wrecks', async (req, reply) => {
+      const query = (req.query || {}) as { sectorId?: string };
+      const sectorId = parseInt(query.sectorId || '2', 10);
+      const wrecks = await wreckService.getWrecksBySector(sectorId);
+      reply.send({ success: true, wrecks });
+    });
+
+    server.get('/api/combat/wrecks/:id', async (req, reply) => {
+      const params = req.params as { id: string };
+      const wreck = await wreckService.getWreckById(params.id);
+      if (!wreck) {
+        return reply.status(404).send({ success: false, error: 'Wreck not found' });
+      }
+      reply.send({ success: true, wreck });
+    });
+
+    server.post('/api/combat/wrecks', async (req, reply) => {
+      const body = (req.body || {}) as {
+        sectorId?: number;
+        shipName?: string;
+        shipClass?: string;
+        faction?: string;
+        x?: number;
+        y?: number;
+        z?: number;
+        rotation?: number;
+        maxScrap?: number;
+        hullIntactness?: number;
+      };
+      try {
+        const wreck = await wreckService.createWreck(
+          body.sectorId || 2,
+          body.shipName || 'Unknown Derelict',
+          body.shipClass || 'Solaris Scout',
+          body.faction || 'Solaris Coalition',
+          body.x || 0,
+          body.y || 0,
+          body.z || 0,
+          body.rotation || 0,
+          body.maxScrap || 100,
+          body.hullIntactness || 0.8
+        );
+        reply.send({ success: true, wreck });
+      } catch (err: any) {
+        reply.status(400).send({ success: false, error: err.message });
+      }
+    });
+
+    server.post('/api/combat/wrecks/salvage-mine', async (req, reply) => {
+      const body = (req.body || {}) as { wreckId: string; accountId?: string; extractUnits?: number };
+      const accountId = body.accountId || 'acc_sol_captain';
+      const extractUnits = typeof body.extractUnits === 'number' ? body.extractUnits : 10;
+
+      try {
+        const result = await wreckService.mineScrap(body.wreckId, accountId, extractUnits);
+        reply.send({ success: true, ...result });
+      } catch (err: any) {
+        reply.status(400).send({ success: false, error: err.message });
+      }
+    });
+
+    server.post('/api/combat/wrecks/tow', async (req, reply) => {
+      const body = (req.body || {}) as { wreckId: string; accountId?: string; isTowed?: boolean };
+      const accountId = body.accountId || 'acc_sol_captain';
+      const attach = body.isTowed !== false;
+
+      try {
+        const result = await wreckService.setTowed(body.wreckId, attach ? accountId : null);
+        reply.send(result);
+      } catch (err: any) {
+        reply.status(400).send({ success: false, error: err.message });
+      }
+    });
+
+    server.post('/api/combat/wrecks/dismantle', async (req, reply) => {
+      const body = (req.body || {}) as { wreckId: string; accountId?: string };
+      const accountId = body.accountId || 'acc_sol_captain';
+
+      try {
+        const result = await wreckService.dismantleWreck(body.wreckId, accountId);
+        reply.send(result);
+      } catch (err: any) {
+        reply.status(400).send({ success: false, error: err.message });
+      }
+    });
+
+    server.post('/api/combat/wrecks/refurbish', async (req, reply) => {
+      const body = (req.body || {}) as { wreckId: string; accountId?: string };
+      const accountId = body.accountId || 'acc_sol_captain';
+
+      try {
+        const result = await wreckService.refurbishWreck(body.wreckId, accountId);
+        reply.send(result);
+      } catch (err: any) {
+        reply.status(400).send({ success: false, error: err.message });
+      }
     });
 
     // 10. Authoritative 20Hz WebSocket Combat Room (Milestone 0.3)

@@ -319,6 +319,43 @@ class GameEngine {
   private elKillmailsCount: HTMLElement | null = null;
   private elContractsPlayerCredits: HTMLElement | null = null;
 
+  // Day 15: Persistent Ship Wrecks, Laser Mining, Elastic Towing & Salvage Bay
+  private tabBtnSalvage: HTMLElement | null = null;
+  private viewTabSalvage: HTMLElement | null = null;
+  private elSalvagePlayerCredits: HTMLElement | null = null;
+  private elSalvageTetherStatus: HTMLElement | null = null;
+  private elSalvageEmptyCard: HTMLElement | null = null;
+  private elSalvageWreckCard: HTMLElement | null = null;
+  private elSalvageWreckFaction: HTMLElement | null = null;
+  private elSalvageWreckTitle: HTMLElement | null = null;
+  private elSalvageWreckClass: HTMLElement | null = null;
+  private elSalvageWreckScrap: HTMLElement | null = null;
+  private elSalvageWreckIntactness: HTMLElement | null = null;
+  private elSalvageWreckVal: HTMLElement | null = null;
+  private btnDismantleWreck: HTMLElement | null = null;
+  private btnRefurbishWreck: HTMLElement | null = null;
+  private elSalvageDerelictsList: HTMLElement | null = null;
+  private elSalvageSweepCount: HTMLElement | null = null;
+
+  // Flight HUD & Tow Cable
+  private elTargetQuickActions: HTMLElement | null = null;
+  private btnHudSalvageBeam: HTMLElement | null = null;
+  private btnHudTetherWreck: HTMLElement | null = null;
+  private elTowCableHud: HTMLElement | null = null;
+  private elTowTargetName: HTMLElement | null = null;
+  private elTowDistMetric: HTMLElement | null = null;
+  private elTowTensionBadge: HTMLElement | null = null;
+  private btnHudReleaseTow: HTMLElement | null = null;
+
+  private wreckMeshes: Map<string, THREE.Group> = new Map();
+  private activeWrecks: Map<string, any> = new Map();
+  private towCableMesh: THREE.Line | null = null;
+  private salvageBeamMesh: THREE.Group | null = null;
+  private isMiningLaserActive: boolean = false;
+  private currentTowedWreckId: string | null = null;
+  private targetedWreckId: string | null = null;
+  private tetheredStationWreck: any = null;
+
   public isEscapePod: boolean = false;
   private lastKlaxonTime: number = 0;
   private escapePodMesh: THREE.Group | null = null;
@@ -841,6 +878,40 @@ class GameEngine {
     this.elContractsPlayerCredits = document.getElementById('contracts-player-credits');
 
     this.tabBtnContracts?.addEventListener('click', () => this.switchStationTab('contracts'));
+
+    // Day 15: Station Salvage Bay & Flight Tow Cable DOM Bindings
+    this.tabBtnSalvage = document.getElementById('tab-btn-salvage');
+    this.viewTabSalvage = document.getElementById('view-tab-salvage');
+    this.elSalvagePlayerCredits = document.getElementById('salvage-player-credits');
+    this.elSalvageTetherStatus = document.getElementById('salvage-tether-status');
+    this.elSalvageEmptyCard = document.getElementById('salvage-empty-card');
+    this.elSalvageWreckCard = document.getElementById('salvage-wreck-card');
+    this.elSalvageWreckFaction = document.getElementById('salvage-wreck-faction');
+    this.elSalvageWreckTitle = document.getElementById('salvage-wreck-title');
+    this.elSalvageWreckClass = document.getElementById('salvage-wreck-class');
+    this.elSalvageWreckScrap = document.getElementById('salvage-wreck-scrap');
+    this.elSalvageWreckIntactness = document.getElementById('salvage-wreck-intactness');
+    this.elSalvageWreckVal = document.getElementById('salvage-wreck-val');
+    this.btnDismantleWreck = document.getElementById('btn-dismantle-wreck');
+    this.btnRefurbishWreck = document.getElementById('btn-refurbish-wreck');
+    this.elSalvageDerelictsList = document.getElementById('salvage-derelicts-list');
+    this.elSalvageSweepCount = document.getElementById('salvage-sweep-count');
+
+    this.elTargetQuickActions = document.getElementById('target-quick-actions');
+    this.btnHudSalvageBeam = document.getElementById('btn-hud-salvage-beam');
+    this.btnHudTetherWreck = document.getElementById('btn-hud-tether-wreck');
+    this.elTowCableHud = document.getElementById('tow-cable-hud');
+    this.elTowTargetName = document.getElementById('tow-target-name');
+    this.elTowDistMetric = document.getElementById('tow-dist-metric');
+    this.elTowTensionBadge = document.getElementById('tow-tension-badge');
+    this.btnHudReleaseTow = document.getElementById('btn-hud-release-tow');
+
+    this.tabBtnSalvage?.addEventListener('click', () => this.switchStationTab('salvage'));
+    this.btnDismantleWreck?.addEventListener('click', () => this.dismantleTetheredWreck());
+    this.btnRefurbishWreck?.addEventListener('click', () => this.refurbishTetheredWreck());
+    this.btnHudSalvageBeam?.addEventListener('click', () => this.toggleSalvageMining());
+    this.btnHudTetherWreck?.addEventListener('click', () => this.toggleTowTether());
+    this.btnHudReleaseTow?.addEventListener('click', () => this.toggleTowTether());
     this.btnPostBounty?.addEventListener('click', () => this.postRevengeBounty());
     this.btnCopyKmUrl?.addEventListener('click', () => {
       if (this.elKmShareUrl) {
@@ -1894,8 +1965,16 @@ class GameEngine {
             );
             if (dockCheck.canDock) {
               this.dockShip();
+              break;
             }
           }
+          // If not docking, toggle laser salvage mining beam
+          this.toggleSalvageMining();
+          break;
+        }
+        case 'KeyT': {
+          e.preventDefault();
+          this.toggleTowTether();
           break;
         }
         case 'Digit1':
@@ -2252,6 +2331,9 @@ class GameEngine {
     this.updateTacticalReticle();
     this.updateLootCanisters(deltaSec);
 
+    // 9b. Day 15: Update Sector Derelict Wrecks, Proximity Targeting & Tow Tether
+    this.updateWrecksAndTether(deltaSec);
+
     // 10. Render
     this.renderer.render(this.scene, this.camera);
   }
@@ -2437,7 +2519,7 @@ class GameEngine {
       if (this.isEscapePod) {
         if (!wasEscapePod) {
           this.audio.playShipExplosionSound();
-          if (this.ship) this.ship.mesh.visible = false;
+          if (this.shipMesh) this.shipMesh.visible = false;
           if (!this.escapePodMesh) {
             this.escapePodMesh = this.createEscapePodMesh();
             this.scene.add(this.escapePodMesh);
@@ -2475,7 +2557,7 @@ class GameEngine {
       } else {
         if (wasEscapePod) {
           if (this.escapePodMesh) this.escapePodMesh.visible = false;
-          if (this.ship) this.ship.mesh.visible = true;
+          if (this.shipMesh) this.shipMesh.visible = true;
           if (this.elEscapePodHud) this.elEscapePodHud.classList.add('hidden');
         }
       }
@@ -2662,6 +2744,80 @@ class GameEngine {
       cGroup.position.z = c.z;
     }
 
+    // 3.5 Day 15: Sync Persistent 3D Sector Wrecks
+    const wrecks = snapshot.wrecks || [];
+    const activeWreckIds = new Set<string>();
+    this.activeWrecks.clear();
+
+    for (const w of wrecks) {
+      activeWreckIds.add(w.id);
+      this.activeWrecks.set(w.id, w);
+    }
+
+    for (const [id, wGroup] of this.wreckMeshes.entries()) {
+      if (!activeWreckIds.has(id)) {
+        this.scene.remove(wGroup);
+        wGroup.traverse((child) => {
+          if ((child as THREE.Mesh).geometry) (child as THREE.Mesh).geometry.dispose();
+        });
+        this.wreckMeshes.delete(id);
+      }
+    }
+
+    for (const w of wrecks) {
+      let wGroup = this.wreckMeshes.get(w.id);
+      if (!wGroup) {
+        wGroup = this.createWreckMesh(w);
+        wGroup.position.set(w.x, 0.0, w.z);
+        wGroup.rotation.y = w.rotation || 0;
+        this.scene.add(wGroup);
+        this.wreckMeshes.set(w.id, wGroup);
+      }
+      wGroup.position.x = w.x;
+      wGroup.position.z = w.z;
+      wGroup.rotation.y = w.rotation || 0;
+    }
+
+    // Tow Cable Check
+    if (playerEntity && playerEntity.towedWreckId) {
+      this.currentTowedWreckId = playerEntity.towedWreckId;
+      const towedWreck = this.activeWrecks.get(playerEntity.towedWreckId);
+      if (towedWreck) {
+        const pPos = new THREE.Vector3(playerEntity.x, 0, playerEntity.z);
+        const wPos = new THREE.Vector3(towedWreck.x, 0, towedWreck.z);
+        const dist = pPos.distanceTo(wPos);
+        this.updateTowCable(pPos, wPos, dist);
+
+        if (this.elTowCableHud) {
+          this.elTowCableHud.classList.remove('hidden');
+          if (this.elTowTargetName) this.elTowTargetName.textContent = towedWreck.shipName;
+          if (this.elTowDistMetric) this.elTowDistMetric.textContent = `${dist.toFixed(1)} u`;
+          if (this.elTowTensionBadge) {
+            const isStrain = dist > 18.0;
+            this.elTowTensionBadge.className = `tow-status-badge ${isStrain ? 'tension-strain' : 'tension-nominal'}`;
+            this.elTowTensionBadge.textContent = isStrain ? 'TENSION: HIGH STRAIN' : 'TENSION: NOMINAL';
+          }
+        }
+      }
+    } else {
+      this.currentTowedWreckId = null;
+      if (this.towCableMesh) this.towCableMesh.visible = false;
+      if (this.elTowCableHud) this.elTowCableHud.classList.add('hidden');
+    }
+
+    // Laser Salvage Beam Check
+    if (playerEntity && playerEntity.isMiningWreckId) {
+      const miningWreck = this.activeWrecks.get(playerEntity.isMiningWreckId);
+      if (miningWreck) {
+        const pPos = new THREE.Vector3(playerEntity.x, 0.4, playerEntity.z);
+        const wPos = new THREE.Vector3(miningWreck.x, 0.4, miningWreck.z);
+        this.updateSalvageBeam(pPos, wPos);
+        this.audio.playMiningLaserSound();
+      }
+    } else {
+      this.hideSalvageBeam();
+    }
+
     // 4. Process Combat Events (VFX, Audio & Alerts)
     if (snapshot.events && snapshot.events.length > 0) {
       for (const ev of snapshot.events) {
@@ -2707,6 +2863,18 @@ class GameEngine {
         } else if (ev.type === 'LIFE_SUPPORT_EXHAUSTED') {
           this.showApNotification('⚠️ LIFE SUPPORT EXHAUSTED: Initiating emergency clone recall!', true);
           this.handleEmergencyRecall();
+        } else if (ev.type === 'WRECK_SPAWNED') {
+          this.showApNotification(`🛰️ DERELICT WRECK FORMED // ${ev.data?.shipName || 'WRECK'}`, false);
+        } else if (ev.type === 'TOW_ATTACHED') {
+          this.audio.playTowCableAttachSound();
+          this.showApNotification(`🪝 MAGNETIC TOW TETHER ATTACHED // ${ev.data?.wreckName || 'DERELICT'}`, false);
+        } else if (ev.type === 'TOW_RELEASED') {
+          this.audio.playTowCableReleaseSound();
+          this.showApNotification('🪝 MAGNETIC TOW TETHER RELEASED', false);
+        } else if (ev.type === 'SALVAGE_BEAM_TICK') {
+          this.showApNotification(`⚡ EXTRACTED ${ev.data?.extracted || 10}x SCRAP ALLOY`, false);
+        } else if (ev.type === 'WRECK_DISINTEGRATED') {
+          this.showApNotification('💨 DERELICT DISINTEGRATED // REPOSITORIES EXHAUSTED', false);
         }
       }
     }
@@ -2967,21 +3135,23 @@ class GameEngine {
   }
 
   /**
-   * Day 13 & 14: Station Dock Tab Switcher (Exchange / Outfitting / Armory / Contracts)
+   * Day 13, 14 & 15: Station Dock Tab Switcher (Exchange / Outfitting / Armory / Contracts / Salvage)
    */
-  public switchStationTab(tab: 'exchange' | 'outfitting' | 'armory' | 'contracts'): void {
-    this.activeStationTab = tab;
+  public switchStationTab(tab: 'exchange' | 'outfitting' | 'armory' | 'contracts' | 'salvage'): void {
+    this.activeStationTab = tab as any;
     this.audio.playUiBlip();
 
     this.tabBtnExchange?.classList.toggle('active', tab === 'exchange');
     this.tabBtnOutfitting?.classList.toggle('active', tab === 'outfitting');
     this.tabBtnArmory?.classList.toggle('active', tab === 'armory');
     this.tabBtnContracts?.classList.toggle('active', tab === 'contracts');
+    this.tabBtnSalvage?.classList.toggle('active', tab === 'salvage');
 
     this.viewTabExchange?.classList.toggle('hidden', tab !== 'exchange');
     this.viewTabOutfitting?.classList.toggle('hidden', tab !== 'outfitting');
     this.viewTabArmory?.classList.toggle('hidden', tab !== 'armory');
     this.viewTabContracts?.classList.toggle('hidden', tab !== 'contracts');
+    this.viewTabSalvage?.classList.toggle('hidden', tab !== 'salvage');
 
     if (tab === 'outfitting') {
       this.loadOutfittingData();
@@ -2989,6 +3159,8 @@ class GameEngine {
       this.loadArmoryData();
     } else if (tab === 'contracts') {
       this.loadContractsData();
+    } else if (tab === 'salvage') {
+      this.loadSalvageData();
     } else if (tab === 'exchange') {
       this.loadPortInventory();
     }
@@ -3548,7 +3720,9 @@ class GameEngine {
 
       // Refresh credits
       this.playerCredits = Math.max(0, this.playerCredits - this.selectedBountyAmount);
-      this.updateHudTelemetry();
+      if (this.modalMarketPlayerCredits) this.modalMarketPlayerCredits.textContent = `${this.playerCredits.toLocaleString()} Cr`;
+      if (this.elTelemetryCredits) this.elTelemetryCredits.textContent = `${this.playerCredits.toLocaleString()} Cr`;
+      if (this.elContractsPlayerCredits) this.elContractsPlayerCredits.textContent = `${this.playerCredits.toLocaleString()} Cr`;
     } catch (err: any) {
       this.showApNotification(`⚠️ Bounty error: ${err.message}`, true);
     }
@@ -3579,8 +3753,8 @@ class GameEngine {
           this.scene.remove(this.escapePodMesh);
           this.escapePodMesh = null;
         }
-        if (this.ship) {
-          this.ship.mesh.visible = true;
+        if (this.shipMesh) {
+          this.shipMesh.visible = true;
         }
 
         // Reset vitals
@@ -3616,8 +3790,8 @@ class GameEngine {
           this.scene.remove(this.escapePodMesh);
           this.escapePodMesh = null;
         }
-        if (this.ship) {
-          this.ship.mesh.visible = true;
+        if (this.shipMesh) {
+          this.shipMesh.visible = true;
         }
 
         this.currentSectorId = 1;
@@ -3626,6 +3800,395 @@ class GameEngine {
       }
     } catch (err) {
       console.error('[Recall] Error handling emergency recall:', err);
+    }
+  }
+
+  // ============================================================================
+  // DAY 15: PERSISTENT SHIP WRECKS, LASER SCRAP MINING & ELASTIC TOWING
+  // ============================================================================
+
+  /**
+   * Creates 3D Charred Ship Wreckage mesh
+   */
+  public createWreckMesh(wreck: any): THREE.Group {
+    const group = new THREE.Group();
+
+    // Fractured main hull section (charred metallic)
+    const hullGeom = new THREE.DodecahedronGeometry(2.8, 1);
+    const hullMat = new THREE.MeshStandardMaterial({
+      color: 0x1c1917, // Stone/Charcoal
+      metalness: 0.85,
+      roughness: 0.6,
+      flatShading: true,
+    });
+    const hull = new THREE.Mesh(hullGeom, hullMat);
+    hull.scale.set(1.4, 0.7, 2.2);
+    group.add(hull);
+
+    // Twisted exposed structural bulkheads / ribbing
+    const ribsGeom = new THREE.TorusGeometry(2.0, 0.22, 6, 8, Math.PI * 1.3);
+    const ribsMat = new THREE.MeshStandardMaterial({
+      color: 0x44403c,
+      metalness: 0.9,
+      roughness: 0.4,
+    });
+    const ribs1 = new THREE.Mesh(ribsGeom, ribsMat);
+    ribs1.rotation.y = Math.PI / 3;
+    ribs1.position.set(-0.8, 0.4, -0.6);
+    group.add(ribs1);
+
+    const ribs2 = new THREE.Mesh(ribsGeom, ribsMat);
+    ribs2.rotation.y = -Math.PI / 4;
+    ribs2.position.set(0.6, -0.3, 0.8);
+    group.add(ribs2);
+
+    // Glowing molten magma breach seam
+    const breachGeom = new THREE.CylinderGeometry(0.3, 0.6, 2.4, 6);
+    const breachMat = new THREE.MeshStandardMaterial({
+      color: 0xea580c,
+      emissive: 0xf97316,
+      emissiveIntensity: 0.9,
+      roughness: 0.2,
+    });
+    const breach = new THREE.Mesh(breachGeom, breachMat);
+    breach.rotation.z = Math.PI / 3;
+    breach.position.set(0.2, 0.6, 0.2);
+    group.add(breach);
+
+    // Ember spark point light
+    const sparkLight = new THREE.PointLight(0xf97316, 1.5, 20);
+    sparkLight.position.set(0.2, 1.0, 0.2);
+    group.add(sparkLight);
+
+    // Drifting debris shard
+    const shardGeom = new THREE.BoxGeometry(0.8, 0.3, 1.4);
+    const shard = new THREE.Mesh(shardGeom, hullMat);
+    shard.position.set(2.4, -0.8, 1.2);
+    shard.rotation.set(0.4, 0.8, 0.2);
+    group.add(shard);
+
+    group.userData = { wreckId: wreck.id, scrapRemaining: wreck.scrapRemaining, maxScrap: wreck.maxScrap };
+    return group;
+  }
+
+  /**
+   * Updates the dynamic 3D Elastic Tow Cable tether
+   */
+  private updateTowCable(shipPos: THREE.Vector3, wreckPos: THREE.Vector3, dist: number): void {
+    const points: THREE.Vector3[] = [];
+    const segments = 12;
+
+    const sag = Math.max(0.2, (dist / 12.0) * 0.8);
+    const midPoint = new THREE.Vector3()
+      .addVectors(shipPos, wreckPos)
+      .multiplyScalar(0.5);
+    midPoint.y -= sag;
+
+    const curve = new THREE.QuadraticBezierCurve3(shipPos, midPoint, wreckPos);
+    for (let i = 0; i <= segments; i++) {
+      points.push(curve.getPoint(i / segments));
+    }
+
+    if (!this.towCableMesh) {
+      const geom = new THREE.BufferGeometry().setFromPoints(points);
+      const mat = new THREE.LineBasicMaterial({
+        color: 0x06b6d4, // Cyan magnetic glow
+        linewidth: 3,
+      });
+      this.towCableMesh = new THREE.Line(geom, mat);
+      this.scene.add(this.towCableMesh);
+    } else {
+      this.towCableMesh.geometry.setFromPoints(points);
+      const isStrain = dist > 18.0;
+      (this.towCableMesh.material as THREE.LineBasicMaterial).color.setHex(isStrain ? 0xf59e0b : 0x06b6d4);
+    }
+
+    this.towCableMesh.visible = true;
+  }
+
+  /**
+   * Updates the laser salvage beam VFX between player and target wreck
+   */
+  private updateSalvageBeam(shipPos: THREE.Vector3, wreckPos: THREE.Vector3): void {
+    if (!this.salvageBeamMesh) {
+      this.salvageBeamMesh = new THREE.Group();
+
+      const beamGeom = new THREE.CylinderGeometry(0.12, 0.12, 1, 8);
+      const beamMat = new THREE.MeshBasicMaterial({
+        color: 0xfbbf24,
+        transparent: true,
+        opacity: 0.85,
+      });
+      const beam = new THREE.Mesh(beamGeom, beamMat);
+      beam.name = 'core';
+      this.salvageBeamMesh.add(beam);
+
+      const sparkGeom = new THREE.SphereGeometry(0.4, 8, 8);
+      const sparkMat = new THREE.MeshBasicMaterial({
+        color: 0xffedd5,
+        wireframe: true,
+      });
+      const spark = new THREE.Mesh(sparkGeom, sparkMat);
+      spark.name = 'spark';
+      this.salvageBeamMesh.add(spark);
+
+      this.scene.add(this.salvageBeamMesh);
+    }
+
+    this.salvageBeamMesh.visible = true;
+
+    const dir = new THREE.Vector3().subVectors(wreckPos, shipPos);
+    const length = dir.length();
+    const midPoint = new THREE.Vector3().addVectors(shipPos, wreckPos).multiplyScalar(0.5);
+
+    const beam = this.salvageBeamMesh.getObjectByName('core') as THREE.Mesh;
+    if (beam) {
+      beam.scale.set(1, length, 1);
+      beam.position.copy(midPoint);
+      beam.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize());
+    }
+
+    const spark = this.salvageBeamMesh.getObjectByName('spark') as THREE.Mesh;
+    if (spark) {
+      spark.position.copy(wreckPos);
+      spark.rotation.y += 0.2;
+    }
+  }
+
+  private hideSalvageBeam(): void {
+    if (this.salvageBeamMesh) {
+      this.salvageBeamMesh.visible = false;
+    }
+  }
+
+  /**
+   * Evaluates proximity to nearby persistent wrecks and manages HUD tether / mining prompts
+   */
+  private updateWrecksAndTether(_deltaSec: number): void {
+    const pPos = this.flightController.position;
+    let nearestWreck: any = null;
+    let minWreckDist = Infinity;
+
+    for (const wreck of this.activeWrecks.values()) {
+      const wPos = new THREE.Vector3(wreck.x, 0, wreck.z);
+      const dist = pPos.distanceTo(wPos);
+      if (dist < minWreckDist) {
+        minWreckDist = dist;
+        nearestWreck = wreck;
+      }
+    }
+
+    if (nearestWreck && minWreckDist <= 35.0) {
+      this.targetedWreckId = nearestWreck.id;
+
+      // If no hostile drone is targeted, or wreck is very close, display wreck telemetry box
+      if (!this.primaryDroneTarget || minWreckDist <= 25.0) {
+        if (this.elTargetTelemetryHud) {
+          this.elTargetTelemetryHud.classList.remove('hidden');
+          if (this.elTargetName) this.elTargetName.textContent = nearestWreck.shipName.toUpperCase();
+          if (this.elTargetFaction) this.elTargetFaction.textContent = 'DERELICT // WRECKAGE';
+          if (this.elTargetDistance) this.elTargetDistance.textContent = `${minWreckDist.toFixed(1)} u`;
+
+          if (this.elTargetShieldBar) this.elTargetShieldBar.style.width = '0%';
+          if (this.elTargetShieldVal) this.elTargetShieldVal.textContent = '0/0';
+
+          const intactPct = Math.round(nearestWreck.hullIntactness * 100);
+          if (this.elTargetHullBar) this.elTargetHullBar.style.width = `${intactPct}%`;
+          if (this.elTargetHullVal) {
+            this.elTargetHullVal.textContent = `${nearestWreck.scrapRemaining}/${nearestWreck.maxScrap} ALLOY`;
+          }
+        }
+
+        // Show target quick actions (Salvage Beam & Tow Tether)
+        if (this.elTargetQuickActions) {
+          this.elTargetQuickActions.classList.remove('hidden');
+
+          if (this.btnHudTetherWreck) {
+            const isTowed = this.currentTowedWreckId === nearestWreck.id;
+            this.btnHudTetherWreck.textContent = isTowed ? '🪝 RELEASE TETHER [T]' : '🪝 TETHER WRECK [T]';
+          }
+
+          if (this.btnHudSalvageBeam) {
+            this.btnHudSalvageBeam.textContent = this.isMiningLaserActive ? '⚡ STOP BEAM [E]' : '⚡ SALVAGE BEAM [E]';
+          }
+        }
+      }
+    } else {
+      this.targetedWreckId = null;
+      if (!this.primaryDroneTarget && this.elTargetTelemetryHud) {
+        this.elTargetTelemetryHud.classList.add('hidden');
+      }
+      if (this.elTargetQuickActions) {
+        this.elTargetQuickActions.classList.add('hidden');
+      }
+    }
+  }
+
+  public toggleTowTether(): void {
+    if (this.currentTowedWreckId) {
+      if (this.combatSocket && this.combatSocket.readyState === WebSocket.OPEN) {
+        this.combatSocket.send(JSON.stringify({ type: 'RELEASE_TOW' }));
+      }
+      this.currentTowedWreckId = null;
+      if (this.towCableMesh) this.towCableMesh.visible = false;
+      if (this.elTowCableHud) this.elTowCableHud.classList.add('hidden');
+      this.audio.playTowCableReleaseSound();
+      this.showApNotification('🪝 MAGNETIC TOW TETHER RELEASED', false);
+    } else if (this.targetedWreckId) {
+      if (this.combatSocket && this.combatSocket.readyState === WebSocket.OPEN) {
+        this.combatSocket.send(JSON.stringify({ type: 'ATTACH_TOW', wreckId: this.targetedWreckId }));
+      }
+      this.currentTowedWreckId = this.targetedWreckId;
+      this.audio.playTowCableAttachSound();
+      this.showApNotification('🪝 ATTACHING MAGNETIC TOW TETHER...', false);
+    } else {
+      this.showApNotification('⚠️ NO WRECK TARGETED TO TETHER', true);
+    }
+  }
+
+  public toggleSalvageMining(): void {
+    if (this.isMiningLaserActive) {
+      this.stopSalvageMining();
+    } else if (this.targetedWreckId) {
+      this.startSalvageMining();
+    } else {
+      this.showApNotification('⚠️ NO WRECK TARGETED FOR SALVAGE BEAM', true);
+    }
+  }
+
+  public startSalvageMining(): void {
+    if (!this.targetedWreckId) return;
+    this.isMiningLaserActive = true;
+    if (this.combatSocket && this.combatSocket.readyState === WebSocket.OPEN) {
+      this.combatSocket.send(JSON.stringify({ type: 'START_SALVAGE_BEAM', wreckId: this.targetedWreckId }));
+    }
+    this.audio.playMiningLaserSound();
+    this.showApNotification('⚡ SALVAGE MINING BEAM ENGAGED', false);
+  }
+
+  public stopSalvageMining(): void {
+    this.isMiningLaserActive = false;
+    this.hideSalvageBeam();
+    if (this.combatSocket && this.combatSocket.readyState === WebSocket.OPEN) {
+      this.combatSocket.send(JSON.stringify({ type: 'STOP_SALVAGE_BEAM' }));
+    }
+  }
+
+  public async loadSalvageData(): Promise<void> {
+    try {
+      const holdRes = await fetch('/api/player/hold?playerId=acc_sol_captain');
+      if (holdRes.ok) {
+        const holdData = await holdRes.json();
+        if (this.elSalvagePlayerCredits) {
+          this.elSalvagePlayerCredits.textContent = `${(holdData.credits || 0).toLocaleString()} Cr`;
+        }
+      }
+
+      const wreckRes = await fetch('/api/combat/wrecks?sectorId=2');
+      if (wreckRes.ok) {
+        const data = await wreckRes.json();
+        const wrecks = data.wrecks || [];
+        if (this.elSalvageSweepCount) {
+          this.elSalvageSweepCount.textContent = `${wrecks.length} DERELICTS DETECTED`;
+        }
+
+        if (this.elSalvageDerelictsList) {
+          this.elSalvageDerelictsList.innerHTML = '';
+          wrecks.forEach((w: any) => {
+            const item = document.createElement('div');
+            item.className = 'derelict-card-item';
+            item.innerHTML = `
+              <div class="derelict-card-info">
+                <span class="derelict-card-title">${w.shipName}</span>
+                <span class="derelict-card-sub">${w.shipClass} // ${w.faction} [Sector ${w.sectorId}]</span>
+              </div>
+              <div class="derelict-card-scrap">
+                ${w.scrapRemaining} / ${w.maxScrap} ALLOY (${Math.round(w.hullIntactness * 100)}%)
+              </div>
+            `;
+            this.elSalvageDerelictsList?.appendChild(item);
+          });
+        }
+
+        const towed = wrecks.find((w: any) => w.isTowed && w.towedByAccountId === 'acc_sol_captain') || 
+                      (this.currentTowedWreckId ? wrecks.find((w: any) => w.id === this.currentTowedWreckId) : null);
+
+        if (towed) {
+          if (this.elSalvageEmptyCard) this.elSalvageEmptyCard.classList.add('hidden');
+          if (this.elSalvageWreckCard) this.elSalvageWreckCard.classList.remove('hidden');
+          if (this.elSalvageTetherStatus) {
+            this.elSalvageTetherStatus.textContent = 'DERELICT SECURED IN DOCK';
+            this.elSalvageTetherStatus.style.color = '#34d399';
+          }
+          if (this.elSalvageWreckFaction) this.elSalvageWreckFaction.textContent = towed.faction.toUpperCase();
+          if (this.elSalvageWreckTitle) this.elSalvageWreckTitle.textContent = towed.shipName;
+          if (this.elSalvageWreckClass) this.elSalvageWreckClass.textContent = towed.shipClass;
+          if (this.elSalvageWreckScrap) this.elSalvageWreckScrap.textContent = `${towed.scrapRemaining} / ${towed.maxScrap} Units`;
+          if (this.elSalvageWreckIntactness) this.elSalvageWreckIntactness.textContent = `${Math.round(towed.hullIntactness * 100)}%`;
+          const estValue = Math.round(2000 + towed.scrapRemaining * 12 + towed.hullIntactness * 1500);
+          if (this.elSalvageWreckVal) this.elSalvageWreckVal.textContent = `${estValue.toLocaleString()} Cr`;
+
+          this.tetheredStationWreck = towed;
+        } else {
+          if (this.elSalvageEmptyCard) this.elSalvageEmptyCard.classList.remove('hidden');
+          if (this.elSalvageWreckCard) this.elSalvageWreckCard.classList.add('hidden');
+          if (this.elSalvageTetherStatus) {
+            this.elSalvageTetherStatus.textContent = 'NO TOW ATTACHED';
+            this.elSalvageTetherStatus.style.color = '#94a3b8';
+          }
+          this.tetheredStationWreck = null;
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load salvage data:', err);
+    }
+  }
+
+  public async dismantleTetheredWreck(): Promise<void> {
+    if (!this.tetheredStationWreck) return;
+    const wreckId = this.tetheredStationWreck.id;
+
+    try {
+      const res = await fetch('/api/combat/wrecks/dismantle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wreckId, accountId: 'acc_sol_captain' }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        this.audio.playSalvageDismantleSound();
+        this.showApNotification(`🔨 ${data.message}`, false);
+        this.currentTowedWreckId = null;
+        this.loadSalvageData();
+      } else {
+        this.showApNotification(`⚠️ ${data.error || 'Dismantle failed'}`, true);
+      }
+    } catch (err: any) {
+      this.showApNotification(`⚠️ Dismantle error: ${err.message}`, true);
+    }
+  }
+
+  public async refurbishTetheredWreck(): Promise<void> {
+    if (!this.tetheredStationWreck) return;
+    const wreckId = this.tetheredStationWreck.id;
+
+    try {
+      const res = await fetch('/api/combat/wrecks/refurbish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wreckId, accountId: 'acc_sol_captain' }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        this.audio.playHullRefurbishSound();
+        this.showApNotification(`🛡️ ${data.message}`, false);
+        this.currentTowedWreckId = null;
+        this.loadSalvageData();
+      } else {
+        this.showApNotification(`⚠️ ${data.error || 'Refurbish failed'}`, true);
+      }
+    } catch (err: any) {
+      this.showApNotification(`⚠️ Refurbish error: ${err.message}`, true);
     }
   }
 

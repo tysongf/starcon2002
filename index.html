@@ -209,7 +209,9 @@
             <li><kbd>M1 / 1</kbd> High Slot 1: Light Pulse Cannon</li>
             <li><kbd>M2 / 2</kbd> High Slot 2: Plasma Accelerator</li>
             <li><kbd>SHIFT / 3</kbd> Mid Slot 1: Afterburner Overdrive</li>
-            <li><kbd>E / 4</kbd> Mid Slot 2: Flak Scatter Blaster</li>
+            <li><kbd>4</kbd> Mid Slot 2: Flak Scatter Blaster</li>
+            <li><kbd>E</kbd> Laser Salvage Mining Beam (on targeted wreck)</li>
+            <li><kbd>T</kbd> Deploy / Release Magnetic Tow Tether</li>
             <li><kbd>SPACE</kbd> Fire Active Weapon</li>
             <li><kbd>Q</kbd> Cycle Active Primary Preset</li>
             <li><kbd>TAB</kbd> Cycle Nearest Target Lock</li>
@@ -239,6 +241,22 @@
             <span class="bar-val" id="target-hull-val">50/50</span>
           </div>
         </div>
+        <!-- Target Interaction Quick-Actions (Day 15 Wrecks & Salvage) -->
+        <div id="target-quick-actions" class="target-quick-actions hidden">
+          <button id="btn-hud-salvage-beam" class="target-action-btn beam-btn">⚡ SALVAGE BEAM [E]</button>
+          <button id="btn-hud-tether-wreck" class="target-action-btn tow-btn">🪝 TETHER WRECK [T]</button>
+        </div>
+      </div>
+
+      <!-- Day 15: Tow Cable Active HUD Banner -->
+      <div id="tow-cable-hud" class="tow-cable-hud hidden">
+        <div class="tow-badge">🪝 TETHER ATTACHED</div>
+        <div class="tow-info">
+          <span class="tow-target-name" id="tow-target-name">Derelict Hegemony Cruiser</span>
+          <span class="tow-dist-metric" id="tow-dist-metric">14.2 u</span>
+          <span class="tow-status-badge tension-nominal" id="tow-tension-badge">TENSION: NOMINAL</span>
+        </div>
+        <button id="btn-hud-release-tow" class="tow-release-btn">RELEASE [T]</button>
       </div>
 
       <!-- Bottom-Center Command Console & Ability Hotbar -->
@@ -418,6 +436,9 @@
           <button id="tab-btn-contracts" class="station-tab-btn" data-tab="contracts">
             💀 REVENGE & BOUNTIES
           </button>
+          <button id="tab-btn-salvage" class="station-tab-btn" data-tab="salvage">
+            🔧 SALVAGE BAY
+          </button>
         </div>
 
         <!-- Tab View 1: Commodity Exchange (Default) -->
@@ -573,6 +594,77 @@
               </div>
               <div class="killmails-list" id="killmails-archive-list">
                 <!-- Dynamically populated killmails -->
+              </div>
+            </div>
+        </div>
+
+        <!-- Tab View 5: Salvage Bay & Wreck Breakdown (Day 15) -->
+        <div id="view-tab-salvage" class="station-tab-content hidden">
+          <div class="armory-header">
+            <div class="armory-titles">
+              <h4>AEGIS ORBITAL SALVAGE & REFURBISHING BAY</h4>
+              <span class="col-subtext">DISMANTLE TOWED DERELICTS, REPROCESS STRUCTURAL ALLOYS, OR REFURBISH FACTION CHASSIS</span>
+            </div>
+            <div class="stat-pill credits-pill">
+              <span class="pill-label">CREDITS:</span>
+              <span class="pill-value" id="salvage-player-credits">-- Cr</span>
+            </div>
+          </div>
+
+          <div class="salvage-columns-grid">
+            <!-- Left: Tethered Derelict Breakdown Console -->
+            <div class="salvage-panel">
+              <div class="contracts-panel-header">
+                <h5>🪝 TETHERED DERELICT VESSEL</h5>
+                <span class="contracts-count" id="salvage-tether-status">NO TOW ATTACHED</span>
+              </div>
+              <div class="salvage-tether-body" id="salvage-tether-body">
+                <div class="salvage-empty-card" id="salvage-empty-card">
+                  <div class="empty-icon">🪝</div>
+                  <h4>NO DERELICT VESSEL IN TOW HARNESS</h4>
+                  <p>Deploy a magnetic tow tether <kbd>[T]</kbd> in sector space to tether and haul derelict ship wreckage back to Aegis Terminal.</p>
+                </div>
+
+                <div class="salvage-wreck-card hidden" id="salvage-wreck-card">
+                  <div class="wreck-card-header">
+                    <span class="wreck-badge" id="salvage-wreck-faction">HEGEMONY</span>
+                    <h3 id="salvage-wreck-title">Derelict Hegemony Cruiser</h3>
+                    <span class="wreck-class" id="salvage-wreck-class">Hegemony Vanguard</span>
+                  </div>
+                  <div class="wreck-metrics-grid">
+                    <div class="metric-item">
+                      <span class="metric-lbl">SCRAP ALLOY:</span>
+                      <span class="metric-val" id="salvage-wreck-scrap">250 / 250 Units</span>
+                    </div>
+                    <div class="metric-item">
+                      <span class="metric-lbl">STRUCTURAL INTACTNESS:</span>
+                      <span class="metric-val" id="salvage-wreck-intactness">85%</span>
+                    </div>
+                    <div class="metric-item">
+                      <span class="metric-lbl">ESTIMATED SALVAGE VALUE:</span>
+                      <span class="metric-val text-amber" id="salvage-wreck-val">5,250 Cr</span>
+                    </div>
+                  </div>
+                  <div class="salvage-actions-row">
+                    <button id="btn-dismantle-wreck" class="hud-btn primary">
+                      🔨 DISMANTLE FOR RAW ALLOYS (+Credits & Plasteel)
+                    </button>
+                    <button id="btn-refurbish-wreck" class="hud-btn secondary">
+                      🛡️ REFURBISH FACTION HULL (-2,500 Cr // +Max Armor & Hold)
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Right: Sector Derelicts Sensor Scan Log -->
+            <div class="salvage-panel">
+              <div class="contracts-panel-header">
+                <h5>🛰️ SECTOR DERELICT SENSOR SWEEP</h5>
+                <span class="contracts-count" id="salvage-sweep-count">SCANNING...</span>
+              </div>
+              <div class="contracts-list" id="salvage-derelicts-list">
+                <!-- Dynamically populated sector derelicts -->
               </div>
             </div>
           </div>
