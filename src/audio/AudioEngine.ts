@@ -1143,7 +1143,140 @@ export class AudioEngine {
       this.planetAmbienceNodes = null;
     }
   }
+
+  /**
+   * Day 19: Colony Outpost founding fanfare (multi-harmonic celebratory chord)
+   */
+  public playColonyFoundingFanfare(): void {
+    this.initContext();
+    if (!this.ctx) return;
+
+    const freqs = [330, 415.3, 493.88, 659.25]; // E major chord
+    const now = this.ctx.currentTime;
+
+    freqs.forEach((freq, idx) => {
+      if (!this.ctx) return;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = idx % 2 === 0 ? 'triangle' : 'sine';
+      osc.frequency.setValueAtTime(freq * 0.8, now + idx * 0.08);
+      osc.frequency.exponentialRampToValueAtTime(freq, now + idx * 0.08 + 0.12);
+
+      gain.gain.setValueAtTime(0.001, now + idx * 0.08);
+      gain.gain.linearRampToValueAtTime(0.12, now + idx * 0.08 + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.08 + 0.9);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      osc.start(now + idx * 0.08);
+      osc.stop(now + idx * 0.08 + 1.0);
+    });
+  }
+
+  /**
+   * Day 19: Facility upgrade glissando (upward tier ascension sound)
+   */
+  public playFacilityUpgradeSound(): void {
+    this.initContext();
+    if (!this.ctx) return;
+
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(220, now);
+    osc.frequency.exponentialRampToValueAtTime(880, now + 0.35);
+
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(600, now);
+    filter.frequency.exponentialRampToValueAtTime(2400, now + 0.35);
+
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.linearRampToValueAtTime(0.15, now + 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.5);
+  }
+
+  /**
+   * Day 19: Cargo harvest clunk and pneumatic seal chime
+   */
+  public playCargoHarvestSound(): void {
+    this.initContext();
+    if (!this.ctx) return;
+
+    const now = this.ctx.currentTime;
+    // Low mechanical clunk
+    const oscLow = this.ctx.createOscillator();
+    const gainLow = this.ctx.createGain();
+
+    oscLow.type = 'triangle';
+    oscLow.frequency.setValueAtTime(140, now);
+    oscLow.frequency.exponentialRampToValueAtTime(45, now + 0.2);
+
+    gainLow.gain.setValueAtTime(0.25, now);
+    gainLow.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+
+    oscLow.connect(gainLow);
+    gainLow.connect(this.ctx.destination);
+
+    oscLow.start(now);
+    oscLow.stop(now + 0.3);
+
+    // High transfer chime
+    const oscHigh = this.ctx.createOscillator();
+    const gainHigh = this.ctx.createGain();
+
+    oscHigh.type = 'sine';
+    oscHigh.frequency.setValueAtTime(587.33, now + 0.1); // D5
+    oscHigh.frequency.setValueAtTime(880, now + 0.18); // A5
+
+    gainHigh.gain.setValueAtTime(0.001, now + 0.1);
+    gainHigh.gain.linearRampToValueAtTime(0.12, now + 0.14);
+    gainHigh.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+
+    oscHigh.connect(gainHigh);
+    gainHigh.connect(this.ctx.destination);
+
+    oscHigh.start(now + 0.1);
+    oscHigh.stop(now + 0.65);
+  }
+
+  /**
+   * Day 19: Colony Silo capacity warning / full stockpile alert chime
+   */
+  public playSiloAlertChime(): void {
+    this.initContext();
+    if (!this.ctx) return;
+
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(659.25, now); // E5
+    osc.frequency.setValueAtTime(523.25, now + 0.12); // C5
+
+    gain.gain.setValueAtTime(0.1, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.45);
+  }
 }
+
 
 
 

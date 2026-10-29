@@ -405,3 +405,26 @@ VALUES
     ('planet_sec5_skrit', 5, 'Skrit-V', 'GAS_GIANT', 34.0, -220.0, 0.0, 190.0, 505, '#f59e0b', 4.50, 85, 'HIGH_PRESSURE_STORMS', 0, 'FACTION_KRYLL', 'Massive banded gas giant with cryo-hydrocarbon rings suitable for Deuterium fuel skimming.')
 ON CONFLICT (id) DO NOTHING;
 
+-- Day 19: Colony Outposts, Terraforming & Mining Infrastructure
+CREATE TABLE IF NOT EXISTS colonies (
+    id VARCHAR(64) PRIMARY KEY,
+    account_id VARCHAR(64) NOT NULL,
+    planet_id VARCHAR(64) NOT NULL,
+    beacon_id VARCHAR(64) NOT NULL,
+    name VARCHAR(128) NOT NULL,
+    surface_lat FLOAT NOT NULL,
+    surface_lng FLOAT NOT NULL,
+    commodity_id VARCHAR(64) NOT NULL,
+    population INT NOT NULL DEFAULT 100,
+    max_population INT NOT NULL DEFAULT 500,
+    stockpiled_amount INT NOT NULL DEFAULT 0,
+    silo_capacity INT NOT NULL DEFAULT 50,
+    derrick_tier INT NOT NULL DEFAULT 1,
+    habitation_tier INT NOT NULL DEFAULT 1,
+    terraformer_tier INT NOT NULL DEFAULT 1,
+    silo_tier INT NOT NULL DEFAULT 1,
+    terraforming_progress FLOAT NOT NULL DEFAULT 0.0,
+    last_harvest_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+

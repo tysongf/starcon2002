@@ -15,6 +15,7 @@ import { wreckService } from './services/WreckService';
 import { dialogService, DIALOG_TREES } from './services/DialogService';
 import { reputationService, FACTION_METADATA } from './services/ReputationService';
 import { planetaryService } from './services/PlanetaryService';
+import { colonyService } from './services/ColonyService';
 
 
 
@@ -766,11 +767,81 @@ async function startServer() {
       if (body.planetId) {
         await db.query('DELETE FROM planet_surveys WHERE account_id = $1 AND planet_id = $2', [accountId, body.planetId]);
         await db.query('DELETE FROM planet_beacons WHERE account_id = $1 AND planet_id = $2', [accountId, body.planetId]);
+        await db.query('DELETE FROM colonies WHERE account_id = $1 AND planet_id = $2', [accountId, body.planetId]);
       } else {
         await db.query('DELETE FROM planet_surveys WHERE account_id = $1', [accountId]);
         await db.query('DELETE FROM planet_beacons WHERE account_id = $1', [accountId]);
+        await db.query('DELETE FROM colonies WHERE account_id = $1', [accountId]);
       }
-      reply.send({ success: true, message: 'Survey state reset successfully.' });
+      reply.send({ success: true, message: 'Survey and colony state reset successfully.' });
+    });
+
+    // Day 19: Colony Outposts, Terraforming & Mining Infrastructure Endpoints
+    server.post('/api/colonies/found', async (req, reply) => {
+      const body = (req.body || {}) as {
+        accountId?: string;
+        planetId: string;
+        beaconId: string;
+        name?: string;
+      };
+      const accountId = body.accountId || 'acc_sol_captain';
+      try {
+        const colony = await colonyService.foundColony(accountId, body.planetId, body.beaconId, body.name);
+        reply.send({ success: true, colony });
+      } catch (err: any) {
+        reply.status(400).send({ success: false, error: err.message });
+      }
+    });
+
+    server.get('/api/colonies/planet/:planetId', async (req, reply) => {
+      const { planetId } = req.params as { planetId: string };
+      const query = (req.query || {}) as { accountId?: string };
+      const accountId = query.accountId || 'acc_sol_captain';
+      try {
+        const colonies = await colonyService.getPlanetColonies(planetId, accountId);
+        reply.send({ success: true, colonies });
+      } catch (err: any) {
+        reply.status(400).send({ success: false, error: err.message });
+      }
+    });
+
+    server.get('/api/colonies/:colonyId', async (req, reply) => {
+      const { colonyId } = req.params as { colonyId: string };
+      const query = (req.query || {}) as { accountId?: string };
+      const accountId = query.accountId || 'acc_sol_captain';
+      try {
+        const colony = await colonyService.getColonyDetail(colonyId, accountId);
+        reply.send({ success: true, colony });
+      } catch (err: any) {
+        reply.status(400).send({ success: false, error: err.message });
+      }
+    });
+
+    server.post('/api/colonies/:colonyId/upgrade', async (req, reply) => {
+      const { colonyId } = req.params as { colonyId: string };
+      const body = (req.body || {}) as {
+        accountId?: string;
+        facilityType: 'DERRICK' | 'HABITATION' | 'TERRAFORMER' | 'SILO';
+      };
+      const accountId = body.accountId || 'acc_sol_captain';
+      try {
+        const result = await colonyService.upgradeFacility(colonyId, accountId, body.facilityType);
+        reply.send(result);
+      } catch (err: any) {
+        reply.status(400).send({ success: false, error: err.message });
+      }
+    });
+
+    server.post('/api/colonies/:colonyId/harvest', async (req, reply) => {
+      const { colonyId } = req.params as { colonyId: string };
+      const body = (req.body || {}) as { accountId?: string };
+      const accountId = body.accountId || 'acc_sol_captain';
+      try {
+        const result = await colonyService.harvestColonyCargo(colonyId, accountId);
+        reply.send(result);
+      } catch (err: any) {
+        reply.status(400).send({ success: false, error: err.message });
+      }
     });
 
 

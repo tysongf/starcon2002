@@ -46,6 +46,12 @@ class GameEngine {
   private targetedLng: number = 0;
   private hoveredHotspot: any = null;
 
+  // Day 19: Colony Outposts, Terraforming & Mining Infrastructure
+  private activeColony: any | null = null;
+  private activeColoniesList: any[] = [];
+  private hoveredColony: any | null = null;
+  private activeSurveyTab: 'SENSORS' | 'COLONY' = 'SENSORS';
+
   // Navigation & Sector Jump System (Day 8)
   private currentSectorId: number = 1;
   private currentSectorName: string = 'Sol-Perimeter Nexus';
@@ -1034,6 +1040,18 @@ class GameEngine {
     document.getElementById('btn-scan-bio')?.addEventListener('click', () => this.performScannerSweep('BIO'));
     document.getElementById('btn-scan-anomalies')?.addEventListener('click', () => this.performScannerSweep('ANOMALIES'));
     document.getElementById('btn-launch-probe')?.addEventListener('click', () => this.launchAtmosphericProbe());
+
+    // Day 19: CRT Console Tabs
+    document.getElementById('tab-survey-sensors')?.addEventListener('click', () => this.switchSurveyTab('SENSORS'));
+    document.getElementById('tab-survey-colony')?.addEventListener('click', () => this.switchSurveyTab('COLONY'));
+
+    // Day 19: Colony Actions & Upgrades
+    document.getElementById('btn-found-colony')?.addEventListener('click', () => this.foundColony());
+    document.getElementById('btn-harvest-cargo')?.addEventListener('click', () => this.harvestColonyCargo());
+    document.getElementById('btn-upgrade-derrick')?.addEventListener('click', () => this.upgradeColonyFacility('DERRICK'));
+    document.getElementById('btn-upgrade-habitation')?.addEventListener('click', () => this.upgradeColonyFacility('HABITATION'));
+    document.getElementById('btn-upgrade-terraformer')?.addEventListener('click', () => this.upgradeColonyFacility('TERRAFORMER'));
+    document.getElementById('btn-upgrade-silo')?.addEventListener('click', () => this.upgradeColonyFacility('SILO'));
 
     this.initGlobeCanvasControls();
 
@@ -5213,6 +5231,9 @@ class GameEngine {
         this.scene.add(this.activePlanet.group);
         this.activePlanetDetail = pData;
         console.log(`[DAY 18] Spawned 3D Planet: ${pData.name} at (${pData.posX}, ${pData.posZ})`);
+
+        // Day 19: Check for founded colonies in sector planet
+        this.fetchPlanetColonies(pData.id);
       }
     } catch (err) {
       console.warn('[DAY 18] Failed to load sector planets:', err);
@@ -5234,14 +5255,18 @@ class GameEngine {
     if (this.elOrbitalBanner && this.elOrbitalMsg) {
       if (dist <= 65.0) {
         this.elOrbitalBanner.classList.remove('hidden');
+        const col = this.activeColony;
+        const siloPct = col ? Math.min(100, Math.round((col.stockpiled_amount / col.silo_capacity) * 100)) : 0;
+        const colBadge = col ? `[🏛️ ${col.name.toUpperCase()}: ${siloPct}% SILO] ` : '';
+
         if (dist <= this.activePlanet.orbitalRadius) {
-          this.elOrbitalMsg.textContent = `SYNCHRONOUS ORBIT READY // DIST: ${dist.toFixed(1)}u [O]`;
-          this.elOrbitalBanner.style.borderColor = '#10b981';
-          this.elOrbitalBanner.style.color = '#10b981';
+          this.elOrbitalMsg.textContent = `SYNCHRONOUS ORBIT READY // ${colBadge}DIST: ${dist.toFixed(1)}u [O]`;
+          this.elOrbitalBanner.style.borderColor = siloPct >= 100 ? '#f59e0b' : '#10b981';
+          this.elOrbitalBanner.style.color = siloPct >= 100 ? '#fbbf24' : '#10b981';
         } else {
-          this.elOrbitalMsg.textContent = `APPROACHING ${this.activePlanet.data.name} // DIST: ${dist.toFixed(1)}u`;
-          this.elOrbitalBanner.style.borderColor = '#38bdf8';
-          this.elOrbitalBanner.style.color = '#38bdf8';
+          this.elOrbitalMsg.textContent = `APPROACHING ${this.activePlanet.data.name} // ${colBadge}DIST: ${dist.toFixed(1)}u`;
+          this.elOrbitalBanner.style.borderColor = siloPct >= 100 ? '#f59e0b' : '#38bdf8';
+          this.elOrbitalBanner.style.color = siloPct >= 100 ? '#fbbf24' : '#38bdf8';
         }
       } else {
         this.elOrbitalBanner.classList.add('hidden');
@@ -5295,6 +5320,9 @@ class GameEngine {
     } catch (err) {
       console.warn('[DAY 18] Failed to fetch planet survey detail:', err);
     }
+
+    // Day 19: Fetch Authoritative Colony State
+    await this.fetchPlanetColonies(p.id);
 
     this.updateSurveyConsoleUI();
     this.startGlobeRender();
@@ -5395,8 +5423,21 @@ class GameEngine {
             }
           }
         }
+
+        // Check if hovering near a colony
+        this.hoveredColony = null;
+        if (this.activeColoniesList) {
+          for (const col of this.activeColoniesList) {
+            const cPos = this.getHotspotScreenPos(col.surface_lat, col.surface_lng, R, cx, cy);
+            if (cPos && Math.hypot(mouseX - cPos.x, mouseY - cPos.y) < 16) {
+              this.hoveredColony = col;
+              break;
+            }
+          }
+        }
       } else {
         this.hoveredHotspot = null;
+        this.hoveredColony = null;
       }
     });
 
@@ -5412,6 +5453,13 @@ class GameEngine {
       const d = Math.sqrt(dx * dx + dy * dy);
 
       if (d <= R) {
+        // If clicked on an existing colony, switch to Colony Command tab!
+        if (this.hoveredColony) {
+          this.switchSurveyTab('COLONY');
+          this.showApNotification(`🏛️ Interfacing with ${this.hoveredColony.name}...`, false);
+          return;
+        }
+
         const z = Math.sqrt(R * R - d * d);
         const cosX = Math.cos(-this.globeRotX);
         const sinX = Math.sin(-this.globeRotX);
@@ -5641,6 +5689,69 @@ class GameEngine {
       }
     }
 
+    // 5b. Day 19: Active Surface Colonies (Geodesic Dome & Foundation Ring)
+    if (this.activeColoniesList && this.activeColoniesList.length > 0) {
+      const now = performance.now();
+      for (const col of this.activeColoniesList) {
+        const pt = this.getHotspotScreenPos(col.surface_lat, col.surface_lng, R, cx, cy);
+        if (!pt) continue;
+
+        ctx.save();
+        // Pulsing foundation ring
+        const pulse = 0.8 + 0.2 * Math.sin(now * 0.005);
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 1.5;
+        ctx.shadowColor = '#38bdf8';
+        ctx.shadowBlur = 10 * pulse;
+        ctx.beginPath();
+        ctx.ellipse(pt.x, pt.y + 2, 9 * pulse, 4.5 * pulse, 0, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Glowing geodesic dome (semi-circle)
+        ctx.fillStyle = 'rgba(56, 189, 248, 0.45)';
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y + 2, 7, Math.PI, 0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Dome facet structural lines
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 0.8;
+        ctx.beginPath();
+        ctx.moveTo(pt.x - 4, pt.y + 2);
+        ctx.lineTo(pt.x, pt.y - 5);
+        ctx.lineTo(pt.x + 4, pt.y + 2);
+        ctx.stroke();
+
+        // Communication Spire & beacon ping
+        ctx.strokeStyle = '#fbbf24';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(pt.x, pt.y - 5);
+        ctx.lineTo(pt.x, pt.y - 11);
+        ctx.stroke();
+
+        ctx.fillStyle = '#fbbf24';
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y - 11, 1.8, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Subtle colony label badge
+        const colLabel = `${col.name.toUpperCase()} [T${Math.max(col.derrick_tier, col.habitation_tier)}]`;
+        ctx.font = 'bold 8px monospace';
+        const lw = ctx.measureText(colLabel).width;
+        ctx.fillStyle = 'rgba(2, 6, 23, 0.85)';
+        ctx.fillRect(pt.x - lw / 2 - 3, pt.y - 23, lw + 6, 11);
+        ctx.strokeStyle = 'rgba(56, 189, 248, 0.6)';
+        ctx.strokeRect(pt.x - lw / 2 - 3, pt.y - 23, lw + 6, 11);
+        ctx.fillStyle = '#38bdf8';
+        ctx.fillText(colLabel, pt.x - lw / 2, pt.y - 15);
+
+        ctx.restore();
+      }
+    }
+
     ctx.restore(); // End sphere clip
 
     // 6. Atmospheric Rim Glow
@@ -5669,6 +5780,26 @@ class GameEngine {
         ctx.strokeRect(pt.x + 8, pt.y - 18, tw + 10, 16);
 
         ctx.fillStyle = '#f8fafc';
+        ctx.fillText(text, pt.x + 13, pt.y - 6);
+        ctx.restore();
+      }
+    }
+
+    // 8. Hovered Colony Tooltip
+    if (this.hoveredColony) {
+      const pt = this.getHotspotScreenPos(this.hoveredColony.surface_lat, this.hoveredColony.surface_lng, R, cx, cy);
+      if (pt) {
+        ctx.save();
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
+        ctx.strokeStyle = '#fbbf24';
+        ctx.lineWidth = 1.2;
+        const text = `🏛️ ${this.hoveredColony.name} [POP: ${this.hoveredColony.population}] (CLICK TO MANAGE)`;
+        ctx.font = 'bold 9px monospace';
+        const tw = ctx.measureText(text).width;
+        ctx.fillRect(pt.x + 8, pt.y - 18, tw + 10, 16);
+        ctx.strokeRect(pt.x + 8, pt.y - 18, tw + 10, 16);
+
+        ctx.fillStyle = '#fbbf24';
         ctx.fillText(text, pt.x + 13, pt.y - 6);
         ctx.restore();
       }
@@ -5996,6 +6127,344 @@ class GameEngine {
     } catch (err) {
       console.warn('[DAY 18] Astrometry bureau fetch failed:', err);
     }
+  }
+
+  // ============================================================================
+  // DAY 19: COLONY OUTPOSTS, TERRAFORMING & MINING INFRASTRUCTURE
+  // ============================================================================
+
+  /**
+   * Toggles between Astrometry Sensor sweep array and Colony Command console.
+   */
+  public switchSurveyTab(tab: 'SENSORS' | 'COLONY'): void {
+    this.activeSurveyTab = tab;
+    this.audio.playUiBlip();
+
+    const btnSensors = document.getElementById('tab-survey-sensors');
+    const btnColony = document.getElementById('tab-survey-colony');
+    const panelSensors = document.getElementById('panel-survey-sensors');
+    const panelColony = document.getElementById('panel-survey-colony');
+
+    if (tab === 'SENSORS') {
+      btnSensors?.classList.add('active');
+      btnColony?.classList.remove('active');
+      panelSensors?.classList.remove('hidden');
+      panelColony?.classList.add('hidden');
+    } else {
+      btnSensors?.classList.remove('active');
+      btnColony?.classList.add('active');
+      panelSensors?.classList.add('hidden');
+      panelColony?.classList.remove('hidden');
+
+      if (this.activeColony) {
+        this.refreshColonyDashboardUI();
+      } else {
+        this.populateColonyBeaconSelect();
+      }
+    }
+  }
+
+  /**
+   * Fetches all colonies established on the target planet.
+   */
+  public async fetchPlanetColonies(planetId: string): Promise<void> {
+    try {
+      const res = await fetch(`http://localhost:3000/api/colonies/planet/${planetId}?accountId=acc_sol_captain`);
+      if (res.ok) {
+        const data = await res.json();
+        this.activeColoniesList = data.colonies || [];
+        this.activeColony = this.activeColoniesList.length > 0 ? this.activeColoniesList[0] : null;
+
+        const pill = document.getElementById('survey-colony-pill');
+        if (pill) {
+          pill.textContent = `${this.activeColoniesList.length} ACTIVE`;
+        }
+
+        const cardUnfounded = document.getElementById('colony-unfounded-card');
+        const cardActive = document.getElementById('colony-active-dashboard');
+
+        if (this.activeColony) {
+          cardUnfounded?.classList.add('hidden');
+          cardActive?.classList.remove('hidden');
+          this.refreshColonyDashboardUI();
+
+          // Audio notification if silo reached maximum capacity
+          if (this.activeColony.stockpiled_amount >= this.activeColony.silo_capacity) {
+            this.audio.playSiloAlertChime();
+          }
+        } else {
+          cardUnfounded?.classList.remove('hidden');
+          cardActive?.classList.add('hidden');
+          this.populateColonyBeaconSelect();
+        }
+      }
+    } catch (err) {
+      console.warn('[DAY 19] Failed to fetch planet colonies:', err);
+    }
+  }
+
+  /**
+   * Populates target beacon options for establishing a new colony outpost.
+   */
+  private populateColonyBeaconSelect(): void {
+    const sel = document.getElementById('select-colony-beacon') as HTMLSelectElement | null;
+    if (!sel) return;
+
+    const beacons = this.activePlanetDetail?.beacons || [];
+    if (beacons.length === 0) {
+      sel.innerHTML = '<option value="">-- No Beacons Available (Deploy Surface Probe First) --</option>';
+      return;
+    }
+
+    sel.innerHTML = '<option value="">-- Choose Target Planted Recon Beacon --</option>' +
+      beacons.map((b: any) => `
+        <option value="${b.id}">Beacon at Lat ${b.surfaceLat.toFixed(1)}°, Lng ${b.surfaceLng.toFixed(1)}° (${b.yieldSummary})</option>
+      `).join('');
+  }
+
+  /**
+   * Updates Colony Command UI metrics, silo meter, and facility cards.
+   */
+  public refreshColonyDashboardUI(): void {
+    if (!this.activeColony) return;
+    const col = this.activeColony;
+
+    const elName = document.getElementById('colony-outpost-name');
+    const elCoords = document.getElementById('colony-outpost-coords');
+    const elPop = document.getElementById('colony-stat-pop');
+    const elRate = document.getElementById('colony-stat-rate');
+    const elTerraform = document.getElementById('colony-stat-terraform');
+    const elSiloText = document.getElementById('colony-silo-text');
+    const elSiloFill = document.getElementById('colony-silo-fill');
+
+    if (elName) elName.textContent = col.name.toUpperCase();
+    if (elCoords) elCoords.textContent = `LAT: ${col.surface_lat >= 0 ? '+' : ''}${col.surface_lat.toFixed(1)}° // LNG: ${col.surface_lng >= 0 ? '+' : ''}${col.surface_lng.toFixed(1)}°`;
+    if (elPop) elPop.textContent = `${col.population} / ${col.max_population}`;
+    if (elRate) elRate.textContent = `${(col.production_rate * 60).toFixed(1)} u/min`;
+    if (elTerraform) elTerraform.textContent = `+${(col.terraformer_tier * 0.5).toFixed(1)}% / hr (Hab: ${col.habitability_rating}%)`;
+
+    const siloPct = Math.min(100, Math.round((col.stockpiled_amount / col.silo_capacity) * 100));
+    if (elSiloText) elSiloText.textContent = `${col.stockpiled_amount} / ${col.silo_capacity} Units Stockpiled (${col.commodity_id.replace('COMM_', '')})`;
+    if (elSiloFill) {
+      elSiloFill.style.width = `${siloPct}%`;
+      if (siloPct >= 100) {
+        elSiloFill.style.background = 'linear-gradient(90deg, #f59e0b, #ef4444)';
+      } else {
+        elSiloFill.style.background = 'linear-gradient(90deg, #10b981, #34d399)';
+      }
+    }
+
+    // Facility Cards: Derrick
+    const bDerrick = document.getElementById('badge-derrick-tier');
+    const dDerrick = document.getElementById('desc-derrick-tier');
+    const btnDerrick = document.getElementById('btn-upgrade-derrick') as HTMLButtonElement | null;
+    if (bDerrick) bDerrick.textContent = col.derrick_tier >= 3 ? 'TIER 3 (MAX)' : `TIER ${col.derrick_tier}`;
+    if (bDerrick && col.derrick_tier >= 3) bDerrick.classList.add('max');
+    if (dDerrick) {
+      const mult = col.derrick_tier === 1 ? '1.0x' : col.derrick_tier === 2 ? '2.5x' : '5.0x';
+      dDerrick.textContent = `Surface mineral drills operating at ${mult} extraction multiplier.`;
+    }
+    if (btnDerrick) {
+      if (col.derrick_tier >= 3) {
+        btnDerrick.textContent = 'MAXIMUM TIER REACHED';
+        btnDerrick.disabled = true;
+      } else {
+        const cost = col.derrick_tier === 1 ? '400 CR // 3 AP // 5 ALLOY' : '900 CR // 4 AP // 10 ALLOY';
+        btnDerrick.textContent = `UPGRADE TO TIER ${col.derrick_tier + 1} (${cost})`;
+        btnDerrick.disabled = false;
+      }
+    }
+
+    // Facility Cards: Habitation
+    const bHab = document.getElementById('badge-habitation-tier');
+    const dHab = document.getElementById('desc-habitation-tier');
+    const btnHab = document.getElementById('btn-upgrade-habitation') as HTMLButtonElement | null;
+    if (bHab) bHab.textContent = col.habitation_tier >= 3 ? 'TIER 3 (MAX)' : `TIER ${col.habitation_tier}`;
+    if (bHab && col.habitation_tier >= 3) bHab.classList.add('max');
+    if (dHab) {
+      dHab.textContent = `Pressurized biospheres supporting up to ${col.max_population} workforce.`;
+    }
+    if (btnHab) {
+      if (col.habitation_tier >= 3) {
+        btnHab.textContent = 'MAXIMUM TIER REACHED';
+        btnHab.disabled = true;
+      } else {
+        const cost = col.habitation_tier === 1 ? '400 CR // 3 AP // 5 ALLOY' : '900 CR // 4 AP // 10 ALLOY';
+        btnHab.textContent = `UPGRADE TO TIER ${col.habitation_tier + 1} (${cost})`;
+        btnHab.disabled = false;
+      }
+    }
+
+    // Facility Cards: Terraformer
+    const bTer = document.getElementById('badge-terraformer-tier');
+    const dTer = document.getElementById('desc-terraformer-tier');
+    const btnTer = document.getElementById('btn-upgrade-terraformer') as HTMLButtonElement | null;
+    if (bTer) bTer.textContent = col.terraformer_tier >= 3 ? 'TIER 3 (MAX)' : `TIER ${col.terraformer_tier}`;
+    if (bTer && col.terraformer_tier >= 3) bTer.classList.add('max');
+    if (dTer) {
+      dTer.textContent = `Ion scrubbers detoxifying atmosphere (+${(col.terraformer_tier * 0.5).toFixed(1)}% Hab/hr).`;
+    }
+    if (btnTer) {
+      if (col.terraformer_tier >= 3) {
+        btnTer.textContent = 'MAXIMUM TIER REACHED';
+        btnTer.disabled = true;
+      } else {
+        const cost = col.terraformer_tier === 1 ? '500 CR // 4 AP // 5 ALLOY' : '1,200 CR // 5 AP // 10 ALLOY';
+        btnTer.textContent = `UPGRADE TO TIER ${col.terraformer_tier + 1} (${cost})`;
+        btnTer.disabled = false;
+      }
+    }
+
+    // Facility Cards: Silo
+    const bSilo = document.getElementById('badge-silo-tier');
+    const dSilo = document.getElementById('desc-silo-tier');
+    const btnSilo = document.getElementById('btn-upgrade-silo') as HTMLButtonElement | null;
+    if (bSilo) bSilo.textContent = col.silo_tier >= 3 ? 'TIER 3 (MAX)' : `TIER ${col.silo_tier}`;
+    if (bSilo && col.silo_tier >= 3) bSilo.classList.add('max');
+    if (dSilo) {
+      dSilo.textContent = `Reinforced storage vaults buffering up to ${col.silo_capacity} units.`;
+    }
+    if (btnSilo) {
+      if (col.silo_tier >= 3) {
+        btnSilo.textContent = 'MAXIMUM TIER REACHED';
+        btnSilo.disabled = true;
+      } else {
+        const cost = col.silo_tier === 1 ? '350 CR // 3 AP // 5 ALLOY' : '800 CR // 4 AP // 10 ALLOY';
+        btnSilo.textContent = `UPGRADE TO TIER ${col.silo_tier + 1} (${cost})`;
+        btnSilo.disabled = false;
+      }
+    }
+  }
+
+  /**
+   * Establishes a permanent colony outpost at the selected sensor beacon.
+   */
+  public async foundColony(): Promise<void> {
+    if (!this.activePlanet) return;
+    const selBeacon = document.getElementById('select-colony-beacon') as HTMLSelectElement | null;
+    const inputName = document.getElementById('input-colony-name') as HTMLInputElement | null;
+
+    const beaconId = selBeacon ? selBeacon.value : '';
+    const name = inputName && inputName.value.trim() ? inputName.value.trim() : `${this.activePlanet.data.name} Outpost`;
+
+    if (!beaconId) {
+      this.showApNotification('⚠️ Please select a planted surface beacon location first.', true);
+      return;
+    }
+
+    if (this.playerAP.currentAP < 5) {
+      this.showApNotification('⚠️ INSUFFICIENT ACTION POINTS: Founding an outpost requires 5 AP.', true);
+      return;
+    }
+
+    const btn = document.getElementById('btn-found-colony') as HTMLButtonElement | null;
+    if (btn) btn.disabled = true;
+
+    try {
+      const res = await fetch('http://localhost:3000/api/colonies/found', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accountId: 'acc_sol_captain',
+          planetId: this.activePlanet.data.id,
+          beaconId,
+          name,
+        }),
+      });
+
+      const data = await res.json();
+      if (btn) btn.disabled = false;
+
+      if (!res.ok || !data.success) {
+        this.showApNotification(`⚠️ ${data.error || 'Colony founding failed'}`, true);
+        return;
+      }
+
+      this.audio.playColonyFoundingFanfare();
+      this.showApNotification(`🏛️ Outpost "${name}" successfully established!`, false);
+
+      this.fetchPlayerAP();
+      this.refreshPlayerHold();
+      await this.fetchPlanetColonies(this.activePlanet.data.id);
+    } catch (err) {
+      if (btn) btn.disabled = false;
+      console.error('[DAY 19] Failed to found colony:', err);
+    }
+  }
+
+  /**
+   * Upgrades a colony facility module to its next tier.
+   */
+  public async upgradeColonyFacility(facilityType: 'DERRICK' | 'HABITATION' | 'TERRAFORMER' | 'SILO'): Promise<void> {
+    if (!this.activeColony) return;
+
+    try {
+      const res = await fetch(`http://localhost:3000/api/colonies/${this.activeColony.id}/upgrade`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accountId: 'acc_sol_captain',
+          facilityType,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        this.showApNotification(`⚠️ ${data.error || 'Facility upgrade failed'}`, true);
+        return;
+      }
+
+      this.audio.playFacilityUpgradeSound();
+      this.showApNotification(`⚙️ ${data.message}`, false);
+
+      this.activeColony = data.colony;
+      this.fetchPlayerAP();
+      this.refreshPlayerHold();
+      this.refreshColonyDashboardUI();
+    } catch (err) {
+      console.error('[DAY 19] Failed to upgrade colony facility:', err);
+    }
+  }
+
+  /**
+   * Transfers all stockpiled commodities from the colony silo directly into ship cargo.
+   */
+  public async harvestColonyCargo(): Promise<void> {
+    if (!this.activeColony) return;
+
+    if (this.activeColony.stockpiled_amount <= 0) {
+      this.showApNotification('⚠️ Logistics Silo is empty. Wait for automated extraction cycles.', true);
+      return;
+    }
+
+    try {
+      const res = await fetch(`http://localhost:3000/api/colonies/${this.activeColony.id}/harvest`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accountId: 'acc_sol_captain',
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        this.showApNotification(`⚠️ ${data.error || 'Harvest failed'}`, true);
+        return;
+      }
+
+      this.audio.playCargoHarvestSound();
+      this.showApNotification(`📦 Transferred ${data.transferred} units into ship hold!`, false);
+
+      this.activeColony = data.colony;
+      this.refreshPlayerHold();
+      this.refreshColonyDashboardUI();
+    } catch (err) {
+      console.error('[DAY 19] Failed to harvest colony cargo:', err);
+    }
+  }
+
+  public getActiveSurveyTab(): 'SENSORS' | 'COLONY' {
+    return this.activeSurveyTab;
   }
 
   public getPlayerLoadout(): any {

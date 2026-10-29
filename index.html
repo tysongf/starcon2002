@@ -830,6 +830,19 @@
           </div>
         </header>
 
+        <!-- CRT Console Tabs (Day 19) -->
+        <div class="survey-console-tabs">
+          <button id="tab-survey-sensors" class="survey-tab-btn active">
+            <span class="tab-icon">📡</span>
+            <span class="tab-label">ASTROMETRY SENSORS</span>
+          </button>
+          <button id="tab-survey-colony" class="survey-tab-btn">
+            <span class="tab-icon">🏛️</span>
+            <span class="tab-label">COLONY COMMAND</span>
+            <span class="colony-count-pill" id="survey-colony-pill">0 ACTIVE</span>
+          </button>
+        </div>
+
         <div class="survey-body">
           <!-- Left: Interactive 3D Canvas Globe & Telemetry -->
           <div class="survey-globe-panel">
@@ -840,7 +853,7 @@
                 <span>LAT: <strong id="val-cursor-lat">0.0°</strong></span>
                 <span>LNG: <strong id="val-cursor-lng">0.0°</strong></span>
               </div>
-              <div class="globe-drag-hint">DRAG TO ROTATE GLOBE // CLICK HOTSPOT TO TARGET</div>
+              <div class="globe-drag-hint">DRAG TO ROTATE GLOBE // CLICK HOTSPOT OR COLONY</div>
             </div>
 
             <!-- Environmental Telemetry Matrix -->
@@ -864,67 +877,197 @@
             </div>
           </div>
 
-          <!-- Right: 3-Band Scanner Array, Probes & Hotspots Ledger -->
+          <!-- Right: Console Panel -->
           <div class="survey-console-panel">
-            <!-- Sensor Sweep Controls -->
-            <div class="survey-scanner-section">
-              <div class="section-title">STAR CONTROL II MULTI-BAND SENSOR ARRAY</div>
-              <div class="scanner-btn-grid">
-                <button id="btn-scan-minerals" class="scanner-btn">
-                  <div class="btn-scan-header">
-                    <span class="scan-key">[1]</span>
-                    <span class="scan-name">MINERAL & ORE STRATA</span>
+            <!-- Mode 1: Astrometry Sensors & Probes (Day 18) -->
+            <div id="panel-survey-sensors" class="survey-panel-view">
+              <!-- Sensor Sweep Controls -->
+              <div class="survey-scanner-section">
+                <div class="section-title">STAR CONTROL II MULTI-BAND SENSOR ARRAY</div>
+                <div class="scanner-btn-grid">
+                  <button id="btn-scan-minerals" class="scanner-btn">
+                    <div class="btn-scan-header">
+                      <span class="scan-key">[1]</span>
+                      <span class="scan-name">MINERAL & ORE STRATA</span>
+                    </div>
+                    <div class="btn-scan-sub" id="status-scan-minerals">UNSCANNED // 2 AP</div>
+                  </button>
+                  <button id="btn-scan-bio" class="scanner-btn">
+                    <div class="btn-scan-header">
+                      <span class="scan-key">[2]</span>
+                      <span class="scan-name">BIO & ATMOSPHERE</span>
+                    </div>
+                    <div class="btn-scan-sub" id="status-scan-bio">UNSCANNED // 2 AP</div>
+                  </button>
+                  <button id="btn-scan-anomalies" class="scanner-btn">
+                    <div class="btn-scan-header">
+                      <span class="scan-key">[3]</span>
+                      <span class="scan-name">PRECURSOR ANOMALIES</span>
+                    </div>
+                    <div class="btn-scan-sub" id="status-scan-anomalies">UNSCANNED // 2 AP</div>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Atmospheric & Surface Probe Launcher -->
+              <div class="survey-probe-section">
+                <div class="section-title">DEPLOYABLE ATMOSPHERIC & SURFACE PROBES</div>
+                <div class="probe-controls-row">
+                  <label class="probe-shield-toggle">
+                    <input type="checkbox" id="check-probe-shield" checked />
+                    <span>REINFORCE RE-ENTRY HEAT SHIELD (+1 AP // MITIGATES ATMOSPHERIC DAMAGE)</span>
+                  </label>
+                  <button id="btn-launch-probe" class="probe-launch-btn">LAUNCH SURFACE PROBE 🚀</button>
+                </div>
+
+                <!-- Animated Descent Telemetry Readout -->
+                <div class="probe-descent-display hidden" id="probe-descent-display">
+                  <div class="descent-track">
+                    <div class="descent-marker" id="probe-altitude-marker"></div>
                   </div>
-                  <div class="btn-scan-sub" id="status-scan-minerals">UNSCANNED // 2 AP</div>
-                </button>
-                <button id="btn-scan-bio" class="scanner-btn">
-                  <div class="btn-scan-header">
-                    <span class="scan-key">[2]</span>
-                    <span class="scan-name">BIO & ATMOSPHERE</span>
+                  <div class="descent-stats">
+                    <span>ALTITUDE: <strong id="probe-alt-val">120 km</strong></span>
+                    <span>VELOCITY: <strong id="probe-vel-val">4.2 km/s</strong></span>
+                    <span>HEAT SHIELD: <strong id="probe-shield-val">100%</strong></span>
+                    <span id="probe-status-msg" class="probe-status-live">ATMOSPHERIC ENTRY COMMENCED...</span>
                   </div>
-                  <div class="btn-scan-sub" id="status-scan-bio">UNSCANNED // 2 AP</div>
-                </button>
-                <button id="btn-scan-anomalies" class="scanner-btn">
-                  <div class="btn-scan-header">
-                    <span class="scan-key">[3]</span>
-                    <span class="scan-name">PRECURSOR ANOMALIES</span>
-                  </div>
-                  <div class="btn-scan-sub" id="status-scan-anomalies">UNSCANNED // 2 AP</div>
-                </button>
+                </div>
+              </div>
+
+              <!-- Discovered Hotspots & Beacons Ledger -->
+              <div class="survey-ledger-section">
+                <div class="section-title">DISCOVERED SURFACE HOTSPOTS & SENSOR BEACONS</div>
+                <div class="survey-hotspots-list" id="survey-hotspots-list">
+                  <div class="ledger-empty">NO HOTSPOTS DETECTED. INITIATE SENSOR SWEEPS [1-3] TO IDENTIFY SURFACE DEPOSITS.</div>
+                </div>
               </div>
             </div>
 
-            <!-- Atmospheric & Surface Probe Launcher -->
-            <div class="survey-probe-section">
-              <div class="section-title">DEPLOYABLE ATMOSPHERIC & SURFACE PROBES</div>
-              <div class="probe-controls-row">
-                <label class="probe-shield-toggle">
-                  <input type="checkbox" id="check-probe-shield" checked />
-                  <span>REINFORCE RE-ENTRY HEAT SHIELD (+1 AP // MITIGATES ATMOSPHERIC DAMAGE)</span>
-                </label>
-                <button id="btn-launch-probe" class="probe-launch-btn">LAUNCH SURFACE PROBE 🚀</button>
+            <!-- Mode 2: Colony Outpost & Mining Infrastructure (Day 19) -->
+            <div id="panel-survey-colony" class="survey-panel-view hidden">
+              <!-- Unfounded State Prompt Card -->
+              <div id="colony-unfounded-card" class="colony-card-box">
+                <div class="section-title">FOUND PLANETARY COLONY OUTPOST</div>
+                <p class="colony-desc-text">
+                  Establish an authoritative surface settlement anchored to a deployed sensor beacon. Once founded, the outpost deploys automated mining extractors, houses civilian workforce, and initiates terraforming scrubbers.
+                </p>
+                <div class="colony-founding-controls">
+                  <div class="founding-field">
+                    <label>SELECT TARGET SENSOR BEACON:</label>
+                    <select id="select-colony-beacon" class="colony-select">
+                      <option value="">-- No Beacons Available (Deploy Probe First) --</option>
+                    </select>
+                  </div>
+                  <div class="founding-field">
+                    <label>OUTPOST DESIGNATION:</label>
+                    <input type="text" id="input-colony-name" class="colony-input" placeholder="e.g. Aegis Base Alpha" value="Aegis Base Prime" />
+                  </div>
+                  <button id="btn-found-colony" class="colony-action-btn primary large-btn">
+                    ESTABLISH OUTPOST 🏛️ (500 CR // 5 AP // 5 RATIONS)
+                  </button>
+                </div>
               </div>
 
-              <!-- Animated Descent Telemetry Readout -->
-              <div class="probe-descent-display hidden" id="probe-descent-display">
-                <div class="descent-track">
-                  <div class="descent-marker" id="probe-altitude-marker"></div>
+              <!-- Active Colony Dashboard -->
+              <div id="colony-active-dashboard" class="hidden">
+                <!-- Colony Header & Telemetry -->
+                <div class="colony-dashboard-header">
+                  <div class="colony-title-group">
+                    <h3 id="colony-outpost-name">AEGIS BASE PRIME</h3>
+                    <span class="colony-coords-pill" id="colony-outpost-coords">LAT: +18.5° // LNG: -44.0°</span>
+                  </div>
+                  <div class="colony-stats-row">
+                    <div class="colony-stat-badge">
+                      <span class="badge-label">POPULATION</span>
+                      <span class="badge-val" id="colony-stat-pop">120 / 500</span>
+                    </div>
+                    <div class="colony-stat-badge">
+                      <span class="badge-label">EXTRACTION RATE</span>
+                      <span class="badge-val highlight" id="colony-stat-rate">4.0 u/min</span>
+                    </div>
+                    <div class="colony-stat-badge">
+                      <span class="badge-label">TERRAFORM GAIN</span>
+                      <span class="badge-val" id="colony-stat-terraform">+0.5% / hr</span>
+                    </div>
+                  </div>
                 </div>
-                <div class="descent-stats">
-                  <span>ALTITUDE: <strong id="probe-alt-val">120 km</strong></span>
-                  <span>VELOCITY: <strong id="probe-vel-val">4.2 km/s</strong></span>
-                  <span>HEAT SHIELD: <strong id="probe-shield-val">100%</strong></span>
-                  <span id="probe-status-msg" class="probe-status-live">ATMOSPHERIC ENTRY COMMENCED...</span>
-                </div>
-              </div>
-            </div>
 
-            <!-- Discovered Hotspots & Beacons Ledger -->
-            <div class="survey-ledger-section">
-              <div class="section-title">DISCOVERED SURFACE HOTSPOTS & SENSOR BEACONS</div>
-              <div class="survey-hotspots-list" id="survey-hotspots-list">
-                <!-- Dynamically populated hotspot cards -->
-                <div class="ledger-empty">NO HOTSPOTS DETECTED. INITIATE SENSOR SWEEPS [1-3] TO IDENTIFY SURFACE DEPOSITS.</div>
+                <!-- Logistics Silo Stockpile & Harvester -->
+                <div class="colony-silo-container">
+                  <div class="silo-header">
+                    <span class="silo-title">LOGISTICS SILO ACCUMULATION</span>
+                    <span class="silo-text" id="colony-silo-text">10 / 50 Units Stockpiled</span>
+                  </div>
+                  <div class="silo-bar-track">
+                    <div class="silo-bar-fill" id="colony-silo-fill" style="width: 20%;"></div>
+                  </div>
+                  <button id="btn-harvest-cargo" class="colony-action-btn success">
+                    HARVEST SILO TO SHIP CARGO 📦
+                  </button>
+                </div>
+
+                <!-- 4 Functional Facility Cards -->
+                <div class="colony-facilities-grid">
+                  <!-- Facility 1: Extraction Derrick -->
+                  <div class="facility-card" id="facility-card-derrick">
+                    <div class="facility-header">
+                      <div class="facility-name-group">
+                        <span class="facility-icon">⛏️</span>
+                        <span class="facility-title">EXTRACTION DERRICK</span>
+                      </div>
+                      <span class="facility-tier-badge" id="badge-derrick-tier">TIER 1</span>
+                    </div>
+                    <p class="facility-desc" id="desc-derrick-tier">Base pneumatic drill harvesting raw surface minerals.</p>
+                    <button class="facility-upgrade-btn" id="btn-upgrade-derrick">
+                      UPGRADE TO TIER 2 (400 CR // 3 AP)
+                    </button>
+                  </div>
+
+                  <!-- Facility 2: Habitation Arcology -->
+                  <div class="facility-card" id="facility-card-habitation">
+                    <div class="facility-header">
+                      <div class="facility-name-group">
+                        <span class="facility-icon">🏘️</span>
+                        <span class="facility-title">HABITATION BIOSPHERE</span>
+                      </div>
+                      <span class="facility-tier-badge" id="badge-habitation-tier">TIER 1</span>
+                    </div>
+                    <p class="facility-desc" id="desc-habitation-tier">Geodesic life-support domes supporting 500 colonists.</p>
+                    <button class="facility-upgrade-btn" id="btn-upgrade-habitation">
+                      UPGRADE TO TIER 2 (400 CR // 3 AP)
+                    </button>
+                  </div>
+
+                  <!-- Facility 3: Terraforming Scrubbers -->
+                  <div class="facility-card" id="facility-card-terraformer">
+                    <div class="facility-header">
+                      <div class="facility-name-group">
+                        <span class="facility-icon">🌱</span>
+                        <span class="facility-title">TERRAFORMING SCRUBBER</span>
+                      </div>
+                      <span class="facility-tier-badge" id="badge-terraformer-tier">TIER 1</span>
+                    </div>
+                    <p class="facility-desc" id="desc-terraformer-tier">Atmospheric ionizers scrubbing surface toxins (+1% Hab).</p>
+                    <button class="facility-upgrade-btn" id="btn-upgrade-terraformer">
+                      UPGRADE TO TIER 2 (400 CR // 3 AP)
+                    </button>
+                  </div>
+
+                  <!-- Facility 4: Logistics Silo -->
+                  <div class="facility-card" id="facility-card-silo">
+                    <div class="facility-header">
+                      <div class="facility-name-group">
+                        <span class="facility-icon">🏭</span>
+                        <span class="facility-title">LOGISTICS SILO</span>
+                      </div>
+                      <span class="facility-tier-badge" id="badge-silo-tier">TIER 1</span>
+                    </div>
+                    <p class="facility-desc" id="desc-silo-tier">Pressurized storage vault with 50 units capacity.</p>
+                    <button class="facility-upgrade-btn" id="btn-upgrade-silo">
+                      UPGRADE TO TIER 2 (400 CR // 3 AP)
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
