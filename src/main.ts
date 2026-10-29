@@ -8,6 +8,7 @@ import { SpaceStation } from './entities/SpaceStation';
 import { AsteroidField } from './entities/AsteroidField';
 import { type DockingStatus } from './entities/DockingZone';
 import { AudioEngine } from './audio/AudioEngine';
+import { ShieldBubble, CombatVfxSystem } from './vfx/CombatVfxSystem';
 
 class GameEngine {
   private canvas: HTMLCanvasElement;
@@ -132,7 +133,16 @@ class GameEngine {
 
   // Milestone 0.3 Authoritative 20Hz Combat & AI Entities
   private combatSocket: WebSocket | null = null;
-  private combatInputs = {
+  private combatInputs: {
+    forward: boolean;
+    reverse: boolean;
+    turnLeft: boolean;
+    turnRight: boolean;
+    brake: boolean;
+    firePrimary: boolean;
+    fireTactical: boolean;
+    activeWeaponId: 'PULSE' | 'PLASMA' | 'FLAK';
+  } = {
     forward: false,
     reverse: false,
     turnLeft: false,
@@ -140,22 +150,77 @@ class GameEngine {
     brake: false,
     firePrimary: false,
     fireTactical: false,
+    activeWeaponId: 'PULSE',
   };
+
+  // Day 12 Weapon Profiles & Combat VFX
+  private activeWeaponIndex: number = 0;
+  private readonly weaponProfiles: Array<{ id: 'PULSE' | 'PLASMA' | 'FLAK'; name: string; color: string }> = [
+    { id: 'PULSE', name: 'LIGHT PULSE CANNON', color: '#00f0ff' },
+    { id: 'PLASMA', name: 'HEAVY PLASMA ACCELERATOR', color: '#10b981' },
+    { id: 'FLAK', name: 'SCATTER FLAK BLASTER', color: '#fbbf24' },
+  ];
+  private combatVfx!: CombatVfxSystem;
+  private playerShieldBubble!: ShieldBubble;
+  private droneShieldBubbles: Map<string, ShieldBubble> = new Map();
+  private lastPlayerShields: number = 100;
+  private lastPlayerMaxShields: number = 100;
+
   private droneMeshes: Map<string, THREE.Mesh> = new Map();
   private projectileMeshes: Map<string, THREE.Mesh> = new Map();
   private projectileGeom = new THREE.CylinderGeometry(0.16, 0.16, 2.0, 6);
+  private projectileSphereGeom = new THREE.SphereGeometry(0.42, 8, 8);
+  private projectileFlakGeom = new THREE.CylinderGeometry(0.12, 0.12, 1.4, 5);
   private projectileMatCyan = new THREE.MeshBasicMaterial({ color: 0x00f0ff });
   private projectileMatRed = new THREE.MeshBasicMaterial({ color: 0xff2a5f });
+  private projectileMatEmerald = new THREE.MeshBasicMaterial({ color: 0x10b981 });
+  private projectileMatAmber = new THREE.MeshBasicMaterial({ color: 0xfbbf24 });
+
   private elTelemetryShields: HTMLElement | null = null;
   private elTelemetryHull: HTMLElement | null = null;
   private elTelemetryEnergy: HTMLElement | null = null;
   private elTelemetryCombat: HTMLElement | null = null;
+  private elActiveWeapon: HTMLElement | null = null;
+  private elTacticalModule: HTMLElement | null = null;
   private elTacticalReticle: HTMLElement | null = null;
   private elReticleName: HTMLElement | null = null;
   private elReticleShieldFill: HTMLElement | null = null;
   private elReticleHullFill: HTMLElement | null = null;
   private elReticleRange: HTMLElement | null = null;
-  private primaryDroneTarget: { id: string; x: number; z: number; hp: number; maxHp: number; shields: number; maxShields: number; name: string } | null = null;
+  private primaryDroneTarget: { id: string; x: number; z: number; hp: number; maxHp: number; shields: number; maxShields: number; name: string; faction?: string } | null = null;
+
+  // MMORPG Ability Hotbar & Stacked Vitals (Day 12 / Milestone 0.3)
+  private elVitalShieldBar: HTMLElement | null = null;
+  private elVitalShieldText: HTMLElement | null = null;
+  private elVitalHullBar: HTMLElement | null = null;
+  private elVitalHullText: HTMLElement | null = null;
+  private elVitalEnergyBar: HTMLElement | null = null;
+  private elVitalEnergyText: HTMLElement | null = null;
+  private elSlotHigh1: HTMLElement | null = null;
+  private elSlotHigh2: HTMLElement | null = null;
+  private elSlotMid1: HTMLElement | null = null;
+  private elSlotMid2: HTMLElement | null = null;
+  private elCdHigh1: HTMLElement | null = null;
+  private elCdHigh2: HTMLElement | null = null;
+  private elCdMid1: HTMLElement | null = null;
+  private elCdMid2: HTMLElement | null = null;
+  private elTargetTelemetryHud: HTMLElement | null = null;
+  private elTargetName: HTMLElement | null = null;
+  private elTargetFaction: HTMLElement | null = null;
+  private elTargetDistance: HTMLElement | null = null;
+  private elTargetShieldBar: HTMLElement | null = null;
+  private elTargetShieldVal: HTMLElement | null = null;
+  private elTargetHullBar: HTMLElement | null = null;
+  private elTargetHullVal: HTMLElement | null = null;
+
+  private lastFireTimes = {
+    PULSE: 0,
+    PLASMA: 0,
+    FLAK: 0,
+    BOOST: 0,
+  };
+  private targetLockIndex: number = 0;
+  private availableDrones: any[] = [];
 
   // Action Point (AP) System (Day 7)
   private playerAP = {
@@ -269,6 +334,13 @@ class GameEngine {
     this.thrusters = new ThrusterParticleSystem();
     this.thrusters.setGlowColor(this.currentFaction.palette.engineGlow);
     this.scene.add(this.thrusters.mesh);
+
+    // 10b. Combat VFX & 3D Forcefield Shield Bubble (Day 12)
+    this.combatVfx = new CombatVfxSystem();
+    this.scene.add(this.combatVfx.mesh);
+
+    this.playerShieldBubble = new ShieldBubble(4.4, false);
+    this.scene.add(this.playerShieldBubble.mesh);
 
     // 11. Shared Ship Material
     this.shipMaterial = new THREE.MeshStandardMaterial({
@@ -543,6 +615,58 @@ class GameEngine {
     this.elReticleShieldFill = document.getElementById('reticle-shield-fill');
     this.elReticleHullFill = document.getElementById('reticle-hull-fill');
     this.elReticleRange = document.getElementById('reticle-range');
+    this.elActiveWeapon = document.getElementById('val-active-weapon');
+    this.elTacticalModule = document.getElementById('val-tactical-module');
+
+    // Stacked Vitals
+    this.elVitalShieldBar = document.getElementById('vital-shield-bar');
+    this.elVitalShieldText = document.getElementById('vital-shield-text');
+    this.elVitalHullBar = document.getElementById('vital-hull-bar');
+    this.elVitalHullText = document.getElementById('vital-hull-text');
+    this.elVitalEnergyBar = document.getElementById('vital-energy-bar');
+    this.elVitalEnergyText = document.getElementById('vital-energy-text');
+
+    // Ability Hotbar Slots
+    this.elSlotHigh1 = document.getElementById('slot-high-1');
+    this.elSlotHigh2 = document.getElementById('slot-high-2');
+    this.elSlotMid1 = document.getElementById('slot-mid-1');
+    this.elSlotMid2 = document.getElementById('slot-mid-2');
+    this.elCdHigh1 = document.getElementById('cd-high-1');
+    this.elCdHigh2 = document.getElementById('cd-high-2');
+    this.elCdMid1 = document.getElementById('cd-mid-1');
+    this.elCdMid2 = document.getElementById('cd-mid-2');
+
+    // Top-Center Target Telemetry Box
+    this.elTargetTelemetryHud = document.getElementById('target-telemetry-hud');
+    this.elTargetName = document.getElementById('target-name');
+    this.elTargetFaction = document.getElementById('target-faction');
+    this.elTargetDistance = document.getElementById('target-distance');
+    this.elTargetShieldBar = document.getElementById('target-shield-bar');
+    this.elTargetShieldVal = document.getElementById('target-shield-val');
+    this.elTargetHullBar = document.getElementById('target-hull-bar');
+    this.elTargetHullVal = document.getElementById('target-hull-val');
+
+    // Slot click bindings
+    this.elSlotHigh1?.addEventListener('click', () => {
+      this.selectWeaponPreset(0);
+      this.fireWeaponDirectly('PULSE');
+    });
+    this.elSlotHigh2?.addEventListener('click', () => {
+      this.selectWeaponPreset(1);
+      this.fireWeaponDirectly('PLASMA');
+    });
+    this.elSlotMid1?.addEventListener('mousedown', () => {
+      this.combatInputs.fireTactical = true;
+      this.sendCombatInputs();
+    });
+    this.elSlotMid1?.addEventListener('mouseup', () => {
+      this.combatInputs.fireTactical = false;
+      this.sendCombatInputs();
+    });
+    this.elSlotMid2?.addEventListener('click', () => {
+      this.selectWeaponPreset(2);
+      this.fireWeaponDirectly('FLAK');
+    });
 
     if (this.hudSector) {
       this.hudSector.classList.add('clickable');
@@ -1511,12 +1635,23 @@ class GameEngine {
           this.combatInputs.brake = true;
           this.sendCombatInputs();
           break;
-        case 'Space':
+        case 'KeyQ':
+          this.cycleWeapon();
+          break;
+        case 'Space': {
           e.preventDefault();
           this.combatInputs.firePrimary = true;
           this.sendCombatInputs();
-          this.audio.playLaserFire(false);
+          const activeW = this.weaponProfiles[this.activeWeaponIndex].id;
+          if (activeW === 'PLASMA') {
+            this.audio.playPlasmaFire();
+          } else if (activeW === 'FLAK') {
+            this.audio.playFlakFire();
+          } else {
+            this.audio.playLaserFire(false);
+          }
           break;
+        }
         case 'ShiftLeft':
         case 'ShiftRight':
           this.combatInputs.fireTactical = true;
@@ -1545,16 +1680,24 @@ class GameEngine {
           break;
         }
         case 'Digit1':
-          this.generateShip(this.currentSeed, FACTION_STYLES.FACTION_SOL);
+          this.selectWeaponPreset(0);
+          this.fireWeaponDirectly('PULSE');
           break;
         case 'Digit2':
-          this.generateShip(this.currentSeed, FACTION_STYLES.FACTION_PHORID);
+          this.selectWeaponPreset(1);
+          this.fireWeaponDirectly('PLASMA');
           break;
         case 'Digit3':
-          this.generateShip(this.currentSeed, FACTION_STYLES.FACTION_LITHOS);
+          this.combatInputs.fireTactical = true;
+          this.sendCombatInputs();
           break;
         case 'Digit4':
-          this.generateShip(this.currentSeed, FACTION_STYLES.FACTION_VAELIC);
+          this.selectWeaponPreset(2);
+          this.fireWeaponDirectly('FLAK');
+          break;
+        case 'Tab':
+          e.preventDefault();
+          this.cycleTargetLock();
           break;
       }
     });
@@ -1592,16 +1735,110 @@ class GameEngine {
           this.sendCombatInputs();
           break;
         case 'Space':
+        case 'Digit1':
+        case 'Digit2':
+        case 'Digit4':
           this.combatInputs.firePrimary = false;
           this.sendCombatInputs();
           break;
         case 'ShiftLeft':
         case 'ShiftRight':
+        case 'Digit3':
           this.combatInputs.fireTactical = false;
           this.sendCombatInputs();
           break;
       }
     });
+
+    // Mouse Controls (M1 = Pulse Cannon, M2 = Plasma Accelerator)
+    window.addEventListener('mousedown', (e: MouseEvent) => {
+      if (this.isDocked || this.isWarping) return;
+      if (e.target instanceof HTMLButtonElement || e.target instanceof HTMLInputElement || (e.target as HTMLElement).closest('.hud-panel, .dock-modal-card, .nav-modal-card')) {
+        return;
+      }
+
+      if (e.button === 0) {
+        // Left Click -> High Slot 1 (Pulse)
+        this.selectWeaponPreset(0);
+        this.fireWeaponDirectly('PULSE');
+      } else if (e.button === 2) {
+        // Right Click -> High Slot 2 (Plasma)
+        e.preventDefault();
+        this.selectWeaponPreset(1);
+        this.fireWeaponDirectly('PLASMA');
+      }
+    });
+
+    window.addEventListener('mouseup', (e: MouseEvent) => {
+      if (e.button === 0 || e.button === 2) {
+        this.combatInputs.firePrimary = false;
+        this.sendCombatInputs();
+      }
+    });
+
+    window.addEventListener('contextmenu', (e: MouseEvent) => {
+      // Prevent browser context menu during flight canvas interaction
+      if (!(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) {
+        e.preventDefault();
+      }
+    });
+  }
+
+  public selectWeaponPreset(index: number): void {
+    this.activeWeaponIndex = index;
+    const profile = this.weaponProfiles[this.activeWeaponIndex];
+    this.combatInputs.activeWeaponId = profile.id;
+    this.sendCombatInputs();
+
+    if (this.elActiveWeapon) {
+      this.elActiveWeapon.textContent = profile.name;
+      this.elActiveWeapon.style.color = profile.color;
+    }
+
+    // Update active preset visual on hotbar
+    const slotEls = [this.elSlotHigh1, this.elSlotHigh2, this.elSlotMid2];
+    slotEls.forEach((slot, i) => {
+      if (slot) {
+        if (i === index) slot.classList.add('active-preset');
+        else slot.classList.remove('active-preset');
+      }
+    });
+
+    this.audio.playUiBlip();
+  }
+
+  public cycleWeapon(): void {
+    const nextIdx = (this.activeWeaponIndex + 1) % this.weaponProfiles.length;
+    this.selectWeaponPreset(nextIdx);
+    this.showApNotification(`WEAPON CYCLED: ${this.weaponProfiles[nextIdx].name}`, false);
+  }
+
+  private fireWeaponDirectly(weaponId: 'PULSE' | 'PLASMA' | 'FLAK'): void {
+    this.combatInputs.activeWeaponId = weaponId;
+    this.combatInputs.firePrimary = true;
+    this.sendCombatInputs();
+    this.lastFireTimes[weaponId] = Date.now();
+
+    if (weaponId === 'PLASMA') {
+      this.audio.playPlasmaFire();
+    } else if (weaponId === 'FLAK') {
+      this.audio.playFlakFire();
+    } else {
+      this.audio.playLaserFire(false);
+    }
+  }
+
+  private cycleTargetLock(): void {
+    if (this.availableDrones.length === 0) {
+      this.primaryDroneTarget = null;
+      return;
+    }
+    this.targetLockIndex = (this.targetLockIndex + 1) % this.availableDrones.length;
+    this.primaryDroneTarget = this.availableDrones[this.targetLockIndex];
+    this.audio.playUiBlip();
+    if (this.primaryDroneTarget) {
+      this.showApNotification(`🎯 TARGET LOCKED: ${this.primaryDroneTarget.name}`, false);
+    }
   }
 
   /**
@@ -1665,7 +1902,15 @@ class GameEngine {
 
     // 4. Emit Thruster Particles
     if (!this.isDocked) {
-      if (telemetry.isThrusting) {
+      const isAfterburning = this.combatInputs.fireTactical && (telemetry.isThrusting || this.combatInputs.forward);
+      if (isAfterburning) {
+        this.thrusters.emitThrusterPlume(
+          this.flightController.position,
+          this.flightController.yaw,
+          this.flightController.velocity,
+          3.2
+        );
+      } else if (telemetry.isThrusting) {
         this.thrusters.emitThrusterPlume(
           this.flightController.position,
           this.flightController.yaw,
@@ -1690,6 +1935,15 @@ class GameEngine {
     }
 
     this.thrusters.update(deltaSec);
+
+    // 4b. Update Combat VFX & Player Shield Forcefield (Day 12)
+    this.combatVfx.update(deltaSec);
+    this.playerShieldBubble.update(
+      deltaSec,
+      this.flightController.position,
+      this.lastPlayerShields,
+      this.lastPlayerMaxShields
+    );
 
     // 5. Update Orbital Space Station or Asteroid Field
     if (this.station) {
@@ -1747,6 +2001,34 @@ class GameEngine {
     // 8. Update Telemetry HUD
     this.updateFlightHUD(telemetry, dockStatus);
 
+    // 8b. Update MMORPG Hotbar cooldown animations
+    const now = Date.now();
+    if (this.elCdHigh1) {
+      const pulseCd = 0.16 * 1000;
+      const elapsed = now - this.lastFireTimes.PULSE;
+      const pct = Math.max(0, Math.min(100, (1 - elapsed / pulseCd) * 100));
+      this.elCdHigh1.style.height = `${pct}%`;
+    }
+    if (this.elCdHigh2) {
+      const plasmaCd = 0.45 * 1000;
+      const elapsed = now - this.lastFireTimes.PLASMA;
+      const pct = Math.max(0, Math.min(100, (1 - elapsed / plasmaCd) * 100));
+      this.elCdHigh2.style.height = `${pct}%`;
+    }
+    if (this.elCdMid1) {
+      this.elCdMid1.style.height = this.combatInputs.fireTactical ? '100%' : '0%';
+      if (this.elSlotMid1) {
+        if (this.combatInputs.fireTactical) this.elSlotMid1.classList.add('active-firing');
+        else this.elSlotMid1.classList.remove('active-firing');
+      }
+    }
+    if (this.elCdMid2) {
+      const flakCd = 0.35 * 1000;
+      const elapsed = now - this.lastFireTimes.FLAK;
+      const pct = Math.max(0, Math.min(100, (1 - elapsed / flakCd) * 100));
+      this.elCdMid2.style.height = `${pct}%`;
+    }
+
     // 9. Update Tactical Target Reticle (Milestone 0.3)
     this.updateTacticalReticle();
 
@@ -1764,6 +2046,11 @@ class GameEngine {
     if (this.elShipPos) {
       const p = this.flightController.position;
       this.elShipPos.textContent = `X: ${p.x.toFixed(1)}  Z: ${p.z.toFixed(1)}`;
+    }
+
+    if (this.elTacticalModule) {
+      this.elTacticalModule.textContent = this.combatInputs.fireTactical ? 'AFTERBURNER [BOOST]' : 'AFTERBURNER';
+      this.elTacticalModule.style.color = this.combatInputs.fireTactical ? '#00f0ff' : '#f59e0b';
     }
 
     if (this.elDockingBanner && this.elDockingMsg) {
@@ -1856,9 +2143,12 @@ class GameEngine {
   }
 
   private handleCombatSnapshot(snapshot: any): void {
-    // 1. Player Telemetry Update
+    // 1. Player Telemetry & Stacked Vitals Update
     const playerEntity = snapshot.entities.find((e: any) => e.type === 'PLAYER');
     if (playerEntity) {
+      this.lastPlayerShields = playerEntity.shields;
+      this.lastPlayerMaxShields = playerEntity.maxShields;
+
       if (this.elTelemetryShields) {
         this.elTelemetryShields.textContent = `${playerEntity.shields} / ${playerEntity.maxShields}`;
       }
@@ -1867,20 +2157,70 @@ class GameEngine {
         this.elTelemetryHull.style.color = playerEntity.hp < 30 ? '#ef4444' : '#10b981';
       }
       if (this.elTelemetryEnergy) {
-        this.elTelemetryEnergy.textContent = `${playerEntity.energy} / ${playerEntity.maxEnergy}`;
+        this.elTelemetryEnergy.textContent = `${Math.round(playerEntity.energy)} / ${playerEntity.maxEnergy}`;
+      }
+
+      // Update MMORPG Stacked Vitals
+      if (this.elVitalShieldBar) {
+        const sPct = Math.max(0, Math.min(100, (playerEntity.shields / playerEntity.maxShields) * 100));
+        this.elVitalShieldBar.style.width = `${sPct}%`;
+      }
+      if (this.elVitalShieldText) {
+        this.elVitalShieldText.textContent = `${playerEntity.shields} / ${playerEntity.maxShields}`;
+      }
+      if (this.elVitalHullBar) {
+        const hPct = Math.max(0, Math.min(100, (playerEntity.hp / playerEntity.maxHp) * 100));
+        this.elVitalHullBar.style.width = `${hPct}%`;
+        this.elVitalHullBar.style.background = playerEntity.hp < 30 ? '#ef4444' : 'linear-gradient(90deg, #059669, #10b981)';
+      }
+      if (this.elVitalHullText) {
+        this.elVitalHullText.textContent = `${playerEntity.hp} / ${playerEntity.maxHp}`;
+      }
+      if (this.elVitalEnergyBar) {
+        const ePct = Math.max(0, Math.min(100, (playerEntity.energy / playerEntity.maxEnergy) * 100));
+        this.elVitalEnergyBar.style.width = `${ePct}%`;
+      }
+      if (this.elVitalEnergyText) {
+        this.elVitalEnergyText.textContent = `${Math.round(playerEntity.energy)} / ${playerEntity.maxEnergy}`;
+      }
+
+      // Hotbar energy cost states
+      if (this.elSlotHigh1) {
+        if (playerEntity.energy < 8) this.elSlotHigh1.classList.add('insufficient-energy');
+        else this.elSlotHigh1.classList.remove('insufficient-energy');
+      }
+      if (this.elSlotHigh2) {
+        if (playerEntity.energy < 22) this.elSlotHigh2.classList.add('insufficient-energy');
+        else this.elSlotHigh2.classList.remove('insufficient-energy');
+      }
+      if (this.elSlotMid1) {
+        if (playerEntity.energy < 10) this.elSlotMid1.classList.add('insufficient-energy');
+        else this.elSlotMid1.classList.remove('insufficient-energy');
+      }
+      if (this.elSlotMid2) {
+        if (playerEntity.energy < 18) this.elSlotMid2.classList.add('insufficient-energy');
+        else this.elSlotMid2.classList.remove('insufficient-energy');
       }
     }
 
-    // 2. Drone Mesh Synchronization
+    // 2. Drone Mesh & Forcefield Shield Bubble Synchronization
     const drones = snapshot.entities.filter((e: any) => e.type === 'DRONE' && e.state !== 'DESTROYED');
     const droneIds = new Set(drones.map((d: any) => d.id));
+    this.availableDrones = drones;
 
-    // Remove defunct meshes
+    // Remove defunct meshes & shield bubbles
     for (const [id, mesh] of this.droneMeshes.entries()) {
       if (!droneIds.has(id)) {
         this.scene.remove(mesh);
         mesh.geometry.dispose();
         this.droneMeshes.delete(id);
+      }
+    }
+    for (const [id, sb] of this.droneShieldBubbles.entries()) {
+      if (!droneIds.has(id)) {
+        this.scene.remove(sb.mesh);
+        sb.dispose();
+        this.droneShieldBubbles.delete(id);
       }
     }
 
@@ -1917,6 +2257,15 @@ class GameEngine {
       mesh.position.z = mesh.position.z + (drone.z - mesh.position.z) * 0.45;
       mesh.rotation.y = drone.yaw;
 
+      // Update 3D Forcefield Shield Bubble for this drone
+      let sb = this.droneShieldBubbles.get(drone.id);
+      if (!sb) {
+        sb = new ShieldBubble(4.2, true);
+        this.scene.add(sb.mesh);
+        this.droneShieldBubbles.set(drone.id, sb);
+      }
+      sb.update(0.05, mesh.position, drone.shields, drone.maxShields);
+
       const pPos = this.flightController.position;
       const dist = Math.sqrt((drone.x - pPos.x) ** 2 + (drone.z - pPos.z) ** 2);
       if (dist < minDroneDist) {
@@ -1925,7 +2274,13 @@ class GameEngine {
       }
     }
 
-    this.primaryDroneTarget = nearestDrone;
+    // Set targeted drone
+    if (drones.length > 0) {
+      if (this.targetLockIndex >= drones.length) this.targetLockIndex = 0;
+      this.primaryDroneTarget = drones[this.targetLockIndex] || nearestDrone;
+    } else {
+      this.primaryDroneTarget = null;
+    }
 
     if (this.elTelemetryCombat) {
       if (drones.length > 0) {
@@ -1937,7 +2292,7 @@ class GameEngine {
       }
     }
 
-    // 3. Projectile Mesh Synchronization
+    // 3. Projectile Mesh Synchronization with Ballistic Profiles
     const activeProjIds = new Set(snapshot.projectiles.map((p: any) => p.id));
     for (const [id, pMesh] of this.projectileMeshes.entries()) {
       if (!activeProjIds.has(id)) {
@@ -1949,10 +2304,17 @@ class GameEngine {
     for (const proj of snapshot.projectiles) {
       let pMesh = this.projectileMeshes.get(proj.id);
       if (!pMesh) {
-        pMesh = new THREE.Mesh(
-          this.projectileGeom,
-          proj.color === '#ff2a5f' ? this.projectileMatRed : this.projectileMatCyan
-        );
+        if (proj.projType === 'PLASMA') {
+          pMesh = new THREE.Mesh(this.projectileSphereGeom, this.projectileMatEmerald);
+        } else if (proj.projType === 'FLAK') {
+          pMesh = new THREE.Mesh(this.projectileFlakGeom, this.projectileMatAmber);
+        } else {
+          // PULSE
+          pMesh = new THREE.Mesh(
+            this.projectileGeom,
+            proj.color === '#ff2a5f' ? this.projectileMatRed : this.projectileMatCyan
+          );
+        }
         this.scene.add(pMesh);
         this.projectileMeshes.set(proj.id, pMesh);
       }
@@ -1965,15 +2327,38 @@ class GameEngine {
       pMesh.rotation.x = Math.PI / 2;
     }
 
-    // 4. Process Combat Events
+    // 4. Process Combat Events (VFX, Audio & Alerts)
     if (snapshot.events && snapshot.events.length > 0) {
       for (const ev of snapshot.events) {
         if (ev.type === 'HIT') {
-          this.audio.playShieldDeflection();
+          const impactPos = new THREE.Vector3(ev.x, 0, ev.z);
+          if (ev.hitShield) {
+            this.combatVfx.emitShieldSparks(impactPos);
+            if (playerEntity && ev.targetId === playerEntity.id) {
+              this.playerShieldBubble.triggerImpact(false);
+            } else if (this.droneShieldBubbles.has(ev.targetId)) {
+              this.droneShieldBubbles.get(ev.targetId)!.triggerImpact(true);
+            }
+            this.audio.playShieldDeflection();
+          } else {
+            this.combatVfx.emitHullBreachSparks(impactPos);
+            this.audio.playShieldDeflection();
+          }
+        } else if (ev.type === 'SHIELD_BREAK') {
+          const breakPos = new THREE.Vector3(ev.x, 0, ev.z);
+          this.combatVfx.emitShieldBreakBurst(breakPos);
+          this.audio.playShieldBreakSound();
+          if (playerEntity && ev.targetId === playerEntity.id) {
+            this.showApNotification('⚡ SHIELD COLLAPSE // VULNERABLE TO HULL DAMAGE', true);
+          }
         } else if (ev.type === 'DESTROYED') {
+          const expPos = new THREE.Vector3(ev.x, 0, ev.z);
+          this.combatVfx.emitExplosionDebris(expPos);
           this.audio.playExplosion();
           this.showApNotification('💥 HOSTILE TARGET DESTROYED!', false);
         } else if (ev.type === 'POD_EJECTED') {
+          const podPos = new THREE.Vector3(ev.x, 0, ev.z);
+          this.combatVfx.emitExplosionDebris(podPos);
           this.audio.playExplosion();
           this.showApNotification('🚨 CRITICAL HULL BREACH // EJECTED IN ESCAPE POD', true);
         }
@@ -1982,8 +2367,9 @@ class GameEngine {
   }
 
   private updateTacticalReticle(): void {
-    if (!this.primaryDroneTarget || !this.elTacticalReticle) {
+    if (!this.primaryDroneTarget) {
       if (this.elTacticalReticle) this.elTacticalReticle.classList.add('hidden');
+      if (this.elTargetTelemetryHud) this.elTargetTelemetryHud.classList.add('hidden');
       return;
     }
 
@@ -1991,12 +2377,44 @@ class GameEngine {
     const pPos = this.flightController.position;
     const dist = pPos.distanceTo(targetPos);
 
-    if (dist > 150) {
-      this.elTacticalReticle.classList.add('hidden');
+    if (dist > 180) {
+      if (this.elTacticalReticle) this.elTacticalReticle.classList.add('hidden');
+      if (this.elTargetTelemetryHud) this.elTargetTelemetryHud.classList.add('hidden');
       return;
     }
 
-    // Project 3D target coordinates to 2D screen coordinates
+    // 1. Update Top-Center Target Telemetry Box (MMO Style)
+    if (this.elTargetTelemetryHud) {
+      this.elTargetTelemetryHud.classList.remove('hidden');
+      if (this.elTargetName) {
+        this.elTargetName.textContent = this.primaryDroneTarget.name.toUpperCase();
+      }
+      if (this.elTargetFaction) {
+        this.elTargetFaction.textContent = this.primaryDroneTarget.faction || 'HEGEMONY';
+      }
+      if (this.elTargetDistance) {
+        this.elTargetDistance.textContent = `${dist.toFixed(1)} u`;
+      }
+      const shieldPct = Math.max(0, Math.min(100, (this.primaryDroneTarget.shields / this.primaryDroneTarget.maxShields) * 100));
+      const hullPct = Math.max(0, Math.min(100, (this.primaryDroneTarget.hp / this.primaryDroneTarget.maxHp) * 100));
+
+      if (this.elTargetShieldBar) {
+        this.elTargetShieldBar.style.width = `${shieldPct}%`;
+      }
+      if (this.elTargetShieldVal) {
+        this.elTargetShieldVal.textContent = `${this.primaryDroneTarget.shields}/${this.primaryDroneTarget.maxShields}`;
+      }
+      if (this.elTargetHullBar) {
+        this.elTargetHullBar.style.width = `${hullPct}%`;
+      }
+      if (this.elTargetHullVal) {
+        this.elTargetHullVal.textContent = `${this.primaryDroneTarget.hp}/${this.primaryDroneTarget.maxHp}`;
+      }
+    }
+
+    // 2. Project 3D target coordinates to 2D screen coordinates for 3D Reticle
+    if (!this.elTacticalReticle) return;
+
     const screenCoord = targetPos.clone().project(this.camera);
 
     // Behind camera check
@@ -2018,12 +2436,13 @@ class GameEngine {
     if (this.elReticleRange) {
       this.elReticleRange.textContent = `RANGE: ${dist.toFixed(1)}u`;
     }
+    const shieldPct = Math.max(0, Math.min(100, (this.primaryDroneTarget.shields / this.primaryDroneTarget.maxShields) * 100));
+    const hullPct = Math.max(0, Math.min(100, (this.primaryDroneTarget.hp / this.primaryDroneTarget.maxHp) * 100));
+
     if (this.elReticleShieldFill) {
-      const shieldPct = Math.max(0, Math.min(100, (this.primaryDroneTarget.shields / this.primaryDroneTarget.maxShields) * 100));
       this.elReticleShieldFill.style.width = `${shieldPct}%`;
     }
     if (this.elReticleHullFill) {
-      const hullPct = Math.max(0, Math.min(100, (this.primaryDroneTarget.hp / this.primaryDroneTarget.maxHp) * 100));
       this.elReticleHullFill.style.width = `${hullPct}%`;
     }
   }

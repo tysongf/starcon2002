@@ -8,6 +8,7 @@ export interface CombatInputs {
   brake: boolean;
   firePrimary: boolean;
   fireTactical: boolean;
+  activeWeaponId?: 'PULSE' | 'PLASMA' | 'FLAK';
 }
 
 export interface SectorEntity {
@@ -37,6 +38,7 @@ export interface SectorEntity {
   inputs: CombatInputs;
   lastHitTime: number;
   fireCooldown: number;
+  afterburnerActive?: boolean;
   // AI specific
   aiPatrolCenter?: { x: number; z: number };
   aiPatrolAngle?: number;
@@ -54,13 +56,15 @@ export interface Projectile {
   damage: number;
   ttl: number; // Seconds remaining
   color: string;
+  projType?: 'PULSE' | 'PLASMA' | 'FLAK';
 }
 
 export interface CombatEvent {
-  type: 'HIT' | 'DESTROYED' | 'LOOT_SPAWNED' | 'LOOT_COLLECTED' | 'POD_EJECTED';
+  type: 'HIT' | 'SHIELD_BREAK' | 'DESTROYED' | 'LOOT_SPAWNED' | 'LOOT_COLLECTED' | 'POD_EJECTED';
   sourceId?: string;
   targetId?: string;
   damage?: number;
+  hitShield?: boolean;
   x?: number;
   z?: number;
   data?: any;
@@ -294,9 +298,20 @@ export class SectorRoom {
 
   private integrateEntityPhysics(entity: SectorEntity, dt: number, now: number): void {
     const isEscapePod = entity.hullClass === 'ESCAPE_POD';
-    const accel = isEscapePod ? 9.0 : entity.type === 'DRONE' ? 18.0 : 22.0;
+    let accel = isEscapePod ? 9.0 : entity.type === 'DRONE' ? 18.0 : 22.0;
     const turnAccel = isEscapePod ? 2.2 : 3.6;
-    const maxSpeed = isEscapePod ? 12.0 : entity.type === 'DRONE' ? 24.0 : 28.0;
+    let maxSpeed = isEscapePod ? 12.0 : entity.type === 'DRONE' ? 24.0 : 28.0;
+
+    // Tactical Afterburner Overdrive (Shift key)
+    const wantsAfterburner = entity.inputs.fireTactical && !isEscapePod && entity.energy >= 3.0;
+    if (wantsAfterburner) {
+      accel *= 2.2;
+      maxSpeed = entity.type === 'DRONE' ? 42.0 : 48.0;
+      entity.energy = Math.max(0, entity.energy - 38.0 * dt);
+      entity.afterburnerActive = true;
+    } else {
+      entity.afterburnerActive = false;
+    }
 
     // Angular Steering
     if (entity.inputs.turnLeft) {
@@ -372,33 +387,57 @@ export class SectorRoom {
     for (const drone of this.entities.values()) {
       if (drone.type !== 'DRONE' || drone.state === 'DESTROYED') continue;
 
-      if (targetPlayer && minDistance < 130.0) {
-        // ENGAGE MODE: Intercept and dogfight
+      if (targetPlayer && minDistance < 140.0) {
+        // ENGAGE MODE: Orbital strafing & predictive dogfight
         drone.state = 'ENGAGE';
         const dx = targetPlayer.x - drone.x;
         const dz = targetPlayer.z - drone.z;
         const dist = Math.sqrt(dx * dx + dz * dz);
-        const desiredYaw = Math.atan2(dx, dz);
 
-        // Turn towards player
+        // Predictive Lead Aiming Calculation
+        const projSpeed = 55.0; // Drone projectile speed
+        const timeToHit = Math.min(dist / projSpeed, 1.8);
+        const leadX = targetPlayer.x + targetPlayer.vx * timeToHit;
+        const leadZ = targetPlayer.z + targetPlayer.vz * timeToHit;
+        const aimDx = leadX - drone.x;
+        const aimDz = leadZ - drone.z;
+        const desiredYaw = Math.atan2(aimDx, aimDz);
+
+        // Turn towards predictive lead point
         let yawDiff = desiredYaw - drone.yaw;
         while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
         while (yawDiff > Math.PI) yawDiff -= Math.PI * 2;
 
-        drone.inputs.turnLeft = yawDiff > 0.08;
-        drone.inputs.turnRight = yawDiff < -0.08;
+        drone.inputs.turnLeft = yawDiff > 0.06;
+        drone.inputs.turnRight = yawDiff < -0.06;
 
-        // Thrust if farther than 45 units, brake if too close (< 25 units)
-        drone.inputs.forward = dist > 45.0;
-        drone.inputs.brake = dist < 25.0;
-        drone.inputs.reverse = dist < 18.0;
+        // Tactical Afterburner Counter-Burst if player gets behind drone (< 28u)
+        const isPlayerBehind = dist < 28.0 && Math.abs(yawDiff) > Math.PI * 0.6;
+        drone.inputs.fireTactical = isPlayerBehind && drone.energy > 35;
 
-        // Fire if facing target within cone (< 0.35 rad) and in range (< 85 units)
-        drone.inputs.firePrimary = Math.abs(yawDiff) < 0.35 && dist < 85.0;
+        // Orbital strafing navigation: Maintain optimal combat distance (~32-46u)
+        if (dist > 46.0) {
+          drone.inputs.forward = true;
+          drone.inputs.reverse = false;
+          drone.inputs.brake = false;
+        } else if (dist < 28.0) {
+          drone.inputs.forward = false;
+          drone.inputs.reverse = true;
+          drone.inputs.brake = false;
+        } else {
+          // In sweet spot (28-46u): tangential thrust to circle around target
+          drone.inputs.forward = true;
+          drone.inputs.reverse = false;
+          drone.inputs.brake = false;
+        }
+
+        // Fire when facing target lead cone (< 0.28 rad) and in range (< 85 units)
+        drone.inputs.firePrimary = Math.abs(yawDiff) < 0.28 && dist < 85.0;
       } else {
         // PATROL MODE: Orbit sector patrol center
         drone.state = 'PATROL';
         drone.inputs.firePrimary = false;
+        drone.inputs.fireTactical = false;
         drone.aiPatrolAngle = (drone.aiPatrolAngle || 0) + 0.3 * dt;
         const radius = 28.0;
         const center = drone.aiPatrolCenter || { x: 20, z: -20 };
@@ -422,27 +461,94 @@ export class SectorRoom {
   }
 
   private dischargePrimaryWeapon(entity: SectorEntity): void {
-    entity.energy -= 12.0;
-    entity.fireCooldown = entity.type === 'DRONE' ? 0.38 : 0.22; // Seconds between rounds
+    if (entity.type === 'DRONE') {
+      entity.energy -= 12.0;
+      entity.fireCooldown = 0.35;
+      const forwardX = Math.sin(entity.yaw);
+      const forwardZ = Math.cos(entity.yaw);
+      const muzzleSpeed = 55.0;
 
+      this.projectiles.push({
+        id: `proj_${++this.projectileSeq}_${Date.now()}`,
+        ownerId: entity.id,
+        x: entity.x + forwardX * 3.8,
+        z: entity.z + forwardZ * 3.8,
+        vx: entity.vx * 0.3 + forwardX * muzzleSpeed,
+        vz: entity.vz * 0.3 + forwardZ * muzzleSpeed,
+        damage: 16,
+        ttl: 1.6,
+        color: '#ff2a5f',
+        projType: 'PULSE',
+      });
+      return;
+    }
+
+    const weaponId = (entity.inputs.activeWeaponId as 'PULSE' | 'PLASMA' | 'FLAK') || 'PULSE';
     const forwardX = Math.sin(entity.yaw);
     const forwardZ = Math.cos(entity.yaw);
-    const muzzleSpeed = 68.0; // Units/second
 
-    const projId = `proj_${++this.projectileSeq}_${Date.now()}`;
-    const projectile: Projectile = {
-      id: projId,
-      ownerId: entity.id,
-      x: entity.x + forwardX * 3.8,
-      z: entity.z + forwardZ * 3.8,
-      vx: entity.vx * 0.4 + forwardX * muzzleSpeed,
-      vz: entity.vz * 0.4 + forwardZ * muzzleSpeed,
-      damage: entity.type === 'DRONE' ? 14 : 20,
-      ttl: 1.6, // Lifespan in seconds
-      color: entity.factionId === 'FACTION_VAELIC' ? '#ff2a5f' : '#00f0ff',
-    };
+    if (weaponId === 'PLASMA') {
+      if (entity.energy < 22) return;
+      entity.energy -= 22;
+      entity.fireCooldown = 0.45;
+      const muzzleSpeed = 48.0;
 
-    this.projectiles.push(projectile);
+      this.projectiles.push({
+        id: `proj_${++this.projectileSeq}_${Date.now()}`,
+        ownerId: entity.id,
+        x: entity.x + forwardX * 4.2,
+        z: entity.z + forwardZ * 4.2,
+        vx: entity.vx * 0.3 + forwardX * muzzleSpeed,
+        vz: entity.vz * 0.3 + forwardZ * muzzleSpeed,
+        damage: 44,
+        ttl: 2.2,
+        color: '#10b981',
+        projType: 'PLASMA',
+      });
+    } else if (weaponId === 'FLAK') {
+      if (entity.energy < 18) return;
+      entity.energy -= 18;
+      entity.fireCooldown = 0.35;
+      const muzzleSpeed = 66.0;
+      const spreadAngles = [-0.12, 0.0, 0.12];
+
+      for (const offset of spreadAngles) {
+        const spreadYaw = entity.yaw + offset;
+        const fx = Math.sin(spreadYaw);
+        const fz = Math.cos(spreadYaw);
+        this.projectiles.push({
+          id: `proj_${++this.projectileSeq}_${Date.now()}`,
+          ownerId: entity.id,
+          x: entity.x + fx * 3.8,
+          z: entity.z + fz * 3.8,
+          vx: entity.vx * 0.3 + fx * muzzleSpeed,
+          vz: entity.vz * 0.3 + fz * muzzleSpeed,
+          damage: 13,
+          ttl: 1.2,
+          color: '#fbbf24',
+          projType: 'FLAK',
+        });
+      }
+    } else {
+      // PULSE (default)
+      if (entity.energy < 8) return;
+      entity.energy -= 8;
+      entity.fireCooldown = 0.16;
+      const muzzleSpeed = 78.0;
+
+      this.projectiles.push({
+        id: `proj_${++this.projectileSeq}_${Date.now()}`,
+        ownerId: entity.id,
+        x: entity.x + forwardX * 3.8,
+        z: entity.z + forwardZ * 3.8,
+        vx: entity.vx * 0.3 + forwardX * muzzleSpeed,
+        vz: entity.vz * 0.3 + forwardZ * muzzleSpeed,
+        damage: 14,
+        ttl: 1.6,
+        color: '#00f0ff',
+        projType: 'PULSE',
+      });
+    }
   }
 
   private advanceProjectiles(dt: number): void {
@@ -483,9 +589,12 @@ export class SectorRoom {
   private applyDamage(target: SectorEntity, proj: Projectile): void {
     target.lastHitTime = Date.now();
     let damageRemaining = proj.damage;
+    const hadShields = target.shields > 0;
+    let hitShield = false;
 
     // Shields absorb damage first
     if (target.shields > 0) {
+      hitShield = true;
       if (target.shields >= damageRemaining) {
         target.shields -= damageRemaining;
         damageRemaining = 0;
@@ -493,6 +602,16 @@ export class SectorRoom {
         damageRemaining -= target.shields;
         target.shields = 0;
       }
+    }
+
+    // Did shields break on this hit?
+    if (hadShields && target.shields === 0) {
+      this.pendingEvents.push({
+        type: 'SHIELD_BREAK',
+        targetId: target.id,
+        x: target.x,
+        z: target.z,
+      });
     }
 
     // Hull integrity absorbs remainder
@@ -505,8 +624,9 @@ export class SectorRoom {
       sourceId: proj.ownerId,
       targetId: target.id,
       damage: proj.damage,
-      x: target.x,
-      z: target.z,
+      hitShield,
+      x: proj.x,
+      z: proj.z,
     });
 
     // Check Destruction
@@ -583,6 +703,7 @@ export class SectorRoom {
         cpuMax: e.cpuMax,
         cpuUsed: e.cpuUsed,
         state: e.state,
+        afterburnerActive: e.afterburnerActive,
         transponderActive: e.transponderActive,
       })),
       projectiles: this.projectiles.map((p) => ({
@@ -593,6 +714,8 @@ export class SectorRoom {
         vx: Math.round(p.vx * 10) / 10,
         vz: Math.round(p.vz * 10) / 10,
         color: p.color,
+        projType: p.projType || 'PULSE',
+        damage: p.damage,
       })),
       events: [...this.pendingEvents],
     };

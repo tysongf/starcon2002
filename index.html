@@ -100,6 +100,14 @@
               <span class="telemetry-val mono" id="val-telemetry-combat" style="color: #38bdf8;">CLEAR // 20Hz</span>
             </div>
             <div class="telemetry-item">
+              <span class="telemetry-label">ACTIVE WEAPON (Q)</span>
+              <span class="telemetry-val highlight" id="val-active-weapon" style="color: #00f0ff; font-weight: 700;">PULSE CANNON</span>
+            </div>
+            <div class="telemetry-item">
+              <span class="telemetry-label">TACTICAL MODULE (SHIFT)</span>
+              <span class="telemetry-val" id="val-tactical-module" style="color: #f59e0b; font-weight: 700;">AFTERBURNER</span>
+            </div>
+            <div class="telemetry-item">
               <span class="telemetry-label">ACTION POINTS</span>
               <span class="telemetry-val highlight" id="val-ap-telemetry">600 / 600</span>
             </div>
@@ -193,24 +201,130 @@
         <!-- Instructions / Flight Controls Panel -->
         <aside class="hud-panel instructions-panel">
           <div class="panel-header">
-            <h3>FLIGHT CONTROLS (STARCON STYLE)</h3>
+            <h3>FLIGHT & COMBAT CONTROLS</h3>
           </div>
           <ul class="control-list">
-            <li><kbd>W / Up</kbd> Forward Thrust</li>
-            <li><kbd>S / Down</kbd> Reverse / Retro Thruster</li>
+            <li><kbd>W / S</kbd> Forward Thrust / Reverse Brake</li>
             <li><kbd>A / D</kbd> Turn Left / Right</li>
-            <li><kbd>SPACE</kbd> Fire Pulse Blaster</li>
-            <li><kbd>SHIFT</kbd> Tactical Boost / Ability</li>
+            <li><kbd>M1 / 1</kbd> High Slot 1: Light Pulse Cannon</li>
+            <li><kbd>M2 / 2</kbd> High Slot 2: Plasma Accelerator</li>
+            <li><kbd>SHIFT / 3</kbd> Mid Slot 1: Afterburner Overdrive</li>
+            <li><kbd>E / 4</kbd> Mid Slot 2: Flak Scatter Blaster</li>
+            <li><kbd>SPACE</kbd> Fire Active Weapon</li>
+            <li><kbd>Q</kbd> Cycle Active Primary Preset</li>
+            <li><kbd>TAB</kbd> Cycle Nearest Target Lock</li>
             <li><kbd>X</kbd> All-Stop Emergency Brake</li>
-            <li><kbd>Z</kbd> Toggle Inertia Dampeners</li>
-            <li><kbd>C</kbd> Toggle Camera Mode</li>
-            <li><kbd>E</kbd> Dock (when in beacon)</li>
+            <li><kbd>Z</kbd> Inertia Dampeners Toggle</li>
             <li><kbd>J</kbd> Hyperspace Warp Nav</li>
-            <li><kbd>1 - 4</kbd> Switch Alien Race</li>
           </ul>
         </aside>
       </div>
 
+      <!-- Top-Center Target Telemetry Box (MMO Style) -->
+      <div id="target-telemetry-hud" class="target-telemetry-hud hidden">
+        <div class="target-header">
+          <span class="target-faction-badge" id="target-faction">HEGEMONY</span>
+          <h4 class="target-name" id="target-name">VAELIC PATROL DRONE // MK-IV</h4>
+          <span class="target-dist" id="target-distance">42.5 u</span>
+        </div>
+        <div class="target-status-bars">
+          <div class="target-bar-row">
+            <span class="bar-lbl">SHD</span>
+            <div class="target-bar-wrap"><div class="target-bar-fill target-shield" id="target-shield-bar" style="width: 100%;"></div></div>
+            <span class="bar-val" id="target-shield-val">60/60</span>
+          </div>
+          <div class="target-bar-row">
+            <span class="bar-lbl">HUL</span>
+            <div class="target-bar-wrap"><div class="target-bar-fill target-hull" id="target-hull-bar" style="width: 100%;"></div></div>
+            <span class="bar-val" id="target-hull-val">50/50</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom-Center Command Console & Ability Hotbar -->
+      <div id="combat-command-console" class="combat-command-console">
+        <!-- Stacked Ship Vitals -->
+        <div class="vitals-cluster">
+          <div class="vital-row">
+            <span class="vital-label">SHIELDS</span>
+            <div class="vital-bar-track">
+              <div class="vital-bar-fill shield-fill" id="vital-shield-bar" style="width: 100%;"></div>
+            </div>
+            <span class="vital-numeric" id="vital-shield-text">100 / 100</span>
+          </div>
+          <div class="vital-row">
+            <span class="vital-label">HULL HP</span>
+            <div class="vital-bar-track">
+              <div class="vital-bar-fill hull-fill" id="vital-hull-bar" style="width: 100%;"></div>
+            </div>
+            <span class="vital-numeric" id="vital-hull-text">100 / 100</span>
+          </div>
+          <div class="vital-row">
+            <span class="vital-label">CAPACITOR</span>
+            <div class="vital-bar-track">
+              <div class="vital-bar-fill energy-fill" id="vital-energy-bar" style="width: 100%;"></div>
+            </div>
+            <span class="vital-numeric" id="vital-energy-text">100 / 100</span>
+          </div>
+        </div>
+
+        <!-- MMORPG Ability Hotbar (2 High, 2 Mid, 2 Low) -->
+        <div class="hotbar-slots-row">
+          <!-- Low Slot 1: Passive Reactor -->
+          <div class="hotbar-slot passive-slot rarity-uncommon" id="slot-low-1" title="Vaelic Reactor Core Mk II: +15% Energy Regen">
+            <div class="slot-badge">LOW 1</div>
+            <div class="slot-icon">⚛️</div>
+            <span class="slot-short-title">REACTOR</span>
+            <span class="slot-passive-tag">PASSIVE</span>
+          </div>
+
+          <!-- High Slot 1: Pulse Cannon -->
+          <div class="hotbar-slot active-slot rarity-common active-preset" id="slot-high-1" title="Light Pulse Cannon: 78 u/s, 14 dmg">
+            <div class="slot-keybind">[M1 / 1]</div>
+            <div class="slot-cooldown-overlay" id="cd-high-1"></div>
+            <div class="slot-icon">⚡</div>
+            <span class="slot-short-title">PULSE</span>
+            <div class="slot-cost">8⚡</div>
+          </div>
+
+          <!-- High Slot 2: Plasma Accelerator -->
+          <div class="hotbar-slot active-slot rarity-rare" id="slot-high-2" title="Heavy Plasma Accelerator: 48 u/s, 44 dmg">
+            <div class="slot-keybind">[M2 / 2]</div>
+            <div class="slot-cooldown-overlay" id="cd-high-2"></div>
+            <div class="slot-icon">🟢</div>
+            <span class="slot-short-title">PLASMA</span>
+            <div class="slot-cost">24⚡</div>
+          </div>
+
+          <!-- Mid Slot 1: Afterburner Overdrive -->
+          <div class="hotbar-slot active-slot rarity-uncommon" id="slot-mid-1" title="Afterburner Overdrive: 2.2x Thrust & Speed">
+            <div class="slot-keybind">[SHIFT / 3]</div>
+            <div class="slot-cooldown-overlay" id="cd-mid-1"></div>
+            <div class="slot-icon">🔥</div>
+            <span class="slot-short-title">BOOST</span>
+            <div class="slot-cost">38⚡/s</div>
+          </div>
+
+          <!-- Mid Slot 2: Flak Scatter Blaster -->
+          <div class="hotbar-slot active-slot rarity-epic" id="slot-mid-2" title="Scatter Flak Blaster: Tri-pellet spread, 3x12 dmg">
+            <div class="slot-keybind">[E / 4]</div>
+            <div class="slot-cooldown-overlay" id="cd-mid-2"></div>
+            <div class="slot-icon">💥</div>
+            <span class="slot-short-title">FLAK</span>
+            <div class="slot-cost">18⚡</div>
+          </div>
+
+          <!-- Low Slot 2: Passive Armor -->
+          <div class="hotbar-slot passive-slot rarity-common" id="slot-low-2" title="Reinforced Plasteel Armor: +20 Max Hull">
+            <div class="slot-badge">LOW 2</div>
+            <div class="slot-icon">🛡️</div>
+            <span class="slot-short-title">ARMOR</span>
+            <span class="slot-passive-tag">PASSIVE</span>
+          </div>
+        </div>
+      </div>
+
+      <footer class="hud-footer">
         <div class="hud-actions">
           <button id="btn-open-nav" class="hud-btn primary" title="Open Hyperspace Nav Console (J)">🚀 Warp Nav (J)</button>
           <button id="btn-toggle-cam" class="hud-btn" title="Toggle Camera (C)">Camera: Chase</button>
