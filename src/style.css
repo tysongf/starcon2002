@@ -3476,6 +3476,482 @@ kbd {
   color: #f59e0b;
 }
 
+/* ==========================================================================
+   Day 16: Star Control II Alien Comms Screen & CRT Aesthetics
+   ========================================================================== */
+
+.alien-comms-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(3, 7, 18, 0.94);
+  backdrop-filter: blur(12px);
+  padding: 1.5rem;
+}
+
+.alien-comms-modal-overlay.hidden {
+  display: none !important;
+}
+
+.comms-crt-screen {
+  position: relative;
+  width: 100%;
+  max-width: 1100px;
+  background: #080d1a;
+  border: 2px solid #22d3ee;
+  border-radius: 12px;
+  box-shadow: 0 0 35px rgba(34, 211, 238, 0.25), inset 0 0 25px rgba(0, 0, 0, 0.8);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-family: var(--font-sans);
+}
+
+/* Retro CRT Raster Scanlines & Vignette Filter */
+.comms-crt-scanlines {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(0, 0, 0, 0.25) 0px,
+    rgba(0, 0, 0, 0.25) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  pointer-events: none;
+  z-index: 10;
+  opacity: 0.65;
+}
+
+.comms-crt-vignette {
+  position: absolute;
+  inset: 0;
+  box-shadow: inset 0 0 90px rgba(0, 0, 0, 0.85);
+  pointer-events: none;
+  z-index: 11;
+}
+
+/* Comms Header */
+.comms-header {
+  position: relative;
+  z-index: 5;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.1rem 1.4rem;
+  background: rgba(15, 23, 42, 0.85);
+  border-bottom: 2px solid rgba(34, 211, 238, 0.35);
+}
+
+.comms-header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.comms-signal-badge {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.12em;
+  color: #38bdf8;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.comms-alien-name {
+  font-size: 1.35rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  color: #f8fafc;
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+  margin: 0;
+}
+
+.comms-alien-title {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: #94a3b8;
+  letter-spacing: 0.05em;
+}
+
+.comms-header-right {
+  display: flex;
+  align-items: center;
+  gap: 1.2rem;
+}
+
+.comms-waveform-container {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.2rem;
+}
+
+.waveform-label {
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  color: #22d3ee;
+  letter-spacing: 0.1em;
+}
+
+#comms-waveform-canvas {
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(34, 211, 238, 0.4);
+  border-radius: 4px;
+}
+
+.comms-mood-badge {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  padding: 0.35rem 0.75rem;
+  border-radius: 4px;
+  background: rgba(239, 68, 68, 0.2);
+  border: 1px solid rgba(239, 68, 68, 0.6);
+  color: #f87171;
+  text-transform: uppercase;
+}
+
+.comms-mood-badge.mood-aggressive {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.7);
+  color: #f87171;
+}
+
+.comms-mood-badge.mood-suspicious {
+  background: rgba(245, 158, 11, 0.2);
+  border-color: rgba(245, 158, 11, 0.7);
+  color: #fbbf24;
+}
+
+.comms-mood-badge.mood-amused {
+  background: rgba(16, 185, 129, 0.2);
+  border-color: rgba(16, 185, 129, 0.7);
+  color: #34d399;
+}
+
+.comms-mood-badge.mood-poetic {
+  background: rgba(168, 85, 247, 0.2);
+  border-color: rgba(168, 85, 247, 0.7);
+  color: #c084fc;
+}
+
+.comms-mood-badge.mood-terrified {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: rgba(56, 189, 248, 0.7);
+  color: #7dd3fc;
+}
+
+.comms-close-btn {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.5);
+  color: #fca5a5;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 0.45rem 0.85rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.comms-close-btn:hover {
+  background: rgba(239, 68, 68, 0.35);
+  color: #fff;
+  border-color: #ef4444;
+}
+
+/* Comms Body Grid */
+.comms-body {
+  position: relative;
+  z-index: 5;
+  display: grid;
+  grid-template-columns: 310px 1fr;
+  gap: 1.5rem;
+  padding: 1.5rem;
+  min-height: 480px;
+}
+
+/* Left: Alien Portrait Panel */
+.comms-portrait-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.portrait-frame {
+  position: relative;
+  width: 280px;
+  height: 280px;
+  background: #020617;
+  border: 2px solid rgba(34, 211, 238, 0.45);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.9), inset 0 0 15px rgba(34, 211, 238, 0.2);
+}
+
+#alien-portrait-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.portrait-hud-coords {
+  position: absolute;
+  bottom: 6px;
+  left: 8px;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: #38bdf8;
+  letter-spacing: 0.08em;
+  background: rgba(0, 0, 0, 0.7);
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.comms-faction-crest {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(71, 85, 105, 0.4);
+  border-radius: 6px;
+  padding: 0.6rem 0.9rem;
+}
+
+.crest-icon {
+  font-size: 1.3rem;
+}
+
+.crest-label {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #e2e8f0;
+  letter-spacing: 0.05em;
+}
+
+/* Right: Dialogue & Response Options */
+.comms-dialogue-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1.2rem;
+}
+
+.comms-speech-box {
+  background: rgba(10, 15, 28, 0.9);
+  border: 1px solid rgba(34, 211, 238, 0.3);
+  border-radius: 8px;
+  padding: 1.2rem 1.4rem;
+  min-height: 150px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.6);
+}
+
+.speaker-tag {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 800;
+  color: #22d3ee;
+  letter-spacing: 0.1em;
+}
+
+.dialogue-text {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 1.05rem;
+  line-height: 1.55;
+  color: #a7f3d0;
+  text-shadow: 0 0 8px rgba(52, 211, 153, 0.35);
+}
+
+.comms-options-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  flex: 1;
+}
+
+.options-header {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 800;
+  color: #94a3b8;
+  letter-spacing: 0.1em;
+}
+
+.options-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.comms-option-btn {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(71, 85, 105, 0.4);
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  color: #f1f5f9;
+  font-size: 0.88rem;
+  font-family: var(--font-sans);
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.comms-option-btn:hover {
+  background: rgba(30, 41, 59, 0.95);
+  border-color: #38bdf8;
+  color: #38bdf8;
+  transform: translateX(4px);
+  box-shadow: 0 0 15px rgba(56, 189, 248, 0.2);
+}
+
+.option-num-badge {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.15);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  padding: 1px 6px;
+  border-radius: 3px;
+  margin-top: 1px;
+}
+
+.option-text {
+  flex: 1;
+  line-height: 1.4;
+}
+
+/* Comms Footer */
+.comms-footer {
+  position: relative;
+  z-index: 5;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1.4rem;
+  background: rgba(10, 15, 28, 0.95);
+  border-top: 1px solid rgba(71, 85, 105, 0.35);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  color: #64748b;
+}
+
+.comms-telemetry-item span {
+  color: #38bdf8;
+  font-weight: 700;
+}
+
+.comms-action-hint {
+  color: #f59e0b;
+  font-weight: 700;
+}
+
+/* Diplomatic Envoys List in Station View */
+.envoys-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-height: 440px;
+  overflow-y: auto;
+  padding-right: 0.35rem;
+}
+
+.envoy-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(71, 85, 105, 0.35);
+  border-radius: 8px;
+  padding: 0.9rem 1.1rem;
+  transition: all 0.2s ease;
+}
+
+.envoy-card:hover {
+  background: rgba(15, 23, 42, 0.95);
+  border-color: #38bdf8;
+  box-shadow: 0 0 15px rgba(56, 189, 248, 0.15);
+}
+
+.envoy-card-left {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.envoy-avatar-circle {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+  border: 2px solid rgba(56, 189, 248, 0.4);
+  background: rgba(2, 6, 23, 0.8);
+}
+
+.envoy-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.envoy-name {
+  font-size: 0.92rem;
+  font-weight: 800;
+  color: #f8fafc;
+}
+
+.envoy-title {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: #94a3b8;
+}
+
+.envoy-open-btn {
+  background: rgba(56, 189, 248, 0.15);
+  border: 1px solid rgba(56, 189, 248, 0.5);
+  color: #38bdf8;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 0.5rem 0.9rem;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.envoy-open-btn:hover {
+  background: rgba(56, 189, 248, 0.35);
+  color: #fff;
+  border-color: #38bdf8;
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.3);
+}
+
+.hail-btn {
+  background: rgba(168, 85, 247, 0.2);
+  border-color: rgba(168, 85, 247, 0.6);
+  color: #c084fc;
+}
+
+.hail-btn:hover {
+  background: rgba(168, 85, 247, 0.4);
+  color: #fff;
+  border-color: #c084fc;
+}
+
 
 
 

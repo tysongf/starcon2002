@@ -241,10 +241,11 @@
             <span class="bar-val" id="target-hull-val">50/50</span>
           </div>
         </div>
-        <!-- Target Interaction Quick-Actions (Day 15 Wrecks & Salvage) -->
+        <!-- Target Interaction Quick-Actions (Day 15 Wrecks & Day 16 Comms) -->
         <div id="target-quick-actions" class="target-quick-actions hidden">
           <button id="btn-hud-salvage-beam" class="target-action-btn beam-btn">⚡ SALVAGE BEAM [E]</button>
           <button id="btn-hud-tether-wreck" class="target-action-btn tow-btn">🪝 TETHER WRECK [T]</button>
+          <button id="btn-hud-hail-target" class="target-action-btn hail-btn">📡 HAIL [H]</button>
         </div>
       </div>
 
@@ -438,6 +439,9 @@
           </button>
           <button id="tab-btn-salvage" class="station-tab-btn" data-tab="salvage">
             🔧 SALVAGE BAY
+          </button>
+          <button id="tab-btn-diplomacy" class="station-tab-btn" data-tab="diplomacy">
+            📡 DIPLOMATIC ENVOYS
           </button>
         </div>
 
@@ -670,11 +674,116 @@
           </div>
         </div>
 
+        <!-- Tab View 6: Diplomatic Envoys Lounge (Day 16) -->
+        <div id="view-tab-diplomacy" class="station-tab-content hidden">
+          <div class="salvage-grid">
+            <!-- Left: Diplomatic Overview -->
+            <div class="salvage-panel">
+              <div class="salvage-header">
+                <h5>🕊️ SECTOR EMBASSIES & DIPLOMATIC ATTACHÉS</h5>
+                <span class="salvage-badge" style="background: rgba(56, 189, 248, 0.15); border-color: #38bdf8; color: #38bdf8;">SUB-SPACE COMM ARRAY READY</span>
+              </div>
+              <p class="salvage-desc">
+                Aegis Terminal maintains neutral subspace diplomatic relays with the major spacefaring civilizations in the cluster. Establishing dialogue allows pilots to negotiate safe passage, gather intelligence, settle bounty rivalries, and trade rare cultural relics.
+              </p>
+              <div class="salvage-metrics-row">
+                <div class="salvage-metric-box">
+                  <span class="metric-label">KNOWN SPECIES:</span>
+                  <span class="metric-val" style="color: #38bdf8;">4 FACTIONS</span>
+                </div>
+                <div class="salvage-metric-box">
+                  <span class="metric-label">COMM FREQUENCY:</span>
+                  <span class="metric-val" style="color: #a855f7;">SUB-BAND 28.4 GHz</span>
+                </div>
+                <div class="salvage-metric-box">
+                  <span class="metric-label">DIPLOMATIC CODE:</span>
+                  <span class="metric-val" style="color: #10b981;">GENEVA-VOX III</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Right: Available Alien Envoys List -->
+            <div class="salvage-panel">
+              <div class="contracts-panel-header">
+                <h5>📡 ACTIVE ENVOY TRANSMISSION CHANNELS</h5>
+                <span class="contracts-count" id="diplomacy-envoys-count">3 CHANNELS ONLINE</span>
+              </div>
+              <div class="envoys-list" id="diplomacy-envoys-list">
+                <!-- Dynamically populated envoy cards -->
+              </div>
+            </div>
+          </div>
+        </div>
+
         <footer class="dock-modal-footer">
           <span class="undock-hint">Press <kbd>ESC</kbd> or click button to release magnetic clamps</span>
           <button id="btn-undock" class="hud-btn primary large-btn">
             DISENGAGE CLAMPS & UNDOCK 🚀
           </button>
+        </footer>
+      </div>
+    </div>
+
+    <!-- Star Control II Style Alien Comms Modal (Day 16) -->
+    <div id="alien-comms-modal" class="alien-comms-modal-overlay hidden">
+      <div class="comms-crt-screen">
+        <div class="comms-crt-scanlines"></div>
+        <div class="comms-crt-vignette"></div>
+
+        <header class="comms-header">
+          <div class="comms-header-left">
+            <span class="comms-signal-badge" id="comms-signal-badge">SUB-SPACE COMM LINK // 28.4 GHz</span>
+            <h2 class="comms-alien-name" id="comms-speaker-name">COMMANDER VORASH</h2>
+            <span class="comms-alien-title" id="comms-speaker-title">VAELIC HEGEMONY SECTOR OVERSEER</span>
+          </div>
+          <div class="comms-header-right">
+            <div class="comms-waveform-container">
+              <span class="waveform-label">CARRIER WAVEFORM</span>
+              <canvas id="comms-waveform-canvas" width="160" height="32"></canvas>
+            </div>
+            <div class="comms-mood-badge" id="comms-mood-badge">MOOD: AGGRESSIVE</div>
+            <button id="btn-close-alien-comms" class="comms-close-btn" title="Cut Communication Feed [ESC]">✕ TERMINATE</button>
+          </div>
+        </header>
+
+        <div class="comms-body">
+          <!-- Left: Animated Procedural Alien Portrait -->
+          <div class="comms-portrait-panel">
+            <div class="portrait-frame">
+              <canvas id="alien-portrait-canvas" width="280" height="280"></canvas>
+              <div class="portrait-glitch-overlay"></div>
+              <div class="portrait-hud-coords">SPECIES: <span id="comms-species-label">VAELIC</span> // SEC-02</div>
+            </div>
+            <div class="comms-faction-crest" id="comms-faction-crest">
+              <span class="crest-icon" id="comms-crest-icon">🦅</span>
+              <span class="crest-label" id="comms-crest-label">VAELIC HEGEMONY</span>
+            </div>
+          </div>
+
+          <!-- Right: Star Control II Dialogue Box & Choices -->
+          <div class="comms-dialogue-panel">
+            <div class="comms-speech-box">
+              <div class="speaker-tag" id="comms-dialogue-speaker">COMMANDER VORASH SPEAKS:</div>
+              <div class="dialogue-text" id="comms-dialogue-text">
+                ...Connecting sub-space transmission...
+              </div>
+            </div>
+
+            <!-- Response Options Menu -->
+            <div class="comms-options-container">
+              <div class="options-header">SELECT RESPONSE [KEY 1-5]:</div>
+              <div class="options-list" id="comms-options-list">
+                <!-- Dynamically populated choices -->
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <footer class="comms-footer">
+          <div class="comms-telemetry-item">SECURE ENCRYPTION: <span>QUANTUM-HASH ACTIVE</span></div>
+          <div class="comms-telemetry-item">BANDWIDTH: <span>1.24 TB/s</span></div>
+          <div class="comms-telemetry-item">FREQUENCY DRIFT: <span>±0.002%</span></div>
+          <div class="comms-telemetry-item comms-action-hint">PRESS [1-5] OR CLICK TO SELECT // [ESC] TO DISCONNECT</div>
         </footer>
       </div>
     </div>

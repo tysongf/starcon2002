@@ -773,6 +773,183 @@ export class AudioEngine {
       osc.stop(now + idx * 0.08 + 0.5);
     });
   }
+
+  /**
+   * Day 16: Star Control II Subspace Hailing Chime
+   */
+  public playCommsHailingChime(): void {
+    this.initContext();
+    if (!this.ctx) return;
+
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(440, now);
+    osc.frequency.exponentialRampToValueAtTime(880, now + 0.15);
+    osc.frequency.exponentialRampToValueAtTime(660, now + 0.35);
+
+    gain.gain.setValueAtTime(0.01, now);
+    gain.gain.linearRampToValueAtTime(0.25, now + 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.5);
+  }
+
+  /**
+   * Day 16: Comms Carrier Squelch Cutout
+   */
+  public playCommsCloseSound(): void {
+    this.initContext();
+    if (!this.ctx) return;
+
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(220, now);
+    osc.frequency.exponentialRampToValueAtTime(60, now + 0.12);
+
+    gain.gain.setValueAtTime(0.12, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.12);
+  }
+
+  /**
+   * Day 16: Procedural Alien Speech Phoneme Synthesizer
+   * Generates unique vocal formants and phoneme chatter per alien species.
+   */
+  public playAlienPhoneme(species: string, char: string = 'a'): void {
+    this.initContext();
+    if (!this.ctx) return;
+
+    // Skip spaces and punctuation to create natural speech cadences
+    if (char === ' ' || char === '\n' || char === '\t') return;
+
+    const now = this.ctx.currentTime;
+    const charCode = char.charCodeAt(0);
+    const variance = ((charCode % 7) - 3) * 8; // subtle deterministic pitch jitter
+
+    switch (species.toUpperCase()) {
+      case 'VAELIC': {
+        // Deep guttural, aggressive, sawtooth imperial harshness
+        const baseFreq = 85 + (charCode % 5) * 12 + variance;
+        const osc = this.ctx.createOscillator();
+        const filter = this.ctx.createBiquadFilter();
+        const gain = this.ctx.createGain();
+
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(baseFreq, now);
+        osc.frequency.exponentialRampToValueAtTime(Math.max(40, baseFreq * 0.8), now + 0.07);
+
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(380, now);
+        filter.Q.setValueAtTime(3.5, now);
+
+        gain.gain.setValueAtTime(0.01, now);
+        gain.gain.linearRampToValueAtTime(0.18, now + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.ctx.destination);
+
+        osc.start(now);
+        osc.stop(now + 0.08);
+        break;
+      }
+
+      case 'PHORID': {
+        // Eerie, whispering, harmonic multi-tonal spore chords
+        const baseFreq = 340 + (charCode % 9) * 25 + variance;
+        const osc1 = this.ctx.createOscillator();
+        const osc2 = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+
+        osc1.type = 'sine';
+        osc1.frequency.setValueAtTime(baseFreq, now);
+        osc1.frequency.exponentialRampToValueAtTime(baseFreq * 0.95, now + 0.12);
+
+        osc2.type = 'triangle';
+        osc2.frequency.setValueAtTime(baseFreq * 1.5, now); // Fifth harmonic
+
+        gain.gain.setValueAtTime(0.01, now);
+        gain.gain.linearRampToValueAtTime(0.12, now + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+
+        osc1.connect(gain);
+        osc2.connect(gain);
+        gain.connect(this.ctx.destination);
+
+        osc1.start(now);
+        osc2.start(now);
+        osc1.stop(now + 0.12);
+        osc2.stop(now + 0.12);
+        break;
+      }
+
+      case 'KRYLL': {
+        // High-pitched, rapid rodentoid chattering, FM chirps and clicks
+        const baseFreq = 950 + (charCode % 11) * 60 + variance * 4;
+        const carrier = this.ctx.createOscillator();
+        const mod = this.ctx.createOscillator();
+        const modGain = this.ctx.createGain();
+        const gain = this.ctx.createGain();
+
+        carrier.type = 'sine';
+        carrier.frequency.setValueAtTime(baseFreq, now);
+
+        mod.type = 'square';
+        mod.frequency.setValueAtTime(120, now);
+        modGain.gain.setValueAtTime(300, now);
+
+        mod.connect(carrier.frequency);
+
+        gain.gain.setValueAtTime(0.01, now);
+        gain.gain.linearRampToValueAtTime(0.14, now + 0.008);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+
+        carrier.connect(gain);
+        gain.connect(this.ctx.destination);
+
+        carrier.start(now);
+        mod.start(now);
+        carrier.stop(now + 0.06);
+        mod.stop(now + 0.06);
+        break;
+      }
+
+      default: {
+        // Sol Alliance / Radio Military Transceiver
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(620 + (charCode % 4) * 40, now);
+
+        gain.gain.setValueAtTime(0.01, now);
+        gain.gain.linearRampToValueAtTime(0.08, now + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+
+        osc.start(now);
+        osc.stop(now + 0.05);
+        break;
+      }
+    }
+  }
 }
 
 

@@ -312,5 +312,13 @@ ON CONFLICT (id) DO UPDATE SET
   scrap_remaining = EXCLUDED.scrap_remaining,
   max_scrap = EXCLUDED.max_scrap,
   hull_intactness = EXCLUDED.hull_intactness;
-
-
+-- Day 16: Star Control II Alien Comms & Branching Dialogue System
+CREATE TABLE IF NOT EXISTS player_dialog_state (
+    account_id VARCHAR(64) NOT NULL,
+    npc_id VARCHAR(64) NOT NULL,
+    current_node_id VARCHAR(64) NOT NULL,
+    flags JSONB NOT NULL DEFAULT '{}'::jsonb,
+    history JSONB NOT NULL DEFAULT '[]'::jsonb,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    PRIMARY KEY (account_id, npc_id)
+);
