@@ -365,6 +365,20 @@
       </div>
     </div>
 
+    <!-- Emergency Escape Pod HUD (Day 14) -->
+    <div id="escape-pod-hud" class="escape-pod-hud hidden">
+      <div class="pod-alert-icon">⚠️</div>
+      <div class="pod-alert-body">
+        <div class="pod-alert-title">CATASTROPHIC HULL BREACH — EJECTED IN ESCAPE POD</div>
+        <div class="pod-timer-row">
+          <span class="pod-timer-label">EMERGENCY LIFE SUPPORT:</span>
+          <span class="pod-timer-clock" id="pod-timer-clock">05:00</span>
+          <span class="pod-status-badge">IMPULSE ONLY (13 u/s)</span>
+        </div>
+        <div class="pod-guidance-subtext">WEAPONS OFFLINE // DOCK AT NEAREST STATION CLINIC TO CLAIM REPLACEMENT VESSEL</div>
+      </div>
+    </div>
+
     <!-- Station Dock Modal (Milestone 0.1) -->
     <div id="station-dock-modal" class="dock-modal-overlay hidden">
       <div class="dock-modal-card">
@@ -400,6 +414,9 @@
           </button>
           <button id="tab-btn-armory" class="station-tab-btn" data-tab="armory">
             🛒 ARMORY STORE
+          </button>
+          <button id="tab-btn-contracts" class="station-tab-btn" data-tab="contracts">
+            💀 REVENGE & BOUNTIES
           </button>
         </div>
 
@@ -523,6 +540,44 @@
           </div>
         </div>
 
+        <!-- Tab View 4: Revenge Contracts & Bounty Board (Day 14) -->
+        <div id="view-tab-contracts" class="station-tab-content hidden">
+          <div class="armory-header">
+            <div class="armory-titles">
+              <h4>PUBLIC BOUNTY BOARD & REVENGE CONTRACTS</h4>
+              <span class="col-subtext">DEAD-OR-ALIVE SALVAGE CONTRACTS & HEGEMONY BOUNTIES</span>
+            </div>
+            <div class="stat-pill credits-pill">
+              <span class="pill-label">ESCROW CREDITS:</span>
+              <span class="pill-value" id="contracts-player-credits">2,500 Cr</span>
+            </div>
+          </div>
+
+          <div class="contracts-columns-grid">
+            <!-- Left: Active Revenge Contracts -->
+            <div class="contracts-panel">
+              <div class="contracts-panel-header">
+                <h5>📜 ACTIVE REVENGE CONTRACTS</h5>
+                <span class="contracts-count" id="contracts-active-count">1 CONTRACT OPEN</span>
+              </div>
+              <div class="contracts-list" id="contracts-active-list">
+                <!-- Dynamically populated contracts -->
+              </div>
+            </div>
+
+            <!-- Right: Pilot Loss Reports / Killmail Archive -->
+            <div class="contracts-panel">
+              <div class="contracts-panel-header">
+                <h5>💀 PILOT LOSS REPORTS & RECENT KILLMAILS</h5>
+                <span class="contracts-count" id="killmails-count">0 LOSSES</span>
+              </div>
+              <div class="killmails-list" id="killmails-archive-list">
+                <!-- Dynamically populated killmails -->
+              </div>
+            </div>
+          </div>
+        </div>
+
         <footer class="dock-modal-footer">
           <span class="undock-hint">Press <kbd>ESC</kbd> or click button to release magnetic clamps</span>
           <button id="btn-undock" class="hud-btn primary large-btn">
@@ -567,6 +622,124 @@
               TRANSFER ALL TO CARGO [F]
             </button>
           </div>
+        </footer>
+      </div>
+    </div>
+
+    <!-- EVE-Style Killmail / Loss Report & Revenge Bounty Modal (Day 14) -->
+    <div id="killmail-modal" class="dock-modal-overlay hidden">
+      <div class="dock-modal-card killmail-modal-card">
+        <header class="dock-modal-header killmail-header">
+          <div class="dock-title-block">
+            <span class="dock-badge loss-badge">VESSEL DESTROYED</span>
+            <h2 class="dock-station-name killmail-title">CATASTROPHIC HULL LOSS REPORT</h2>
+            <span class="dock-subtext" id="km-timestamp">TIMESTAMP: SEC-02 // VOID EXPANSE</span>
+          </div>
+          <div class="dock-status-tag loss-tag">
+            <span class="dock-lock-icon">💀</span>
+            <span id="km-loss-valuation">LOSS: 18,500 CR</span>
+          </div>
+        </header>
+
+        <div class="killmail-body-grid">
+          <!-- Killer & Sector Details -->
+          <div class="km-details-box">
+            <div class="km-detail-row">
+              <span class="km-label">DESTROYED BY:</span>
+              <span class="km-value danger-text" id="km-killer-name">Hegemony Hunter Drone [ELITE]</span>
+            </div>
+            <div class="km-detail-row">
+              <span class="km-label">SECTOR JURISDICTION:</span>
+              <span class="km-value" id="km-sector-name">Sector 02 // The Void Expanse</span>
+            </div>
+            <div class="km-detail-row">
+              <span class="km-label">TOTAL LOSS VALUATION:</span>
+              <span class="km-value" id="km-total-loss">18,500 Credits</span>
+            </div>
+            <div class="km-detail-row">
+              <span class="km-label">DROPPED SALVAGE:</span>
+              <span class="km-value" id="km-dropped-summary">24x Composite Alloy Scrap, 15x Slag</span>
+            </div>
+          </div>
+
+          <!-- Revenge Bounty Section -->
+          <div class="km-bounty-box">
+            <h4>POST PRIVATE OR SHAREABLE REVENGE BOUNTY</h4>
+            <p class="bounty-desc">
+              Place a bounty on this attacker. Anyone in your fleet or sector who destroys the target can claim the reward.
+            </p>
+            <div class="bounty-presets-row">
+              <button class="bounty-chip active" data-bounty="1000">1,000 CR</button>
+              <button class="bounty-chip" data-bounty="2500">2,500 CR</button>
+              <button class="bounty-chip" data-bounty="5000">5,000 CR</button>
+            </div>
+            <div class="bounty-action-row">
+              <button id="btn-post-bounty" class="hud-btn primary large-btn">
+                💀 POST REVENGE CONTRACT
+              </button>
+            </div>
+            <div id="km-share-link-row" class="km-share-link-row hidden">
+              <span class="km-label">SHAREABLE BOUNTY URL:</span>
+              <div class="input-group">
+                <input type="text" id="km-share-url" readonly />
+                <button id="btn-copy-km-url" class="hud-btn-mini">COPY</button>
+              </div>
+              <span id="km-copy-toast" class="km-copy-toast hidden">LINK COPIED TO CLIPBOARD!</span>
+            </div>
+          </div>
+        </div>
+
+        <footer class="dock-modal-footer">
+          <span class="undock-hint">Escape pod thrusters engaged. Dock at any station to claim a free replacement hull.</span>
+          <button id="btn-close-km" class="hud-btn large-btn">
+            PROCEED IN ESCAPE POD [ESC]
+          </button>
+        </footer>
+      </div>
+    </div>
+
+    <!-- Station Clinic Rescue & Frigate Reissue Modal (Day 14) -->
+    <div id="clinic-rescue-modal" class="dock-modal-overlay hidden">
+      <div class="dock-modal-card clinic-modal-card">
+        <header class="dock-modal-header clinic-header">
+          <div class="dock-title-block">
+            <span class="dock-badge clinic-badge">EMERGENCY EVACUATION BERTH</span>
+            <h2 class="dock-station-name">AEGIS STATION CLINIC // PILOT RESTORED</h2>
+            <span class="dock-subtext">NAVAL RESCUE PROTOCOL ACTIVATED // LIFE SUPPORT STANDDOWN</span>
+          </div>
+          <div class="dock-status-tag clinic-tag">
+            <span>🏥</span>
+            <span>VITALS STABLE</span>
+          </div>
+        </header>
+
+        <div class="clinic-body">
+          <div class="clinic-officer-comms">
+            <div class="officer-avatar">🩺</div>
+            <div class="officer-transmission">
+              <span class="officer-name">DR. T. KANEDA // CHIEF MEDICAL OFFICER</span>
+              <p class="officer-quote">
+                "Welcome back to the land of the living, Captain. Your escape pod touched down with only minutes of oxygen to spare. You've been stabilized with standard clone neural stimulants. Naval Command has authorized a standard Sol Cutter frigate replacement for you."
+              </p>
+            </div>
+          </div>
+
+          <div class="clinic-award-card">
+            <div class="award-header">
+              <span class="award-icon">🚀</span>
+              <div class="award-info">
+                <h4>STANDARD SOL CUTTER REPLACEMENT CHASSIS</h4>
+                <p>Fully certified hull with 100 Armor, 100 Shield, and Sol-Standard Pulse Cannon.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <footer class="dock-modal-footer">
+          <span class="undock-hint">Reissuing vessel resets ship status and deploys new hull to hangar bay</span>
+          <button id="btn-claim-frigate" class="hud-btn primary large-btn">
+            CLAIM REPLACEMENT FRIGATE & BERTH [ENTER] 🚀
+          </button>
         </footer>
       </div>
     </div>

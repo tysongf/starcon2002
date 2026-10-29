@@ -2709,5 +2709,464 @@ kbd {
   color: #38bdf8;
 }
 
+/* ==========================================================================
+   DAY 14: EMERGENCY ESCAPE POD HUD, KILLMAIL MODAL & REVENGE CONTRACTS
+   ========================================================================== */
+
+/* Emergency Escape Pod HUD */
+.escape-pod-hud {
+  position: absolute;
+  top: 4.8rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 55;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.65rem 1.4rem;
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid rgba(239, 68, 68, 0.7);
+  box-shadow: 0 0 25px rgba(239, 68, 68, 0.35), inset 0 0 15px rgba(239, 68, 68, 0.15);
+  border-radius: 8px;
+  backdrop-filter: blur(10px);
+  animation: pod-hud-pulse 1.8s infinite ease-in-out;
+}
+
+@keyframes pod-hud-pulse {
+  0%, 100% {
+    border-color: rgba(239, 68, 68, 0.55);
+    box-shadow: 0 0 18px rgba(239, 68, 68, 0.25);
+  }
+  50% {
+    border-color: rgba(239, 68, 68, 0.95);
+    box-shadow: 0 0 30px rgba(239, 68, 68, 0.55);
+  }
+}
+
+.escape-pod-hud.critical {
+  border-color: #ef4444;
+  background: rgba(45, 10, 10, 0.96);
+  animation: pod-hud-critical 0.6s infinite alternate;
+}
+
+@keyframes pod-hud-critical {
+  from { box-shadow: 0 0 25px rgba(239, 68, 68, 0.4); }
+  to { box-shadow: 0 0 45px rgba(239, 68, 68, 0.85); }
+}
+
+.pod-alert-icon {
+  font-size: 1.8rem;
+  animation: pod-icon-spin 2.5s infinite ease-in-out alternate;
+}
+
+@keyframes pod-icon-spin {
+  0% { transform: scale(0.9); }
+  100% { transform: scale(1.15); }
+}
+
+.pod-alert-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.pod-alert-title {
+  font-family: var(--font-header);
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #f87171;
+}
+
+.pod-timer-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.pod-timer-label {
+  font-family: var(--font-header);
+  font-size: 0.72rem;
+  color: #94a3b8;
+  letter-spacing: 0.05em;
+}
+
+.pod-timer-clock {
+  font-family: var(--font-mono);
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #fca5a5;
+  text-shadow: 0 0 10px rgba(239, 68, 68, 0.8);
+  letter-spacing: 0.06em;
+}
+
+.escape-pod-hud.critical .pod-timer-clock {
+  color: #ef4444;
+  animation: clock-blink 0.5s infinite alternate;
+}
+
+@keyframes clock-blink {
+  from { opacity: 0.7; }
+  to { opacity: 1.0; }
+}
+
+.pod-status-badge {
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  font-weight: 700;
+  color: #fbbf24;
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+}
+
+.pod-guidance-subtext {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  color: #64748b;
+  letter-spacing: 0.04em;
+}
+
+/* Killmail Loss Report Modal */
+.killmail-modal-card {
+  max-width: 680px;
+  border: 1px solid rgba(239, 68, 68, 0.45);
+  box-shadow: 0 0 35px rgba(239, 68, 68, 0.25), 0 25px 50px -12px rgba(0, 0, 0, 0.95);
+}
+
+.killmail-header {
+  border-bottom-color: rgba(239, 68, 68, 0.3);
+}
+
+.killmail-title {
+  color: #f87171 !important;
+}
+
+.loss-badge {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.5);
+  color: #fca5a5;
+}
+
+.loss-tag {
+  background: rgba(239, 68, 68, 0.25);
+  border-color: rgba(239, 68, 68, 0.6);
+  color: #ef4444;
+  font-weight: 800;
+}
+
+.killmail-body-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 1.25rem;
+}
+
+.km-details-box {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(51, 65, 85, 0.5);
+  border-radius: 8px;
+  padding: 1rem 1.2rem;
+}
+
+.km-detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.82rem;
+}
+
+.km-label {
+  font-family: var(--font-header);
+  font-size: 0.72rem;
+  color: #94a3b8;
+  letter-spacing: 0.05em;
+}
+
+.km-value {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  color: #f1f5f9;
+  font-weight: 600;
+}
+
+.danger-text {
+  color: #ef4444 !important;
+  font-weight: 800;
+}
+
+.km-bounty-box {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  background: rgba(30, 41, 59, 0.55);
+  border: 1px dashed rgba(245, 158, 11, 0.45);
+  border-radius: 8px;
+  padding: 1rem 1.2rem;
+}
+
+.km-bounty-box h4 {
+  font-family: var(--font-header);
+  font-size: 0.82rem;
+  color: #fbbf24;
+  margin: 0;
+  letter-spacing: 0.05em;
+}
+
+.bounty-desc {
+  font-size: 0.74rem;
+  color: #94a3b8;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.bounty-presets-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.bounty-chip {
+  padding: 0.4rem 0.85rem;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(71, 85, 105, 0.6);
+  border-radius: 6px;
+  color: #cbd5e1;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease-out;
+}
+
+.bounty-chip:hover {
+  border-color: #fbbf24;
+  color: #f8fafc;
+}
+
+.bounty-chip.active {
+  background: rgba(245, 158, 11, 0.2);
+  border-color: #f59e0b;
+  color: #fbbf24;
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.3);
+}
+
+.km-share-link-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid rgba(51, 65, 85, 0.4);
+}
+
+.km-share-link-row input {
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(71, 85, 105, 0.6);
+  border-radius: 4px;
+  color: #38bdf8;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  padding: 0.4rem 0.6rem;
+  width: 100%;
+}
+
+.km-copy-toast {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: #4ade80;
+  font-weight: 700;
+}
+
+/* Station Clinic Rescue Modal */
+.clinic-modal-card {
+  max-width: 620px;
+  border: 1px solid rgba(6, 182, 212, 0.45);
+  box-shadow: 0 0 35px rgba(6, 182, 212, 0.25), 0 25px 50px -12px rgba(0, 0, 0, 0.95);
+}
+
+.clinic-badge {
+  background: rgba(6, 182, 212, 0.18);
+  border-color: rgba(6, 182, 212, 0.5);
+  color: #67e8f9;
+}
+
+.clinic-tag {
+  background: rgba(16, 185, 129, 0.2);
+  border-color: rgba(16, 185, 129, 0.6);
+  color: #4ade80;
+  font-weight: 700;
+}
+
+.clinic-body {
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.clinic-officer-comms {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(51, 65, 85, 0.5);
+  border-radius: 8px;
+  padding: 0.95rem 1.15rem;
+}
+
+.clinic-award-card {
+  background: rgba(6, 182, 212, 0.08);
+  border: 1px solid rgba(6, 182, 212, 0.35);
+  border-radius: 8px;
+  padding: 1.1rem;
+}
+
+.award-header {
+  display: flex;
+  align-items: center;
+  gap: 0.95rem;
+}
+
+.award-icon {
+  font-size: 2rem;
+}
+
+.award-info h4 {
+  margin: 0;
+  font-family: var(--font-header);
+  font-size: 0.88rem;
+  color: #38bdf8;
+  letter-spacing: 0.05em;
+}
+
+.award-info p {
+  margin: 0.25rem 0 0 0;
+  font-size: 0.74rem;
+  color: #cbd5e1;
+}
+
+/* Tab View 4: Revenge Contracts Grid */
+.contracts-columns-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+  padding: 1.25rem;
+}
+
+.contracts-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(51, 65, 85, 0.4);
+  border-radius: 8px;
+  padding: 1rem;
+  min-height: 280px;
+}
+
+.contracts-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(51, 65, 85, 0.5);
+  padding-bottom: 0.5rem;
+}
+
+.contracts-panel-header h5 {
+  margin: 0;
+  font-family: var(--font-header);
+  font-size: 0.78rem;
+  color: #f1f5f9;
+  letter-spacing: 0.05em;
+}
+
+.contracts-count {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: #94a3b8;
+}
+
+.contracts-list, .killmails-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  overflow-y: auto;
+  max-height: 380px;
+}
+
+.contract-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(30, 41, 59, 0.7);
+  border: 1px solid rgba(71, 85, 105, 0.5);
+  border-radius: 6px;
+  padding: 0.75rem 0.95rem;
+  transition: all 0.15s ease-out;
+}
+
+.contract-card:hover {
+  border-color: #fbbf24;
+  transform: translateY(-1px);
+}
+
+.contract-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.contract-target-name {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.contract-meta {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: #94a3b8;
+}
+
+.contract-reward-badge {
+  font-family: var(--font-mono);
+  font-size: 0.84rem;
+  font-weight: 800;
+  color: #fbbf24;
+  text-shadow: 0 0 8px rgba(245, 158, 11, 0.4);
+}
+
+.killmail-card-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(30, 41, 59, 0.6);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 6px;
+  padding: 0.65rem 0.85rem;
+}
+
+.km-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.km-card-killer {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #f87171;
+}
+
+.km-card-loss {
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  color: #cbd5e1;
+}
+
 
 

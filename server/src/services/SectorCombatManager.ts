@@ -1,6 +1,9 @@
 import type { WebSocket } from 'ws';
 import { LootGenerator } from './LootGenerator';
 import { outfittingService } from './OutfittingService';
+import { ContractService } from './ContractService';
+
+export const contractService = new ContractService();
 
 export interface CombatInputs {
   forward: boolean;
@@ -25,7 +28,7 @@ export interface SectorLootContainer {
 
 export interface SectorEntity {
   id: string;
-  type: 'PLAYER' | 'DRONE' | 'WRECK' | 'CARGO_CRATE';
+  type: 'PLAYER' | 'DRONE' | 'WRECK' | 'CARGO_CRATE' | 'SCAVENGER';
   factionId: string;
   name: string;
   hullClass: string;
@@ -53,11 +56,17 @@ export interface SectorEntity {
   afterburnerActive?: boolean;
   loadout?: any;
   energyRegenRate?: number;
-  // AI specific
+  // Day 14 Death & Escape Pod
+  isEscapePod?: boolean;
+  lifeSupportSeconds?: number;
+  weaponsDisabled?: boolean;
+  // AI Scavenger specific
   aiPatrolCenter?: { x: number; z: number };
   aiPatrolAngle?: number;
   lootedCargo?: any[];
   transponderActive?: boolean;
+  targetCanisterId?: string | null;
+  scoopCooldown?: number;
 }
 
 export interface Projectile {
@@ -202,6 +211,52 @@ export class SectorRoom {
         transponderActive: false,
       });
 
+      // Spawn persistent AI Scavenger in Sector 2 Void Expanse
+      this.entities.set('scavenger_salvage_01', {
+        id: 'scavenger_salvage_01',
+        type: 'SCAVENGER',
+        factionId: 'Scavenger Guild',
+        name: 'Vulture-01 [Scavenger Guild]',
+        hullClass: 'SCAVENGER_VULTURE',
+        hullSeed: 4421,
+        x: -25.0,
+        z: 20.0,
+        vx: 0,
+        vz: 0,
+        yaw: 0,
+        angularVelocity: 0,
+        hp: 95,
+        maxHp: 95,
+        shields: 40,
+        maxShields: 40,
+        energy: 100,
+        maxEnergy: 100,
+        powerGridMax: 80,
+        powerGridUsed: 50,
+        cpuMax: 100,
+        cpuUsed: 60,
+        state: 'SCAVENGE',
+        inputs: {
+          forward: false,
+          reverse: false,
+          turnLeft: false,
+          turnRight: false,
+          brake: false,
+          firePrimary: false,
+          fireTactical: false,
+        },
+        lastHitTime: 0,
+        fireCooldown: 0,
+        aiPatrolCenter: { x: -10.0, z: 10.0 },
+        aiPatrolAngle: 0,
+        lootedCargo: [
+          { name: 'Titanium Scrap', quantity: 12, category: 'COMMODITY', unitValue: 90 },
+          { name: 'Micro-Thruster Components', quantity: 6, category: 'COMMODITY', unitValue: 140 },
+        ],
+        transponderActive: true,
+        scoopCooldown: 0,
+      });
+
       // Spawn initial orbital salvage canister in Sector 2 Void Expanse
       this.containers.push({
         id: 'canister_sec2_orbital_cache',
@@ -320,8 +375,9 @@ export class SectorRoom {
     this.lastTickTimestamp = now;
     this.tickCount++;
 
-    // 1. Process Drone AI
+    // 1. Process Drone & Scavenger AI
     this.processDroneAI(dt);
+    this.processScavengerAI(dt);
 
     // 2. Integrate Kinematics for all living vessels
     for (const entity of this.entities.values()) {
@@ -334,6 +390,11 @@ export class SectorRoom {
       if (entity.state === 'DESTROYED') continue;
       if (entity.fireCooldown > 0) {
         entity.fireCooldown = Math.max(0, entity.fireCooldown - dt);
+      }
+
+      // Escape pods and vessels with weapons disabled cannot fire
+      if (entity.weaponsDisabled || entity.isEscapePod || entity.hullClass === 'ESCAPE_POD') {
+        continue;
       }
 
       if (entity.inputs.firePrimary && entity.fireCooldown <= 0 && entity.energy >= 10) {
@@ -349,10 +410,24 @@ export class SectorRoom {
   }
 
   private integrateEntityPhysics(entity: SectorEntity, dt: number, now: number): void {
-    const isEscapePod = entity.hullClass === 'ESCAPE_POD';
-    let accel = isEscapePod ? 9.0 : entity.type === 'DRONE' ? 18.0 : 22.0;
-    const turnAccel = isEscapePod ? 2.2 : 3.6;
-    let maxSpeed = isEscapePod ? 12.0 : entity.type === 'DRONE' ? 24.0 : 28.0;
+    const isEscapePod = entity.isEscapePod || entity.hullClass === 'ESCAPE_POD';
+    let accel = isEscapePod ? 8.0 : entity.type === 'DRONE' ? 18.0 : entity.type === 'SCAVENGER' ? 14.0 : 22.0;
+    const turnAccel = isEscapePod ? 2.0 : entity.type === 'SCAVENGER' ? 2.8 : 3.6;
+    let maxSpeed = isEscapePod ? 13.0 : entity.type === 'DRONE' ? 24.0 : entity.type === 'SCAVENGER' ? 18.0 : 28.0;
+
+    // Day 14: Emergency Life Support countdown for Escape Pods
+    if (isEscapePod && typeof entity.lifeSupportSeconds === 'number') {
+      entity.lifeSupportSeconds = Math.max(0, entity.lifeSupportSeconds - dt);
+      if (entity.lifeSupportSeconds <= 0 && entity.state !== 'DESTROYED') {
+        entity.state = 'DESTROYED';
+        this.pendingEvents.push({
+          type: 'LIFE_SUPPORT_EXHAUSTED',
+          targetId: entity.id,
+          x: entity.x,
+          z: entity.z,
+        });
+      }
+    }
 
     // Tactical Afterburner Overdrive (Shift key)
     const wantsAfterburner = entity.inputs.fireTactical && !isEscapePod && entity.energy >= 3.0;
@@ -512,8 +587,96 @@ export class SectorRoom {
     }
   }
 
+  private processScavengerAI(dt: number): void {
+    for (const scavenger of this.entities.values()) {
+      if (scavenger.type !== 'SCAVENGER' || scavenger.state === 'DESTROYED') continue;
+
+      scavenger.scoopCooldown = Math.max(0, (scavenger.scoopCooldown || 0) - dt);
+
+      // Search for nearest container within 85u
+      let nearestContainer: SectorLootContainer | null = null;
+      let minContainerDist = Infinity;
+
+      for (const container of this.containers) {
+        const dx = container.x - scavenger.x;
+        const dz = container.z - scavenger.z;
+        const dist = Math.sqrt(dx * dx + dz * dz);
+        if (dist < minContainerDist && dist < 85.0) {
+          minContainerDist = dist;
+          nearestContainer = container;
+        }
+      }
+
+      if (nearestContainer) {
+        scavenger.state = 'SCAVENGE';
+        scavenger.targetCanisterId = nearestContainer.id;
+
+        const dx = nearestContainer.x - scavenger.x;
+        const dz = nearestContainer.z - scavenger.z;
+        const desiredYaw = Math.atan2(dx, dz);
+
+        let yawDiff = desiredYaw - scavenger.yaw;
+        while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
+        while (yawDiff > Math.PI) yawDiff -= Math.PI * 2;
+
+        scavenger.inputs.turnLeft = yawDiff > 0.08;
+        scavenger.inputs.turnRight = yawDiff < -0.08;
+        scavenger.inputs.forward = true;
+        scavenger.inputs.brake = false;
+
+        // Scooping proximity check (< 8.0 units)
+        if (minContainerDist <= 8.0 && scavenger.scoopCooldown <= 0) {
+          scavenger.scoopCooldown = 2.5;
+          const targetId = nearestContainer.id;
+          const idx = this.containers.findIndex((c) => c.id === targetId);
+          if (idx !== -1) {
+            const scooped = this.containers.splice(idx, 1)[0];
+            scavenger.lootedCargo = scavenger.lootedCargo || [];
+            scavenger.lootedCargo.push(...scooped.items);
+
+            this.pendingEvents.push({
+              type: 'CONTAINER_SCOOPED',
+              sourceId: scavenger.id,
+              canisterId: scooped.id,
+              title: scooped.title,
+              x: scavenger.x,
+              z: scavenger.z,
+              data: {
+                scavengerName: scavenger.name,
+                canisterId: scooped.id,
+                title: scooped.title,
+              },
+            });
+          }
+        }
+      } else {
+        // Patrol orbit around center
+        scavenger.state = 'PATROL';
+        scavenger.targetCanisterId = null;
+        scavenger.aiPatrolAngle = (scavenger.aiPatrolAngle || 0) + 0.25 * dt;
+        const radius = 35.0;
+        const center = scavenger.aiPatrolCenter || { x: -10, z: 10 };
+        const targetX = center.x + Math.sin(scavenger.aiPatrolAngle) * radius;
+        const targetZ = center.z + Math.cos(scavenger.aiPatrolAngle) * radius;
+
+        const dx = targetX - scavenger.x;
+        const dz = targetZ - scavenger.z;
+        const desiredYaw = Math.atan2(dx, dz);
+
+        let yawDiff = desiredYaw - scavenger.yaw;
+        while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
+        while (yawDiff > Math.PI) yawDiff -= Math.PI * 2;
+
+        scavenger.inputs.turnLeft = yawDiff > 0.1;
+        scavenger.inputs.turnRight = yawDiff < -0.1;
+        scavenger.inputs.forward = true;
+        scavenger.inputs.brake = false;
+      }
+    }
+  }
+
   private dischargePrimaryWeapon(entity: SectorEntity): void {
-    if (entity.type === 'DRONE') {
+    if (entity.type === 'DRONE' || entity.type === 'SCAVENGER') {
       entity.energy -= 12.0;
       entity.fireCooldown = 0.35;
       const forwardX = Math.sin(entity.yaw);
@@ -699,7 +862,11 @@ export class SectorRoom {
     });
 
     if (target.type === 'PLAYER') {
-      // Hardcore death: Player ejects into Indestructible Escape Pod!
+      const killer = this.entities.get(killerId);
+      const killerName = killer ? killer.name : 'Hegemony Hunter Drone [ELITE]';
+      const playerId = target.id.replace('player_', '');
+
+      // Hardcore death: Player ejects into Emergency Escape Pod!
       this.pendingEvents.push({
         type: 'POD_EJECTED',
         targetId: target.id,
@@ -707,11 +874,53 @@ export class SectorRoom {
         z: target.z,
       });
 
+      // Record permanent Killmail in DB and notify socket
+      contractService.createKillmail(
+        playerId,
+        killerId,
+        killerName,
+        this.sectorId,
+        18500,
+        [
+          { name: 'Composite Alloy Scrap', quantity: 24, unitValue: 120 },
+          { name: 'Compacted Hydrocarbon Slag', quantity: 15, unitValue: 75 }
+        ],
+        [
+          { name: 'Sol-Standard Pulse Cannon', slot: 'H1' },
+          { name: 'Overdrive Afterburner Core', slot: 'M1' }
+        ]
+      ).then((km) => {
+        const clientSocket = this.clients.get(playerId);
+        if (clientSocket && clientSocket.readyState === 1) {
+          clientSocket.send(JSON.stringify({
+            type: 'KILLMAIL_NOTIFICATION',
+            killmail: km,
+          }));
+        }
+      }).catch((err) => {
+        console.error('[Combat] Error logging killmail:', err);
+      });
+
+      // Spawn Player Wreck Debris Canister in Sector
+      const wreckContainerId = `loot_player_wreck_${Date.now()}`;
+      this.containers.push({
+        id: wreckContainerId,
+        x: Math.round(target.x * 10) / 10,
+        z: Math.round(target.z * 10) / 10,
+        title: `${target.name} Debris Canister`,
+        rarity: 'RARE',
+        items: [
+          { name: 'Vessel Wreckage Scrap', quantity: 30, category: 'COMMODITY', unitValue: 110 },
+          { name: 'Compacted Hydrocarbon Slag', quantity: 15, category: 'COMMODITY', unitValue: 75 }
+        ],
+        createdAt: Date.now(),
+      });
+
       // Transform entity into Escape Pod
       target.hullClass = 'ESCAPE_POD';
       target.hullSeed = 777;
-      target.hp = 50;
-      target.maxHp = 50;
+      target.hp = 25;
+      target.maxHp = 25;
       target.shields = 0;
       target.maxShields = 0;
       target.state = 'IDLE';
@@ -719,9 +928,49 @@ export class SectorRoom {
       target.powerGridUsed = 0;
       target.cpuMax = 0;
       target.cpuUsed = 0;
-      target.vx *= 0.2;
-      target.vz *= 0.2;
-    } else if (target.type === 'DRONE' || target.type === 'SCAVENGER') {
+      target.vx *= 0.15;
+      target.vz *= 0.15;
+      target.isEscapePod = true;
+      target.lifeSupportSeconds = 300; // 5 minute countdown
+      target.weaponsDisabled = true;
+    } else if (target.type === 'SCAVENGER') {
+      // Scavenger vessel destroyed: Drop all accumulated looted cargo plus bonus core in an EPIC cache
+      const containerId = `loot_scavenger_${Date.now()}`;
+      const droppedItems = (target.lootedCargo && target.lootedCargo.length > 0)
+        ? [...target.lootedCargo]
+        : [{ name: 'Titanium Scrap', quantity: 18, category: 'COMMODITY', unitValue: 90 }];
+
+      droppedItems.push({
+        name: 'Vulture Salvage Core',
+        category: 'VALUABLE',
+        quantity: 1,
+        unitValue: 850
+      });
+
+      const container: SectorLootContainer = {
+        id: containerId,
+        x: Math.round(target.x * 10) / 10,
+        z: Math.round(target.z * 10) / 10,
+        title: `${target.name} Salvage Manifest`,
+        rarity: 'EPIC',
+        items: droppedItems,
+        createdAt: Date.now(),
+      };
+
+      this.containers.push(container);
+      this.pendingEvents.push({
+        type: 'LOOT_SPAWNED',
+        targetId: containerId,
+        x: target.x,
+        z: target.z,
+        data: {
+          containerId,
+          title: container.title,
+          rarity: container.rarity,
+          items: container.items,
+        },
+      });
+    } else if (target.type === 'DRONE') {
       // Spawn persistent 3D Loot Container in Sector
       outfittingService.getCatalog().then((catalog) => {
         const drop = LootGenerator.generateDrop(catalog);
@@ -825,6 +1074,10 @@ export class SectorRoom {
         state: e.state,
         afterburnerActive: e.afterburnerActive,
         transponderActive: e.transponderActive,
+        // Day 14 Death & Scavenger Telemetry
+        isEscapePod: e.isEscapePod || e.hullClass === 'ESCAPE_POD',
+        lifeSupportSeconds: typeof e.lifeSupportSeconds === 'number' ? Math.round(e.lifeSupportSeconds) : undefined,
+        targetCanisterId: e.targetCanisterId,
       })),
       projectiles: this.projectiles.map((p) => ({
         id: p.id,
@@ -857,6 +1110,27 @@ export class SectorRoom {
       }
     }
   }
+
+  public resetPlayerFrigate(playerId: string, shipData?: any): void {
+    const entity = this.entities.get(`player_${playerId}`);
+    if (entity) {
+      entity.hullClass = shipData?.hull_class || 'CORVETTE';
+      entity.hp = shipData?.armor || 100;
+      entity.maxHp = shipData?.max_armor || 100;
+      entity.shields = shipData?.shield || 100;
+      entity.maxShields = shipData?.max_shield || 100;
+      entity.energy = 100;
+      entity.maxEnergy = 100;
+      entity.powerGridMax = 120;
+      entity.powerGridUsed = 75;
+      entity.cpuMax = 180;
+      entity.cpuUsed = 110;
+      entity.state = 'IDLE';
+      entity.isEscapePod = false;
+      entity.weaponsDisabled = false;
+      entity.lifeSupportSeconds = undefined;
+    }
+  }
 }
 
 /**
@@ -872,6 +1146,13 @@ export class SectorCombatManager {
       this.rooms.set(sectorId, room);
     }
     return room;
+  }
+
+  public resetPlayerFrigate(sectorId: number, playerId: string, shipData?: any): void {
+    const room = this.rooms.get(sectorId);
+    if (room) {
+      room.resetPlayerFrigate(playerId, shipData);
+    }
   }
 
   public handleConnection(socket: WebSocket, sectorId: number, playerId: string, shipData?: any): void {

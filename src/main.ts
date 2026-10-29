@@ -255,7 +255,7 @@ class GameEngine {
   private viewTabExchange: HTMLElement | null = null;
   private viewTabOutfitting: HTMLElement | null = null;
   private viewTabArmory: HTMLElement | null = null;
-  private activeStationTab: 'exchange' | 'outfitting' | 'armory' = 'exchange';
+  private activeStationTab: 'exchange' | 'outfitting' | 'armory' | 'contracts' = 'exchange';
 
   private valFittingPg: HTMLElement | null = null;
   private valFittingCpu: HTMLElement | null = null;
@@ -288,6 +288,41 @@ class GameEngine {
   private activeLootContainers: Map<string, any> = new Map();
   private targetedContainerId: string | null = null;
   private activeLootModalContainer: any = null;
+
+  // Day 14: Hardcore Death Loop, Escape Pod & Revenge Contracts
+  private elEscapePodHud: HTMLElement | null = null;
+  private elPodTimerClock: HTMLElement | null = null;
+  private modalKillmail: HTMLElement | null = null;
+  private elKmTimestamp: HTMLElement | null = null;
+  private elKmLossValuation: HTMLElement | null = null;
+  private elKmKillerName: HTMLElement | null = null;
+  private elKmSectorName: HTMLElement | null = null;
+  private elKmTotalLoss: HTMLElement | null = null;
+  private elKmDroppedSummary: HTMLElement | null = null;
+  private btnPostBounty: HTMLElement | null = null;
+  private elKmShareRow: HTMLElement | null = null;
+  private elKmShareUrl: HTMLInputElement | null = null;
+  private btnCopyKmUrl: HTMLElement | null = null;
+  private elKmCopyToast: HTMLElement | null = null;
+  private btnCloseKm: HTMLElement | null = null;
+  private selectedBountyAmount: number = 1000;
+  private activeKillmailData: any = null;
+
+  private modalClinicRescue: HTMLElement | null = null;
+  private btnClaimFrigate: HTMLElement | null = null;
+
+  private tabBtnContracts: HTMLElement | null = null;
+  private viewTabContracts: HTMLElement | null = null;
+  private elContractsActiveList: HTMLElement | null = null;
+  private elContractsActiveCount: HTMLElement | null = null;
+  private elKillmailsArchiveList: HTMLElement | null = null;
+  private elKillmailsCount: HTMLElement | null = null;
+  private elContractsPlayerCredits: HTMLElement | null = null;
+
+  public isEscapePod: boolean = false;
+  private lastKlaxonTime: number = 0;
+  private escapePodMesh: THREE.Group | null = null;
+  private scavengerMeshes: Map<string, THREE.Group> = new Map();
 
   // Camera tracking vectors
   private currentLookTarget = new THREE.Vector3(0, 0, 0);
@@ -466,6 +501,14 @@ class GameEngine {
     // Play procedural docking chime
     this.audio.playDockingChime();
 
+    // Day 14: If docking while in an escape pod, open Clinic Rescue Modal!
+    if (this.isEscapePod) {
+      if (this.modalClinicRescue) {
+        this.modalClinicRescue.classList.remove('hidden');
+      }
+      return;
+    }
+
     // Customize station comms & dialog per active sector
     if (this.currentSectorId === 3) {
       if (this.modalStationName) this.modalStationName.textContent = 'OBSIDIAN FOUNDRY 3 // SECTOR 03';
@@ -510,6 +553,8 @@ class GameEngine {
       this.loadOutfittingData();
     } else if (this.activeStationTab === 'armory') {
       this.loadArmoryData();
+    } else if (this.activeStationTab === 'contracts') {
+      this.loadContractsData();
     } else {
       this.loadPortInventory();
     }
@@ -764,6 +809,74 @@ class GameEngine {
     if (this.hudSector) {
       this.hudSector.classList.add('clickable');
       this.hudSector.title = 'Click to open Hyperspace Nav Computer (J)';
+    }
+
+    // Day 14: Escape Pod, Killmail, Clinic & Contracts DOM Lookups
+    this.elEscapePodHud = document.getElementById('escape-pod-hud');
+    this.elPodTimerClock = document.getElementById('pod-timer-clock');
+
+    this.modalKillmail = document.getElementById('killmail-modal');
+    this.elKmTimestamp = document.getElementById('km-timestamp');
+    this.elKmLossValuation = document.getElementById('km-loss-valuation');
+    this.elKmKillerName = document.getElementById('km-killer-name');
+    this.elKmSectorName = document.getElementById('km-sector-name');
+    this.elKmTotalLoss = document.getElementById('km-total-loss');
+    this.elKmDroppedSummary = document.getElementById('km-dropped-summary');
+    this.btnPostBounty = document.getElementById('btn-post-bounty');
+    this.elKmShareRow = document.getElementById('km-share-link-row');
+    this.elKmShareUrl = document.getElementById('km-share-url') as HTMLInputElement;
+    this.btnCopyKmUrl = document.getElementById('btn-copy-km-url');
+    this.elKmCopyToast = document.getElementById('km-copy-toast');
+    this.btnCloseKm = document.getElementById('btn-close-km');
+
+    this.modalClinicRescue = document.getElementById('clinic-rescue-modal');
+    this.btnClaimFrigate = document.getElementById('btn-claim-frigate');
+
+    this.tabBtnContracts = document.getElementById('tab-btn-contracts');
+    this.viewTabContracts = document.getElementById('view-tab-contracts');
+    this.elContractsActiveList = document.getElementById('contracts-active-list');
+    this.elContractsActiveCount = document.getElementById('contracts-active-count');
+    this.elKillmailsArchiveList = document.getElementById('killmails-archive-list');
+    this.elKillmailsCount = document.getElementById('killmails-count');
+    this.elContractsPlayerCredits = document.getElementById('contracts-player-credits');
+
+    this.tabBtnContracts?.addEventListener('click', () => this.switchStationTab('contracts'));
+    this.btnPostBounty?.addEventListener('click', () => this.postRevengeBounty());
+    this.btnCopyKmUrl?.addEventListener('click', () => {
+      if (this.elKmShareUrl) {
+        navigator.clipboard.writeText(this.elKmShareUrl.value);
+        if (this.elKmCopyToast) {
+          this.elKmCopyToast.classList.remove('hidden');
+          setTimeout(() => this.elKmCopyToast?.classList.add('hidden'), 2500);
+        }
+      }
+    });
+    this.btnCloseKm?.addEventListener('click', () => {
+      if (this.modalKillmail) this.modalKillmail.classList.add('hidden');
+    });
+    this.btnClaimFrigate?.addEventListener('click', () => this.claimReplacementFrigate());
+
+    // Bounty Chips selection
+    document.querySelectorAll('.bounty-chip').forEach(chip => {
+      chip.addEventListener('click', (ev) => {
+        document.querySelectorAll('.bounty-chip').forEach(c => c.classList.remove('active'));
+        const target = ev.currentTarget as HTMLElement;
+        target.classList.add('active');
+        this.selectedBountyAmount = parseInt(target.dataset.bounty || '1000', 10);
+      });
+    });
+
+    // Shareable Contract URL detection on startup
+    const urlParams = new URLSearchParams(window.location.search);
+    const contractParam = urlParams.get('contract');
+    if (contractParam) {
+      fetch(`/api/combat/contracts/${contractParam}`)
+        .then(r => r.json())
+        .then(data => {
+          if (data.contract) {
+            this.showApNotification(`📜 CONTRACT LOADED: Bounty of ${data.contract.rewardCredits.toLocaleString()} CR on ${data.contract.targetName}!`, false);
+          }
+        }).catch(err => console.error('[Contract URL] Error:', err));
     }
 
     // Check backend health & initial AP / Sector balances
@@ -2217,9 +2330,12 @@ class GameEngine {
 
       this.combatSocket.onmessage = (event) => {
         try {
-          const snapshot = JSON.parse(event.data);
-          if (snapshot.type === 'TICK_SNAPSHOT') {
-            this.handleCombatSnapshot(snapshot);
+          const msg = JSON.parse(event.data);
+          if (msg.type === 'TICK_SNAPSHOT') {
+            this.handleCombatSnapshot(msg);
+          } else if (msg.type === 'KILLMAIL_NOTIFICATION') {
+            this.audio.playShipExplosionSound();
+            this.openKillmailModal(msg.killmail);
           }
         } catch (err) {
           console.error('[COMBAT-WS] Parse error:', err);
@@ -2240,10 +2356,15 @@ class GameEngine {
 
   public sendCombatInputs(): void {
     if (this.combatSocket && this.combatSocket.readyState === WebSocket.OPEN) {
+      const inputs = { ...this.combatInputs };
+      if (this.isEscapePod) {
+        inputs.firePrimary = false;
+        inputs.fireTactical = false;
+      }
       this.combatSocket.send(
         JSON.stringify({
           type: 'INPUT',
-          inputs: this.combatInputs,
+          inputs,
         })
       );
     }
@@ -2307,6 +2428,56 @@ class GameEngine {
       if (this.elSlotMid2) {
         if (playerEntity.energy < 18) this.elSlotMid2.classList.add('insufficient-energy');
         else this.elSlotMid2.classList.remove('insufficient-energy');
+      }
+
+      // Day 14: Check Escape Pod state
+      const wasEscapePod = this.isEscapePod;
+      this.isEscapePod = !!playerEntity.isEscapePod || playerEntity.hullClass === 'ESCAPE_POD';
+
+      if (this.isEscapePod) {
+        if (!wasEscapePod) {
+          this.audio.playShipExplosionSound();
+          if (this.ship) this.ship.mesh.visible = false;
+          if (!this.escapePodMesh) {
+            this.escapePodMesh = this.createEscapePodMesh();
+            this.scene.add(this.escapePodMesh);
+          }
+          this.escapePodMesh.visible = true;
+        }
+
+        // Keep escape pod mesh positioned at ship position
+        if (this.escapePodMesh) {
+          this.escapePodMesh.position.copy(this.flightController.position);
+          this.escapePodMesh.rotation.y = this.flightController.yaw;
+        }
+
+        // Show Escape Pod HUD & timer
+        if (this.elEscapePodHud) {
+          this.elEscapePodHud.classList.remove('hidden');
+          const sec = typeof playerEntity.lifeSupportSeconds === 'number' ? playerEntity.lifeSupportSeconds : 300;
+          const mins = Math.floor(sec / 60);
+          const remSec = Math.floor(sec % 60);
+          if (this.elPodTimerClock) {
+            this.elPodTimerClock.textContent = `${mins.toString().padStart(2, '0')}:${remSec.toString().padStart(2, '0')}`;
+          }
+
+          if (sec <= 60) {
+            this.elEscapePodHud.classList.add('critical');
+            const now = Date.now();
+            if (now - this.lastKlaxonTime > 3000) {
+              this.lastKlaxonTime = now;
+              this.audio.playKlaxonSound();
+            }
+          } else {
+            this.elEscapePodHud.classList.remove('critical');
+          }
+        }
+      } else {
+        if (wasEscapePod) {
+          if (this.escapePodMesh) this.escapePodMesh.visible = false;
+          if (this.ship) this.ship.mesh.visible = true;
+          if (this.elEscapePodHud) this.elEscapePodHud.classList.add('hidden');
+        }
       }
     }
 
@@ -2387,6 +2558,33 @@ class GameEngine {
       this.primaryDroneTarget = drones[this.targetLockIndex] || nearestDrone;
     } else {
       this.primaryDroneTarget = null;
+    }
+
+    // 2b. Scavenger Vessel Synchronization (Day 14)
+    const scavengers = snapshot.entities.filter((e: any) => e.type === 'SCAVENGER' && e.state !== 'DESTROYED');
+    const scavengerIds = new Set(scavengers.map((s: any) => s.id));
+
+    for (const [id, mesh] of this.scavengerMeshes.entries()) {
+      if (!scavengerIds.has(id)) {
+        this.scene.remove(mesh);
+        mesh.traverse((c) => {
+          if ((c as THREE.Mesh).geometry) (c as THREE.Mesh).geometry.dispose();
+        });
+        this.scavengerMeshes.delete(id);
+      }
+    }
+
+    for (const scav of scavengers) {
+      let mesh = this.scavengerMeshes.get(scav.id);
+      if (!mesh) {
+        mesh = this.createScavengerMesh();
+        this.scene.add(mesh);
+        this.scavengerMeshes.set(scav.id, mesh);
+      }
+
+      mesh.position.x = mesh.position.x + (scav.x - mesh.position.x) * 0.45;
+      mesh.position.z = mesh.position.z + (scav.z - mesh.position.z) * 0.45;
+      mesh.rotation.y = scav.yaw;
     }
 
     if (this.elTelemetryCombat) {
@@ -2504,6 +2702,11 @@ class GameEngine {
           if (ev.data?.playerId === 'commander-1') {
             this.showApNotification(`📦 CARGO SECURED // TRANSFERRED TO SHIP LOCKER`, false);
           }
+        } else if (ev.type === 'CONTAINER_SCOOPED') {
+          this.showApNotification(`📦 ${ev.data?.scavengerName || 'Scavenger'} scooped ${ev.data?.title || 'Canister'}!`, false);
+        } else if (ev.type === 'LIFE_SUPPORT_EXHAUSTED') {
+          this.showApNotification('⚠️ LIFE SUPPORT EXHAUSTED: Initiating emergency clone recall!', true);
+          this.handleEmergencyRecall();
         }
       }
     }
@@ -2764,24 +2967,28 @@ class GameEngine {
   }
 
   /**
-   * Day 13: Station Dock Tab Switcher (Exchange / Outfitting / Armory)
+   * Day 13 & 14: Station Dock Tab Switcher (Exchange / Outfitting / Armory / Contracts)
    */
-  public switchStationTab(tab: 'exchange' | 'outfitting' | 'armory'): void {
+  public switchStationTab(tab: 'exchange' | 'outfitting' | 'armory' | 'contracts'): void {
     this.activeStationTab = tab;
     this.audio.playUiBlip();
 
     this.tabBtnExchange?.classList.toggle('active', tab === 'exchange');
     this.tabBtnOutfitting?.classList.toggle('active', tab === 'outfitting');
     this.tabBtnArmory?.classList.toggle('active', tab === 'armory');
+    this.tabBtnContracts?.classList.toggle('active', tab === 'contracts');
 
     this.viewTabExchange?.classList.toggle('hidden', tab !== 'exchange');
     this.viewTabOutfitting?.classList.toggle('hidden', tab !== 'outfitting');
     this.viewTabArmory?.classList.toggle('hidden', tab !== 'armory');
+    this.viewTabContracts?.classList.toggle('hidden', tab !== 'contracts');
 
     if (tab === 'outfitting') {
       this.loadOutfittingData();
     } else if (tab === 'armory') {
       this.loadArmoryData();
+    } else if (tab === 'contracts') {
+      this.loadContractsData();
     } else if (tab === 'exchange') {
       this.loadPortInventory();
     }
@@ -3107,6 +3314,318 @@ class GameEngine {
       await this.loadArmoryData();
     } catch (err) {
       console.error('[ARMORY] Buy error:', err);
+    }
+  }
+
+  /**
+   * Day 14: Creates 3D Escape Pod mesh
+   */
+  public createEscapePodMesh(): THREE.Group {
+    const group = new THREE.Group();
+
+    // Streamlined aerodynamic pod capsule
+    const capsuleGeom = new THREE.CapsuleGeometry(1.2, 2.8, 8, 16);
+    const capsuleMat = new THREE.MeshStandardMaterial({
+      color: 0x334155,
+      metalness: 0.8,
+      roughness: 0.3,
+      flatShading: true,
+    });
+    const capsule = new THREE.Mesh(capsuleGeom, capsuleMat);
+    capsule.rotation.x = Math.PI / 2;
+    group.add(capsule);
+
+    // Hazard orange cockpit canopy
+    const canopyGeom = new THREE.SphereGeometry(0.8, 12, 12, 0, Math.PI * 2, 0, Math.PI / 2);
+    const canopyMat = new THREE.MeshStandardMaterial({
+      color: 0xf97316,
+      emissive: 0xea580c,
+      emissiveIntensity: 0.5,
+      metalness: 0.2,
+      roughness: 0.1,
+    });
+    const canopy = new THREE.Mesh(canopyGeom, canopyMat);
+    canopy.position.set(0, 0.6, 0.4);
+    canopy.rotation.x = -Math.PI / 6;
+    group.add(canopy);
+
+    // Flashing emergency beacon strobe on top
+    const beaconGeom = new THREE.CylinderGeometry(0.2, 0.2, 0.3, 8);
+    const beaconMat = new THREE.MeshBasicMaterial({ color: 0xef4444 });
+    const beacon = new THREE.Mesh(beaconGeom, beaconMat);
+    beacon.position.set(0, 1.35, -0.4);
+    group.add(beacon);
+
+    const beaconLight = new THREE.PointLight(0xef4444, 2.0, 18);
+    beaconLight.position.set(0, 1.5, -0.4);
+    group.add(beaconLight);
+
+    return group;
+  }
+
+  /**
+   * Day 14: Creates 3D Persistent AI Scavenger Vessel mesh
+   */
+  public createScavengerMesh(): THREE.Group {
+    const group = new THREE.Group();
+
+    // Heavy industrial salvager hull body (Charcoal + Hazard Amber)
+    const bodyGeom = new THREE.BoxGeometry(3.6, 1.8, 5.2);
+    const bodyMat = new THREE.MeshStandardMaterial({
+      color: 0x1e293b,
+      metalness: 0.9,
+      roughness: 0.4,
+      flatShading: true,
+    });
+    const body = new THREE.Mesh(bodyGeom, bodyMat);
+    group.add(body);
+
+    // Angled outrigger salvage arms / claws
+    const armGeom = new THREE.BoxGeometry(0.6, 0.8, 3.2);
+    const armMat = new THREE.MeshStandardMaterial({
+      color: 0xf59e0b,
+      metalness: 0.6,
+      roughness: 0.5,
+    });
+
+    const leftArm = new THREE.Mesh(armGeom, armMat);
+    leftArm.position.set(-2.2, -0.2, 2.0);
+    group.add(leftArm);
+
+    const rightArm = new THREE.Mesh(armGeom, armMat);
+    rightArm.position.set(2.2, -0.2, 2.0);
+    group.add(rightArm);
+
+    // Magnetic tractor scoop emitter
+    const scoopGeom = new THREE.CylinderGeometry(0.8, 1.2, 1.0, 8);
+    const scoopMat = new THREE.MeshBasicMaterial({ color: 0xfbbf24 });
+    const scoop = new THREE.Mesh(scoopGeom, scoopMat);
+    scoop.rotation.x = Math.PI / 2;
+    scoop.position.set(0, -0.4, 3.0);
+    group.add(scoop);
+
+    // Amber warning hazard beacon
+    const amberLight = new THREE.PointLight(0xf59e0b, 1.5, 20);
+    amberLight.position.set(0, 1.5, 0);
+    group.add(amberLight);
+
+    return group;
+  }
+
+  /**
+   * Day 14: Loads active revenge contracts & player killmail archive
+   */
+  public async loadContractsData(): Promise<void> {
+    try {
+      if (this.elContractsPlayerCredits) {
+        this.elContractsPlayerCredits.textContent = `${this.playerCredits.toLocaleString()} Cr`;
+      }
+
+      // Fetch active contracts
+      const cRes = await fetch('/api/combat/contracts');
+      if (cRes.ok) {
+        const cData = await cRes.json();
+        const contracts = cData.contracts || [];
+        if (this.elContractsActiveCount) {
+          this.elContractsActiveCount.textContent = `${contracts.length} CONTRACT${contracts.length === 1 ? '' : 'S'} OPEN`;
+        }
+        if (this.elContractsActiveList) {
+          this.elContractsActiveList.innerHTML = contracts.map((c: any) => `
+            <div class="contract-card">
+              <div class="contract-info">
+                <span class="contract-target-name">🎯 ${c.targetName}</span>
+                <span class="contract-meta">${c.isPublic ? '🌐 PUBLIC BOUNTY' : '🔒 PRIVATE SQUADRON'} // ESCROW VERIFIED</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 0.75rem;">
+                <span class="contract-reward-badge">${c.rewardCredits.toLocaleString()} CR</span>
+                <button class="hud-btn-mini btn-copy-contract-link" data-id="${c.id}" title="Copy Shareable Link">🔗</button>
+              </div>
+            </div>
+          `).join('');
+
+          // Hook copy link buttons
+          this.elContractsActiveList.querySelectorAll('.btn-copy-contract-link').forEach(btn => {
+            btn.addEventListener('click', (ev) => {
+              const contractId = (ev.currentTarget as HTMLElement).dataset.id;
+              const shareUrl = `${window.location.origin}/?contract=${contractId}`;
+              navigator.clipboard.writeText(shareUrl);
+              this.showApNotification('📋 Shareable Revenge Contract URL copied to clipboard!', false);
+              this.audio.playUiBlip();
+            });
+          });
+        }
+      }
+
+      // Fetch killmails
+      const kmRes = await fetch('/api/combat/killmails?accountId=acc_sol_captain');
+      if (kmRes.ok) {
+        const kmData = await kmRes.json();
+        const killmails = kmData.killmails || [];
+        if (this.elKillmailsCount) {
+          this.elKillmailsCount.textContent = `${killmails.length} LOSS RECORD${killmails.length === 1 ? '' : 'S'}`;
+        }
+        if (this.elKillmailsArchiveList) {
+          if (killmails.length === 0) {
+            this.elKillmailsArchiveList.innerHTML = `<div class="meta-subtext" style="padding: 1rem; text-align: center;">No vessel losses on record. Ship hull is intact.</div>`;
+          } else {
+            this.elKillmailsArchiveList.innerHTML = killmails.map((km: any) => `
+              <div class="killmail-card-item">
+                <div class="km-card-info">
+                  <span class="km-card-killer">💀 Lost to ${km.killerName}</span>
+                  <span class="km-card-loss">Loss: ${km.lossValuation.toLocaleString()} CR // Sector 0${km.sectorId}</span>
+                </div>
+                <button class="hud-btn-mini btn-view-km" data-id="${km.id}">INSPECT</button>
+              </div>
+            `).join('');
+
+            this.elKillmailsArchiveList.querySelectorAll('.btn-view-km').forEach(btn => {
+              btn.addEventListener('click', (ev) => {
+                const id = (ev.currentTarget as HTMLElement).dataset.id;
+                const km = killmails.find((k: any) => k.id === id);
+                if (km) this.openKillmailModal(km);
+              });
+            });
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[Contracts] Error loading contracts data:', err);
+    }
+  }
+
+  /**
+   * Day 14: Opens EVE-style loss report / killmail modal
+   */
+  public openKillmailModal(km: any): void {
+    this.activeKillmailData = km;
+    if (this.elKmTimestamp) this.elKmTimestamp.textContent = `TIMESTAMP: ${new Date(km.createdAt).toLocaleTimeString()} // SECTOR 0${km.sectorId}`;
+    if (this.elKmLossValuation) this.elKmLossValuation.textContent = `LOSS: ${km.lossValuation.toLocaleString()} CR`;
+    if (this.elKmKillerName) this.elKmKillerName.textContent = km.killerName;
+    if (this.elKmSectorName) this.elKmSectorName.textContent = `Sector 0${km.sectorId} // Deep Hazard Void`;
+    if (this.elKmTotalLoss) this.elKmTotalLoss.textContent = `${km.lossValuation.toLocaleString()} Credits`;
+    if (this.elKmDroppedSummary) {
+      const dropped = km.droppedItems || [];
+      this.elKmDroppedSummary.textContent = dropped.map((d: any) => `${d.quantity || 1}x ${d.name}`).join(', ') || 'No salvage recovered';
+    }
+
+    if (this.elKmShareRow) this.elKmShareRow.classList.add('hidden');
+    if (this.modalKillmail) this.modalKillmail.classList.remove('hidden');
+  }
+
+  /**
+   * Day 14: Posts a revenge bounty on the killer
+   */
+  public async postRevengeBounty(): Promise<void> {
+    if (!this.activeKillmailData) return;
+    try {
+      const res = await fetch('/api/combat/contracts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          creatorAccountId: 'acc_sol_captain',
+          targetName: this.activeKillmailData.killerName,
+          targetEntityId: this.activeKillmailData.killerId,
+          rewardCredits: this.selectedBountyAmount,
+          isPublic: true,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        this.showApNotification(`⚠️ Bounty failed: ${err.error}`, true);
+        this.audio.playApWarningSound();
+        return;
+      }
+
+      const data = await res.json();
+      const contract = data.contract;
+      const shareUrl = `${window.location.origin}/?contract=${contract.id}`;
+
+      if (this.elKmShareUrl) this.elKmShareUrl.value = shareUrl;
+      if (this.elKmShareRow) this.elKmShareRow.classList.remove('hidden');
+      this.showApNotification(`💀 Revenge bounty posted for ${this.selectedBountyAmount.toLocaleString()} CR!`, false);
+      this.audio.playUiBlip();
+
+      // Refresh credits
+      this.playerCredits = Math.max(0, this.playerCredits - this.selectedBountyAmount);
+      this.updateHudTelemetry();
+    } catch (err: any) {
+      this.showApNotification(`⚠️ Bounty error: ${err.message}`, true);
+    }
+  }
+
+  /**
+   * Day 14: Reissues standard Sol Cutter frigate upon docking escape pod at station clinic
+   */
+  public async claimReplacementFrigate(): Promise<void> {
+    try {
+      const res = await fetch('/api/combat/claim-frigate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId: 'acc_sol_captain', sectorId: this.currentSectorId }),
+      });
+
+      if (res.ok) {
+        this.audio.playFrigateReissueSound();
+        this.showApNotification('🚀 Sol Cutter Frigate reissued by Aegis Naval Command!', false);
+
+        // Reset escape pod state
+        this.isEscapePod = false;
+        if (this.elEscapePodHud) this.elEscapePodHud.classList.add('hidden');
+        if (this.modalClinicRescue) this.modalClinicRescue.classList.add('hidden');
+
+        // Swap 3D mesh back to frigate
+        if (this.escapePodMesh) {
+          this.scene.remove(this.escapePodMesh);
+          this.escapePodMesh = null;
+        }
+        if (this.ship) {
+          this.ship.mesh.visible = true;
+        }
+
+        // Reset vitals
+        this.lastPlayerShields = 100;
+        this.lastPlayerMaxShields = 100;
+
+        // Open regular station dock modal
+        this.isDocked = false;
+        this.dockShip();
+      }
+    } catch (err) {
+      console.error('[Clinic] Error claiming replacement frigate:', err);
+    }
+  }
+
+  /**
+   * Day 14: Handles emergency clone recall when life support expires
+   */
+  public async handleEmergencyRecall(): Promise<void> {
+    try {
+      const res = await fetch('/api/combat/emergency-recall', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId: 'acc_sol_captain' }),
+      });
+
+      if (res.ok) {
+        this.showApNotification('🏥 Clone emergency recall complete! 500 CR deductible deducted.', true);
+        this.isEscapePod = false;
+        if (this.elEscapePodHud) this.elEscapePodHud.classList.add('hidden');
+
+        if (this.escapePodMesh) {
+          this.scene.remove(this.escapePodMesh);
+          this.escapePodMesh = null;
+        }
+        if (this.ship) {
+          this.ship.mesh.visible = true;
+        }
+
+        this.currentSectorId = 1;
+        this.initCombatWebSocket(1);
+        this.dockShip();
+      }
+    } catch (err) {
+      console.error('[Recall] Error handling emergency recall:', err);
     }
   }
 

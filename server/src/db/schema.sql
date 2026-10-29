@@ -148,6 +148,9 @@ ALTER TABLE equipment_blueprints ADD COLUMN IF NOT EXISTS base_price INT NOT NUL
 ALTER TABLE player_inventory ADD COLUMN IF NOT EXISTS custom_name VARCHAR(128) NOT NULL DEFAULT 'Equipment Module';
 ALTER TABLE player_inventory ADD COLUMN IF NOT EXISTS fit_slot VARCHAR(16) DEFAULT NULL;
 
+ALTER TABLE contracts ADD COLUMN IF NOT EXISTS target_name VARCHAR(128) NOT NULL DEFAULT 'Hegemony Scout Hunter';
+ALTER TABLE contracts ADD COLUMN IF NOT EXISTS target_entity_id VARCHAR(64) DEFAULT NULL;
+
 
 CREATE TABLE IF NOT EXISTS sector_wrecks (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -175,16 +178,42 @@ CREATE TABLE IF NOT EXISTS persistent_scavengers (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS killmails (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  victim_account_id VARCHAR(64) REFERENCES accounts(id) ON DELETE CASCADE,
+  killer_id VARCHAR(64) NOT NULL,
+  killer_name VARCHAR(128) NOT NULL,
+  sector_id INT REFERENCES sectors(id) ON DELETE CASCADE,
+  loss_valuation INT NOT NULL DEFAULT 0,
+  dropped_items JSONB DEFAULT '[]'::jsonb,
+  destroyed_items JSONB DEFAULT '[]'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS contracts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   creator_account_id VARCHAR(64) REFERENCES accounts(id) ON DELETE CASCADE,
   contract_type VARCHAR(32) NOT NULL DEFAULT 'REVENGE_BOUNTY',
   target_scavenger_id VARCHAR(64) REFERENCES persistent_scavengers(id) ON DELETE CASCADE,
+  target_name VARCHAR(128) NOT NULL DEFAULT 'Hegemony Scout Hunter',
+  target_entity_id VARCHAR(64) DEFAULT NULL,
   is_public BOOLEAN DEFAULT false,
   reward_credits INT DEFAULT 0,
   status VARCHAR(16) DEFAULT 'OPEN',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Seed Initial Persistent Scavengers
+INSERT INTO persistent_scavengers (id, sector_id, faction_id, hull_type, current_hp, current_shields, pos_x, pos_z, looted_cargo, transponder_active)
+VALUES 
+  ('scavenger_salvage_01', 2, 'Scavenger Guild', 'Vulture-Class Salvager', 95, 40, -18.0, 16.0, '[{"name": "Titanium Scrap", "quantity": 12, "unitValue": 90}]'::jsonb, true)
+ON CONFLICT (id) DO NOTHING;
+
+-- Seed Initial Revenge Contract
+INSERT INTO contracts (id, creator_account_id, contract_type, target_scavenger_id, target_name, target_entity_id, is_public, reward_credits, status)
+VALUES 
+  ('c0000000-0000-0000-0000-000000000001', 'acc_sol_captain', 'REVENGE_BOUNTY', 'scavenger_salvage_01', 'Vulture-01 [Scavenger Guild]', 'scavenger_salvage_01', true, 2500, 'OPEN')
+ON CONFLICT (id) DO NOTHING;
 
 -- Seed Equipment Blueprints Catalog
 INSERT INTO equipment_blueprints (id, name, slot_type, category, manufacturer, base_rarity, power_grid_cost, cpu_cost, base_price, base_stats, description)

@@ -10,6 +10,7 @@ import { navigationService } from './services/NavigationService';
 import { tradeService } from './services/TradeService';
 import { combatManager } from './services/SectorCombatManager';
 import { outfittingService } from './services/OutfittingService';
+import { contractService } from './services/ContractService';
 
 dotenv.config();
 
@@ -329,7 +330,91 @@ async function startServer() {
       }
     });
 
-    // 9. Authoritative 20Hz WebSocket Combat Room (Milestone 0.3)
+    // 9. Day 14: Killmails, Revenge Contracts & Escape Pod Clinic Reissue
+    server.get('/api/combat/killmails', async (req, reply) => {
+      const query = (req.query || {}) as { accountId?: string };
+      const accountId = query.accountId || 'acc_sol_captain';
+      const killmails = await contractService.getKillmails(accountId);
+      reply.send({ killmails });
+    });
+
+    server.get('/api/combat/contracts', async (req, reply) => {
+      const query = (req.query || {}) as { publicOnly?: string; accountId?: string };
+      const publicOnly = query.publicOnly === 'true';
+      const accountId = query.accountId || 'acc_sol_captain';
+      const contracts = await contractService.getContracts(publicOnly, accountId);
+      reply.send({ contracts });
+    });
+
+    server.get('/api/combat/contracts/:id', async (req, reply) => {
+      const { id } = req.params as { id: string };
+      const contract = await contractService.getContractById(id);
+      if (!contract) {
+        return reply.status(404).send({ success: false, error: 'Contract not found' });
+      }
+      reply.send({ success: true, contract });
+    });
+
+    server.post('/api/combat/contracts', async (req, reply) => {
+      const body = (req.body || {}) as {
+        creatorAccountId?: string;
+        targetName?: string;
+        targetEntityId?: string;
+        rewardCredits?: number;
+        isPublic?: boolean;
+      };
+      const creatorAccountId = body.creatorAccountId || 'acc_sol_captain';
+      const targetName = body.targetName || 'Hostile Combatant';
+      const rewardCredits = typeof body.rewardCredits === 'number' ? body.rewardCredits : 2500;
+      const isPublic = body.isPublic !== false;
+
+      try {
+        const contract = await contractService.createRevengeContract(
+          creatorAccountId,
+          targetName,
+          body.targetEntityId || null,
+          rewardCredits,
+          isPublic
+        );
+        reply.send({ success: true, contract });
+      } catch (err: any) {
+        reply.status(400).send({ success: false, error: err.message });
+      }
+    });
+
+    server.post('/api/combat/claim-frigate', async (req, reply) => {
+      const body = (req.body || {}) as { playerId?: string; sectorId?: number };
+      const playerId = body.playerId || 'acc_sol_captain';
+      const sectorId = body.sectorId || 1;
+
+      try {
+        const result = await contractService.claimReplacementFrigate(playerId);
+        // Also reset the player in the active sector combat room
+        combatManager.resetPlayerFrigate(sectorId, playerId, result.ship);
+        reply.send(result);
+      } catch (err: any) {
+        reply.status(400).send({ success: false, error: err.message });
+      }
+    });
+
+    server.post('/api/combat/emergency-recall', async (req, reply) => {
+      const body = (req.body || {}) as { playerId?: string };
+      const playerId = body.playerId || 'acc_sol_captain';
+
+      // Deduct clone medical insurance fee (500 CR) if available
+      await db.query('UPDATE accounts SET credits = GREATEST(0, credits - 500) WHERE id = $1', [playerId]);
+      const result = await contractService.claimReplacementFrigate(playerId);
+      // Move ship to home sector 1
+      await db.query('UPDATE ships SET current_sector_id = 1 WHERE account_id = $1', [playerId]);
+      combatManager.resetPlayerFrigate(1, playerId, result.ship);
+      reply.send({
+        success: true,
+        message: 'Pilot emergency medical recall complete. Transferred to Aegis Terminal Station Clinic.',
+        ship: result.ship,
+      });
+    });
+
+    // 10. Authoritative 20Hz WebSocket Combat Room (Milestone 0.3)
     server.get('/ws/combat', { websocket: true }, async (socket, req) => {
       const query = (req.query || {}) as { playerId?: string; sectorId?: string };
       const playerId = query.playerId || 'acc_sol_captain';
