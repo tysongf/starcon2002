@@ -356,6 +356,15 @@
       </div>
     </div>
 
+    <!-- Targeted Loot Canister Interaction Prompt (Day 13) -->
+    <div id="loot-prompt-hud" class="loot-prompt-hud hidden">
+      <div class="loot-prompt-badge">F</div>
+      <div class="loot-prompt-details">
+        <span class="loot-prompt-title">CARGO CANISTER DETECTED</span>
+        <span class="loot-prompt-text" id="loot-prompt-text">PRESS [F] TO SECURE CARGO (18.2u)</span>
+      </div>
+    </div>
+
     <!-- Station Dock Modal (Milestone 0.1) -->
     <div id="station-dock-modal" class="dock-modal-overlay hidden">
       <div class="dock-modal-card">
@@ -381,49 +390,136 @@
           </div>
         </div>
 
-        <div class="dock-services-grid">
-          <div class="service-card commodity-service-card">
-            <div class="market-service-header">
-              <div class="market-service-titles">
-                <h4>COMMODITY EXCHANGE (AUTHORITATIVE MARKET FEED)</h4>
-                <span class="market-port-subtext" id="market-port-subtext">DYNAMIC SUPPLY/DEMAND AUTOMATED PRICING</span>
+        <!-- Station Service Tabs -->
+        <div class="station-tabs-nav">
+          <button id="tab-btn-exchange" class="station-tab-btn active" data-tab="exchange">
+            📊 COMMODITY EXCHANGE
+          </button>
+          <button id="tab-btn-outfitting" class="station-tab-btn" data-tab="outfitting">
+            ⚙️ OUTFITTING BAY & FITTINGS
+          </button>
+          <button id="tab-btn-armory" class="station-tab-btn" data-tab="armory">
+            🛒 ARMORY STORE
+          </button>
+        </div>
+
+        <!-- Tab View 1: Commodity Exchange (Default) -->
+        <div id="view-tab-exchange" class="station-tab-content">
+          <div class="dock-services-grid">
+            <div class="service-card commodity-service-card">
+              <div class="market-service-header">
+                <div class="market-service-titles">
+                  <h4>COMMODITY EXCHANGE (AUTHORITATIVE MARKET FEED)</h4>
+                  <span class="market-port-subtext" id="market-port-subtext">DYNAMIC SUPPLY/DEMAND AUTOMATED PRICING</span>
+                </div>
+                <div class="market-header-stats">
+                  <div class="stat-pill credits-pill">
+                    <span class="pill-label">CREDITS:</span>
+                    <span class="pill-value" id="market-player-credits">2,500 Cr</span>
+                  </div>
+                  <div class="stat-pill cargo-pill">
+                    <span class="pill-label">CARGO:</span>
+                    <span class="pill-value" id="market-player-cargo">0 / 40 m³</span>
+                  </div>
+                </div>
               </div>
-              <div class="market-header-stats">
-                <div class="stat-pill credits-pill">
-                  <span class="pill-label">CREDITS:</span>
-                  <span class="pill-value" id="market-player-credits">2,500 Cr</span>
-                </div>
-                <div class="stat-pill cargo-pill">
-                  <span class="pill-label">CARGO:</span>
-                  <span class="pill-value" id="market-player-cargo">0 / 40 m³</span>
-                </div>
+
+              <div id="market-toast" class="market-toast hidden"></div>
+
+              <div class="market-exchange-container" id="modal-market-exchange">
+                <div class="market-loading-hint">Connecting to Station Commerce Uplink...</div>
               </div>
             </div>
 
-            <div id="market-toast" class="market-toast hidden"></div>
+            <div class="service-card">
+              <h4>SHIP SYSTEMS & DRY-DOCK</h4>
+              <div class="ship-status-grid">
+                <div><span>HULL ARMOR:</span> <strong>100% (PRISTINE)</strong></div>
+                <div><span>ENERGY SHIELDS:</span> <strong>100% (CHARGED)</strong></div>
+                <div><span>ACTION POINTS:</span> <strong id="modal-ap-display" style="color: #38bdf8;">600 / 600 AP</strong></div>
+                <div><span>RESERVE FUEL:</span> <strong>100 / 100 UNITS</strong></div>
+                <div><span>CARGO HOLD:</span> <strong id="modal-cargo-display" style="color: #38bdf8;">0 / 40 m³</strong></div>
+              </div>
+              <div style="display: flex; gap: 0.5rem; margin-top: 0.75rem;">
+                <button id="btn-quick-service" class="hud-btn" style="flex: 1;" title="Cycle power couplers and recharge +50 AP">
+                  ⚡ Recharge Core (+50 AP)
+                </button>
+                <button id="btn-dock-haggle" class="hud-btn" style="flex: 1;" title="Haggle with Harbormaster for trade intel (Costs 1 AP)">
+                  💬 Haggle (-1 AP)
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
 
-            <div class="market-exchange-container" id="modal-market-exchange">
-              <div class="market-loading-hint">Connecting to Station Commerce Uplink...</div>
+        <!-- Tab View 2: Outfitting Bay & Fittings (Day 13) -->
+        <div id="view-tab-outfitting" class="station-tab-content hidden">
+          <!-- Real-Time Engineering Capacity Gauges -->
+          <div class="outfitting-engineering-panel">
+            <div class="gauge-block">
+              <div class="gauge-labels">
+                <span class="gauge-title">⚡ POWER-GRID OUTPUT (MW)</span>
+                <span class="gauge-value" id="val-fitting-pg">115.0 / 120.0 MW (95.8%)</span>
+              </div>
+              <div class="gauge-bar-track">
+                <div class="gauge-bar-fill pg-fill" id="bar-fitting-pg" style="width: 95.8%;"></div>
+              </div>
+            </div>
+            <div class="gauge-block">
+              <div class="gauge-labels">
+                <span class="gauge-title">🧠 CPU COMPUTING CAPACITY (tf)</span>
+                <span class="gauge-value" id="val-fitting-cpu">160.0 / 180.0 tf (88.9%)</span>
+              </div>
+              <div class="gauge-bar-track">
+                <div class="gauge-bar-fill cpu-fill" id="bar-fitting-cpu" style="width: 88.9%;"></div>
+              </div>
             </div>
           </div>
 
-          <div class="service-card">
-            <h4>SHIP SYSTEMS & DRY-DOCK</h4>
-            <div class="ship-status-grid">
-              <div><span>HULL ARMOR:</span> <strong>100% (PRISTINE)</strong></div>
-              <div><span>ENERGY SHIELDS:</span> <strong>100% (CHARGED)</strong></div>
-              <div><span>ACTION POINTS:</span> <strong id="modal-ap-display" style="color: #38bdf8;">600 / 600 AP</strong></div>
-              <div><span>RESERVE FUEL:</span> <strong>100 / 100 UNITS</strong></div>
-              <div><span>CARGO HOLD:</span> <strong id="modal-cargo-display" style="color: #38bdf8;">0 / 40 m³</strong></div>
+          <!-- Over-Budget Lockout Banner -->
+          <div id="fitting-overbudget-alert" class="fitting-alert-banner hidden">
+            ⚠️ <strong>ENGINEERING OVER-CAPACITY LOCKOUT</strong>: Vessel exceeds Power-Grid or CPU limits! Undocking and weapon capacitor routing are offline until loadout is within safety parameters.
+          </div>
+
+          <div class="outfitting-main-grid">
+            <!-- Left: Ship Hardpoint Paperdoll -->
+            <div class="outfitting-col paperdoll-col">
+              <div class="col-header">
+                <h4>FITTED HARDPOINT SLOTS (SHIP REQUISITION)</h4>
+                <span class="col-subtext">TIERED HIGH / MID / LOW ARCHITECTURE</span>
+              </div>
+              <div class="paperdoll-slots-list" id="paperdoll-slots-list">
+                <!-- Dynamically populated slot cards: H1, H2, M1, M2, L1, L2 -->
+              </div>
             </div>
-            <div style="display: flex; gap: 0.5rem; margin-top: 0.75rem;">
-              <button id="btn-quick-service" class="hud-btn" style="flex: 1;" title="Cycle power couplers and recharge +50 AP">
-                ⚡ Recharge Core (+50 AP)
-              </button>
-              <button id="btn-dock-haggle" class="hud-btn" style="flex: 1;" title="Haggle with Harbormaster for trade intel (Costs 1 AP)">
-                💬 Haggle (-1 AP)
-              </button>
+
+            <!-- Right: Station Locker Modules -->
+            <div class="outfitting-col locker-col">
+              <div class="col-header">
+                <h4>STATION LOCKER STORAGE</h4>
+                <span class="col-subtext" id="locker-item-count">UNFITTED MODULE INVENTORY</span>
+              </div>
+              <div class="locker-modules-list" id="locker-modules-list">
+                <!-- Dynamically populated locker inventory -->
+              </div>
             </div>
+          </div>
+        </div>
+
+        <!-- Tab View 3: Armory & Store (Day 13) -->
+        <div id="view-tab-armory" class="station-tab-content hidden">
+          <div class="armory-header">
+            <div class="armory-titles">
+              <h4>NAVAL ARMORY & SHIP REQUISITION CATALOG</h4>
+              <span class="col-subtext">MILITARY & INDUSTRIAL GRADE HARDPOINTS</span>
+            </div>
+            <div class="stat-pill credits-pill">
+              <span class="pill-label">CREDITS:</span>
+              <span class="pill-value" id="armory-player-credits">2,500 Cr</span>
+            </div>
+          </div>
+          <div class="armory-catalog-grid" id="armory-catalog-grid">
+            <!-- Dynamically populated blueprint catalog cards -->
           </div>
         </div>
 
@@ -432,6 +528,45 @@
           <button id="btn-undock" class="hud-btn primary large-btn">
             DISENGAGE CLAMPS & UNDOCK 🚀
           </button>
+        </footer>
+      </div>
+    </div>
+
+    <!-- Targeted Loot Container Cargo Modal (Day 13) -->
+    <div id="container-loot-modal" class="dock-modal-overlay hidden">
+      <div class="dock-modal-card loot-modal-card">
+        <header class="dock-modal-header">
+          <div class="dock-title-block">
+            <span class="dock-badge loot-rarity-badge" id="loot-modal-rarity">RARE RECOVERY</span>
+            <h2 class="dock-station-name" id="loot-modal-title">HEX-CANISTER CARGO</h2>
+            <span class="dock-subtext" id="loot-modal-subtext">ORBITAL WRECKAGE RECOVERY // BEACON ACTIVE</span>
+          </div>
+          <div class="dock-status-tag loot-status-tag">
+            <span class="dock-lock-icon">📦</span>
+            <span id="loot-distance-display">RANGE: 12.4u</span>
+          </div>
+        </header>
+
+        <div class="loot-contents-container">
+          <div class="loot-contents-header">
+            <h4>CARGO MANIFEST // DETECTED TRANSMISSION</h4>
+            <span class="loot-item-count" id="loot-item-count">2 ITEMS SECURED</span>
+          </div>
+          <div class="loot-items-list" id="loot-items-list">
+            <!-- Dynamically populated loot items -->
+          </div>
+        </div>
+
+        <footer class="dock-modal-footer">
+          <span class="undock-hint">Maintain distance within 25u to preserve tractor beam link</span>
+          <div style="display: flex; gap: 0.75rem;">
+            <button id="btn-close-loot" class="hud-btn large-btn">
+              CLOSE [ESC]
+            </button>
+            <button id="btn-loot-all" class="hud-btn primary large-btn">
+              TRANSFER ALL TO CARGO [F]
+            </button>
+          </div>
         </footer>
       </div>
     </div>

@@ -248,6 +248,47 @@ class GameEngine {
   private btnDockHaggle: HTMLElement | null = null;
   private elApNotification: HTMLElement | null = null;
 
+  // Day 13: Station Service Tabs & Outfitting Bay DOM
+  private tabBtnExchange: HTMLElement | null = null;
+  private tabBtnOutfitting: HTMLElement | null = null;
+  private tabBtnArmory: HTMLElement | null = null;
+  private viewTabExchange: HTMLElement | null = null;
+  private viewTabOutfitting: HTMLElement | null = null;
+  private viewTabArmory: HTMLElement | null = null;
+  private activeStationTab: 'exchange' | 'outfitting' | 'armory' = 'exchange';
+
+  private valFittingPg: HTMLElement | null = null;
+  private valFittingCpu: HTMLElement | null = null;
+  private barFittingPg: HTMLElement | null = null;
+  private barFittingCpu: HTMLElement | null = null;
+  private fittingOverbudgetAlert: HTMLElement | null = null;
+  private paperdollSlotsList: HTMLElement | null = null;
+  private lockerModulesList: HTMLElement | null = null;
+  private lockerItemCount: HTMLElement | null = null;
+  private isLoadoutOverBudget: boolean = false;
+  private playerLoadout: any = null;
+
+  private elArmoryCatalogGrid: HTMLElement | null = null;
+  private elArmoryPlayerCredits: HTMLElement | null = null;
+  private equipmentCatalog: any[] = [];
+
+  // Day 13: Floating Cargo Canisters & Loot Modal DOM
+  private elLootPromptHud: HTMLElement | null = null;
+  private elLootPromptText: HTMLElement | null = null;
+  private modalContainerLoot: HTMLElement | null = null;
+  private modalLootRarity: HTMLElement | null = null;
+  private modalLootTitle: HTMLElement | null = null;
+  private elLootDistanceDisplay: HTMLElement | null = null;
+  private elLootItemCount: HTMLElement | null = null;
+  private elLootItemsList: HTMLElement | null = null;
+  private btnCloseLoot: HTMLElement | null = null;
+  private btnLootAll: HTMLElement | null = null;
+
+  private containerMeshes: Map<string, THREE.Group> = new Map();
+  private activeLootContainers: Map<string, any> = new Map();
+  private targetedContainerId: string | null = null;
+  private activeLootModalContainer: any = null;
+
   // Camera tracking vectors
   private currentLookTarget = new THREE.Vector3(0, 0, 0);
 
@@ -464,8 +505,14 @@ class GameEngine {
       }
     }
 
-    // Load live market inventory from backend database
-    this.loadPortInventory();
+    // Load live station inventory from backend database based on active tab
+    if (this.activeStationTab === 'outfitting') {
+      this.loadOutfittingData();
+    } else if (this.activeStationTab === 'armory') {
+      this.loadArmoryData();
+    } else {
+      this.loadPortInventory();
+    }
 
     // Reveal Station Dock Modal
     if (this.modalDock) {
@@ -478,6 +525,13 @@ class GameEngine {
    */
   public undockShip(): void {
     if (!this.isDocked) return;
+
+    if (this.isLoadoutOverBudget) {
+      this.showApNotification('⚠️ UNDOCK REJECTED: Power-Grid or CPU capacity exceeded! Fix fitting.', true);
+      this.audio.playApWarningSound();
+      return;
+    }
+
     this.isDocked = false;
 
     // Play undocking release sound
@@ -667,6 +721,45 @@ class GameEngine {
       this.selectWeaponPreset(2);
       this.fireWeaponDirectly('FLAK');
     });
+
+    // Day 13 Station Service Tabs & Outfitting Bay DOM Lookups
+    this.tabBtnExchange = document.getElementById('tab-btn-exchange');
+    this.tabBtnOutfitting = document.getElementById('tab-btn-outfitting');
+    this.tabBtnArmory = document.getElementById('tab-btn-armory');
+    this.viewTabExchange = document.getElementById('view-tab-exchange');
+    this.viewTabOutfitting = document.getElementById('view-tab-outfitting');
+    this.viewTabArmory = document.getElementById('view-tab-armory');
+
+    this.tabBtnExchange?.addEventListener('click', () => this.switchStationTab('exchange'));
+    this.tabBtnOutfitting?.addEventListener('click', () => this.switchStationTab('outfitting'));
+    this.tabBtnArmory?.addEventListener('click', () => this.switchStationTab('armory'));
+
+    this.valFittingPg = document.getElementById('val-fitting-pg');
+    this.valFittingCpu = document.getElementById('val-fitting-cpu');
+    this.barFittingPg = document.getElementById('bar-fitting-pg');
+    this.barFittingCpu = document.getElementById('bar-fitting-cpu');
+    this.fittingOverbudgetAlert = document.getElementById('fitting-overbudget-alert');
+    this.paperdollSlotsList = document.getElementById('paperdoll-slots-list');
+    this.lockerModulesList = document.getElementById('locker-modules-list');
+    this.lockerItemCount = document.getElementById('locker-item-count');
+
+    this.elArmoryCatalogGrid = document.getElementById('armory-catalog-grid');
+    this.elArmoryPlayerCredits = document.getElementById('armory-player-credits');
+
+    // Day 13 Targeted Canister & Loot Modal DOM Lookups
+    this.elLootPromptHud = document.getElementById('loot-prompt-hud');
+    this.elLootPromptText = document.getElementById('loot-prompt-text');
+    this.modalContainerLoot = document.getElementById('container-loot-modal');
+    this.modalLootRarity = document.getElementById('loot-modal-rarity');
+    this.modalLootTitle = document.getElementById('loot-modal-title');
+    this.elLootDistanceDisplay = document.getElementById('loot-distance-display');
+    this.elLootItemCount = document.getElementById('loot-item-count');
+    this.elLootItemsList = document.getElementById('loot-items-list');
+    this.btnCloseLoot = document.getElementById('btn-close-loot');
+    this.btnLootAll = document.getElementById('btn-loot-all');
+
+    this.btnCloseLoot?.addEventListener('click', () => this.closeContainerLootModal());
+    this.btnLootAll?.addEventListener('click', () => this.lootAllCurrentContainer());
 
     if (this.hudSector) {
       this.hudSector.classList.add('clickable');
@@ -1590,6 +1683,10 @@ class GameEngine {
       }
 
       if (e.code === 'Escape') {
+        if (this.modalContainerLoot && !this.modalContainerLoot.classList.contains('hidden')) {
+          this.closeContainerLootModal();
+          return;
+        }
         if (this.modalNav && !this.modalNav.classList.contains('hidden')) {
           this.closeNavModal();
           return;
@@ -1606,6 +1703,15 @@ class GameEngine {
       }
 
       switch (e.code) {
+        case 'KeyF': {
+          e.preventDefault();
+          if (this.modalContainerLoot && !this.modalContainerLoot.classList.contains('hidden')) {
+            this.lootAllCurrentContainer();
+          } else if (this.targetedContainerId) {
+            this.openContainerLootModal(this.targetedContainerId);
+          }
+          break;
+        }
         case 'KeyW':
         case 'ArrowUp':
           this.flightController.setInput('forward', true);
@@ -2029,8 +2135,9 @@ class GameEngine {
       this.elCdMid2.style.height = `${pct}%`;
     }
 
-    // 9. Update Tactical Target Reticle (Milestone 0.3)
+    // 9. Update Tactical Target Reticle & Floating Loot Canisters (Milestone 0.3 / Day 13)
     this.updateTacticalReticle();
+    this.updateLootCanisters(deltaSec);
 
     // 10. Render
     this.renderer.render(this.scene, this.camera);
@@ -2327,6 +2434,36 @@ class GameEngine {
       pMesh.rotation.x = Math.PI / 2;
     }
 
+    // 3b. Floating Loot Container Canister Synchronization (Day 13)
+    const containers = snapshot.containers || [];
+    const activeContainerIds = new Set(containers.map((c: any) => c.id));
+    this.activeLootContainers.clear();
+    for (const c of containers) {
+      this.activeLootContainers.set(c.id, c);
+    }
+
+    for (const [id, cGroup] of this.containerMeshes.entries()) {
+      if (!activeContainerIds.has(id)) {
+        this.scene.remove(cGroup);
+        cGroup.traverse((child) => {
+          if ((child as THREE.Mesh).geometry) (child as THREE.Mesh).geometry.dispose();
+        });
+        this.containerMeshes.delete(id);
+      }
+    }
+
+    for (const c of containers) {
+      let cGroup = this.containerMeshes.get(c.id);
+      if (!cGroup) {
+        cGroup = this.createCanisterMesh(c.rarity);
+        cGroup.position.set(c.x, 0.5, c.z);
+        this.scene.add(cGroup);
+        this.containerMeshes.set(c.id, cGroup);
+      }
+      cGroup.position.x = c.x;
+      cGroup.position.z = c.z;
+    }
+
     // 4. Process Combat Events (VFX, Audio & Alerts)
     if (snapshot.events && snapshot.events.length > 0) {
       for (const ev of snapshot.events) {
@@ -2361,6 +2498,12 @@ class GameEngine {
           this.combatVfx.emitExplosionDebris(podPos);
           this.audio.playExplosion();
           this.showApNotification('🚨 CRITICAL HULL BREACH // EJECTED IN ESCAPE POD', true);
+        } else if (ev.type === 'LOOT_SPAWNED') {
+          this.showApNotification(`📦 SALVAGE CANISTER DETECTED // ${ev.data?.title || 'CARGO'}`, false);
+        } else if (ev.type === 'LOOT_COLLECTED') {
+          if (ev.data?.playerId === 'commander-1') {
+            this.showApNotification(`📦 CARGO SECURED // TRANSFERRED TO SHIP LOCKER`, false);
+          }
         }
       }
     }
@@ -2445,6 +2588,534 @@ class GameEngine {
     if (this.elReticleHullFill) {
       this.elReticleHullFill.style.width = `${hullPct}%`;
     }
+  }
+
+  /**
+   * Day 13: Procedural 3D Hexagonal Floating Canister Mesh
+   */
+  private createCanisterMesh(rarity: string): THREE.Group {
+    const group = new THREE.Group();
+    const rarityColors: Record<string, number> = {
+      COMMON: 0x94a3b8,
+      UNCOMMON: 0x22c55e,
+      RARE: 0x38bdf8,
+      EPIC: 0xa855f7,
+      LEGENDARY: 0xf59e0b,
+    };
+    const glowColor = rarityColors[rarity] || 0x38bdf8;
+
+    // Outer hexagonal body
+    const bodyGeom = new THREE.CylinderGeometry(1.1, 1.1, 2.4, 6);
+    const bodyMat = new THREE.MeshStandardMaterial({
+      color: 0x1e293b,
+      metalness: 0.85,
+      roughness: 0.35,
+    });
+    const body = new THREE.Mesh(bodyGeom, bodyMat);
+    group.add(body);
+
+    // Glowing energy bands (top, center, bottom)
+    const ringGeom = new THREE.TorusGeometry(1.15, 0.08, 8, 16);
+    const ringMat = new THREE.MeshBasicMaterial({ color: glowColor });
+    [-0.7, 0, 0.7].forEach((y) => {
+      const ring = new THREE.Mesh(ringGeom, ringMat);
+      ring.rotation.x = Math.PI / 2;
+      ring.position.y = y;
+      group.add(ring);
+    });
+
+    // Pulsing point light
+    const light = new THREE.PointLight(glowColor, 1.2, 12);
+    group.add(light);
+    return group;
+  }
+
+  /**
+   * Day 13: Updates rotating canister animations and nearest loot canister detection
+   */
+  private updateLootCanisters(deltaSec: number): void {
+    // 1. Rotate meshes
+    for (const cGroup of this.containerMeshes.values()) {
+      cGroup.rotation.y += deltaSec * 1.2;
+    }
+
+    // 2. Find closest canister within 25u
+    const pPos = this.flightController.position;
+    let nearestContainer: any = null;
+    let minContainerDist = Infinity;
+
+    for (const c of this.activeLootContainers.values()) {
+      const dist = Math.hypot(c.x - pPos.x, c.z - pPos.z);
+      if (dist < minContainerDist) {
+        minContainerDist = dist;
+        nearestContainer = c;
+      }
+    }
+
+    if (nearestContainer && minContainerDist <= 25.0) {
+      this.targetedContainerId = nearestContainer.id;
+      if (this.elLootPromptHud && this.elLootPromptText) {
+        this.elLootPromptHud.classList.remove('hidden');
+        this.elLootPromptText.textContent = `PRESS [F] TO SECURE ${nearestContainer.rarity} CARGO (${minContainerDist.toFixed(1)}u)`;
+      }
+      if (this.elLootDistanceDisplay && this.activeLootModalContainer?.id === nearestContainer.id) {
+        this.elLootDistanceDisplay.textContent = `RANGE: ${minContainerDist.toFixed(1)}u`;
+      }
+    } else {
+      this.targetedContainerId = null;
+      if (this.elLootPromptHud) {
+        this.elLootPromptHud.classList.add('hidden');
+      }
+      if (this.modalContainerLoot && !this.modalContainerLoot.classList.contains('hidden') && minContainerDist > 30.0) {
+        this.closeContainerLootModal();
+      }
+    }
+  }
+
+  /**
+   * Day 13: Opens EVE-style container loot manifest modal
+   */
+  public openContainerLootModal(containerId: string): void {
+    const container = this.activeLootContainers.get(containerId);
+    if (!container) return;
+    this.activeLootModalContainer = container;
+
+    if (this.modalLootRarity) {
+      this.modalLootRarity.textContent = `${container.rarity} RECOVERY`;
+      this.modalLootRarity.className = `dock-badge loot-rarity-badge rarity-${container.rarity.toLowerCase()}`;
+    }
+    if (this.modalLootTitle) {
+      this.modalLootTitle.textContent = container.title;
+    }
+    if (this.elLootDistanceDisplay) {
+      const pPos = this.flightController.position;
+      const dist = Math.hypot(container.x - pPos.x, container.z - pPos.z);
+      this.elLootDistanceDisplay.textContent = `RANGE: ${dist.toFixed(1)}u`;
+    }
+    if (this.elLootItemCount) {
+      this.elLootItemCount.textContent = `${container.items.length} ITEMS SECURED`;
+    }
+
+    if (this.elLootItemsList) {
+      this.elLootItemsList.innerHTML = '';
+      container.items.forEach((item: any) => {
+        const itemCard = document.createElement('div');
+        const rarity = item.rarity ? item.rarity.toLowerCase() : 'common';
+        itemCard.className = `loot-item-card rarity-${rarity}`;
+
+        const mfgHtml = item.manufacturer ? `<span class="mfg-badge">${item.manufacturer}</span>` : '';
+        const specsHtml = item.category === 'COMMODITY'
+          ? `Qty: ${item.quantity || 1} • Unit Value: ${item.unitValue || 0} Cr`
+          : `⚡ ${item.energyCost || 0} MW • 🧠 ${item.cpuCost || 0} tf`;
+
+        let affixesHtml = '';
+        if (item.affixes && item.affixes.length > 0) {
+          affixesHtml = `<div class="loot-item-stat-row">${item.affixes.map((a: any) => a.description).join(' • ')}</div>`;
+        }
+
+        itemCard.innerHTML = `
+          <div class="loot-item-info">
+            <div class="loot-item-title-row">
+              <span class="rarity-pill rarity-${rarity}">${item.rarity || 'COMMODITY'}</span>
+              <span>${item.customName || item.name}</span>
+              ${mfgHtml}
+            </div>
+            <span class="slot-item-sub">${specsHtml}</span>
+            ${affixesHtml}
+          </div>
+        `;
+        this.elLootItemsList!.appendChild(itemCard);
+      });
+    }
+
+    if (this.modalContainerLoot) {
+      this.modalContainerLoot.classList.remove('hidden');
+    }
+    this.audio.playUiBlip();
+  }
+
+  /**
+   * Day 13: Closes container loot modal
+   */
+  public closeContainerLootModal(): void {
+    if (this.modalContainerLoot) {
+      this.modalContainerLoot.classList.add('hidden');
+    }
+    this.activeLootModalContainer = null;
+  }
+
+  /**
+   * Day 13: Sends LOOT_CONTAINER request to authoritative server
+   */
+  public lootAllCurrentContainer(): void {
+    if (!this.activeLootModalContainer) return;
+    const cid = this.activeLootModalContainer.id;
+
+    if (this.combatSocket && this.combatSocket.readyState === WebSocket.OPEN) {
+      this.combatSocket.send(JSON.stringify({
+        type: 'LOOT_CONTAINER',
+        containerId: cid,
+      }));
+    }
+
+    this.audio.playLootPickupSound();
+    this.showApNotification('📦 CARGO SECURED // TRANSFERRED TO SHIP LOCKER', false);
+    this.closeContainerLootModal();
+  }
+
+  /**
+   * Day 13: Station Dock Tab Switcher (Exchange / Outfitting / Armory)
+   */
+  public switchStationTab(tab: 'exchange' | 'outfitting' | 'armory'): void {
+    this.activeStationTab = tab;
+    this.audio.playUiBlip();
+
+    this.tabBtnExchange?.classList.toggle('active', tab === 'exchange');
+    this.tabBtnOutfitting?.classList.toggle('active', tab === 'outfitting');
+    this.tabBtnArmory?.classList.toggle('active', tab === 'armory');
+
+    this.viewTabExchange?.classList.toggle('hidden', tab !== 'exchange');
+    this.viewTabOutfitting?.classList.toggle('hidden', tab !== 'outfitting');
+    this.viewTabArmory?.classList.toggle('hidden', tab !== 'armory');
+
+    if (tab === 'outfitting') {
+      this.loadOutfittingData();
+    } else if (tab === 'armory') {
+      this.loadArmoryData();
+    } else if (tab === 'exchange') {
+      this.loadPortInventory();
+    }
+  }
+
+  /**
+   * Day 13: Fetches player loadout, locker storage, and validates engineering budgets
+   */
+  public async loadOutfittingData(): Promise<void> {
+    try {
+      const res = await fetch('/api/outfitting/player?playerId=acc_sol_captain');
+      if (!res.ok) return;
+      const data = await res.json();
+      this.playerLoadout = data;
+
+      const { fitted, locker, powerGridMax, powerGridUsed, cpuMax, cpuUsed } = data;
+      const loadout = fitted || {};
+      const lockerList = locker || [];
+
+      const pgMax = powerGridMax || 120;
+      const cpuMaxVal = cpuMax || 180;
+      const totalPg = Number(powerGridUsed) || 0;
+      const totalCpu = Number(cpuUsed) || 0;
+      const pgPct = Math.min(100, (totalPg / pgMax) * 100);
+      const cpuPct = Math.min(100, (totalCpu / cpuMaxVal) * 100);
+
+      this.isLoadoutOverBudget = totalPg > pgMax || totalCpu > cpuMaxVal;
+
+      if (this.valFittingPg) {
+        this.valFittingPg.textContent = `${totalPg.toFixed(1)} / ${pgMax.toFixed(1)} MW (${pgPct.toFixed(1)}%)`;
+        this.valFittingPg.style.color = totalPg > pgMax ? '#ef4444' : '#f8fafc';
+      }
+      if (this.barFittingPg) {
+        this.barFittingPg.style.width = `${Math.min(100, pgPct)}%`;
+        if (totalPg > pgMax) this.barFittingPg.classList.add('over-budget');
+        else this.barFittingPg.classList.remove('over-budget');
+      }
+
+      if (this.valFittingCpu) {
+        this.valFittingCpu.textContent = `${totalCpu.toFixed(1)} / ${cpuMaxVal.toFixed(1)} tf (${cpuPct.toFixed(1)}%)`;
+        this.valFittingCpu.style.color = totalCpu > cpuMaxVal ? '#ef4444' : '#f8fafc';
+      }
+      if (this.barFittingCpu) {
+        this.barFittingCpu.style.width = `${Math.min(100, cpuPct)}%`;
+        if (totalCpu > cpuMaxVal) this.barFittingCpu.classList.add('over-budget');
+        else this.barFittingCpu.classList.remove('over-budget');
+      }
+
+      if (this.fittingOverbudgetAlert) {
+        if (this.isLoadoutOverBudget) this.fittingOverbudgetAlert.classList.remove('hidden');
+        else this.fittingOverbudgetAlert.classList.add('hidden');
+      }
+
+      // Render Paperdoll Hardpoints
+      if (this.paperdollSlotsList) {
+        this.paperdollSlotsList.innerHTML = '';
+        const slots: Array<{ slot: string; cat: 'HIGH' | 'MID' | 'LOW'; title: string }> = [
+          { slot: 'H1', cat: 'HIGH', title: 'HIGH SLOT 1 (PRIMARY WEAPON)' },
+          { slot: 'H2', cat: 'HIGH', title: 'HIGH SLOT 2 (SECONDARY WEAPON)' },
+          { slot: 'M1', cat: 'MID', title: 'MID SLOT 1 (PROPULSION / AFTERBURNER)' },
+          { slot: 'M2', cat: 'MID', title: 'MID SLOT 2 (TACTICAL / POINT DEFENSE)' },
+          { slot: 'L1', cat: 'LOW', title: 'LOW SLOT 1 (REACTOR CORE PASSIVE)' },
+          { slot: 'L2', cat: 'LOW', title: 'LOW SLOT 2 (ARMOR / NANITE PASSIVE)' },
+        ];
+
+        for (const s of slots) {
+          const item = loadout[s.slot];
+          const card = document.createElement('div');
+          const catClass = s.cat.toLowerCase();
+
+          if (item) {
+            const rarity = item.rarity ? item.rarity.toLowerCase() : 'common';
+            card.className = `paperdoll-slot-card rarity-${rarity}`;
+            const mfg = item.manufacturer ? `<span class="mfg-badge">${item.manufacturer}</span>` : '';
+            let affixesText = '';
+            if (item.affixes && item.affixes.length > 0) {
+              affixesText = item.affixes.map((a: any) => a.description || `${a.stat}: x${a.multiplier}`).join(' • ');
+            }
+
+            const pgCost = item.powerGridCost ?? item.power_grid_cost ?? 0;
+            const cpuCost = item.cpuCost ?? item.cpu_cost ?? 0;
+
+            card.innerHTML = `
+              <div class="slot-tag-badge ${catClass}">[${s.slot}]</div>
+              <div class="slot-info-block">
+                <div class="slot-item-name">${item.customName || item.name} ${mfg}</div>
+                <div class="slot-item-sub">
+                  <span>⚡ ${pgCost} MW</span>
+                  <span>🧠 ${cpuCost} tf</span>
+                </div>
+                ${affixesText ? `<div class="slot-item-stats">${affixesText}</div>` : ''}
+              </div>
+              <button class="unfit-btn-small" data-slot="${s.slot}">UNFIT</button>
+            `;
+            const unfitBtn = card.querySelector('.unfit-btn-small');
+            unfitBtn?.addEventListener('click', () => this.unfitModule(s.slot));
+          } else {
+            card.className = 'paperdoll-slot-card empty-slot';
+            card.innerHTML = `
+              <div class="slot-tag-badge ${catClass}">[${s.slot}]</div>
+              <div class="slot-info-block">
+                <span class="slot-empty-notice">EMPTY ${s.cat} SOCKET // READY FOR INSTALLATION</span>
+              </div>
+            `;
+          }
+          this.paperdollSlotsList.appendChild(card);
+        }
+      }
+
+      // Render Locker Storage
+      if (this.lockerModulesList) {
+        this.lockerModulesList.innerHTML = '';
+        if (this.lockerItemCount) {
+          this.lockerItemCount.textContent = `${lockerList.length} UNFITTED MODULES`;
+        }
+
+        if (lockerList.length === 0) {
+          this.lockerModulesList.innerHTML = '<div class="slot-empty-notice" style="padding: 1.5rem; text-align: center;">Station locker empty. Acquire blueprints from Armory or recover orbital loot containers.</div>';
+        } else {
+          for (const mod of lockerList) {
+            const card = document.createElement('div');
+            const rarity = mod.rarity ? mod.rarity.toLowerCase() : 'common';
+            card.className = `locker-module-card rarity-${rarity}`;
+
+            const mfg = mod.manufacturer ? `<span class="mfg-badge">${mod.manufacturer}</span>` : '';
+            const cat = mod.slotType || mod.slot_type || mod.category || 'HIGH';
+            let affixesText = '';
+            if (mod.affixes && mod.affixes.length > 0) {
+              affixesText = mod.affixes.map((a: any) => a.description || `${a.stat}: x${a.multiplier}`).join(' • ');
+            }
+
+            const pgCost = mod.powerGridCost ?? mod.power_grid_cost ?? 0;
+            const cpuCost = mod.cpuCost ?? mod.cpu_cost ?? 0;
+
+            let fitButtonsHtml = '';
+            if (cat === 'HIGH') {
+              fitButtonsHtml = `
+                <button class="fit-btn-small" data-id="${mod.id}" data-slot="H1">FIT [H1]</button>
+                <button class="fit-btn-small" data-id="${mod.id}" data-slot="H2">FIT [H2]</button>
+              `;
+            } else if (cat === 'MID') {
+              fitButtonsHtml = `
+                <button class="fit-btn-small" data-id="${mod.id}" data-slot="M1">FIT [M1]</button>
+                <button class="fit-btn-small" data-id="${mod.id}" data-slot="M2">FIT [M2]</button>
+              `;
+            } else {
+              fitButtonsHtml = `
+                <button class="fit-btn-small" data-id="${mod.id}" data-slot="L1">FIT [L1]</button>
+                <button class="fit-btn-small" data-id="${mod.id}" data-slot="L2">FIT [L2]</button>
+              `;
+            }
+
+            card.innerHTML = `
+              <div class="locker-card-header">
+                <span class="locker-item-title">
+                  <span class="rarity-pill rarity-${rarity}">${mod.rarity || 'COMMON'}</span>
+                  <span>${mod.customName || mod.name}</span>
+                  ${mfg}
+                </span>
+                <span class="slot-tag-badge ${cat.toLowerCase()}">${cat}</span>
+              </div>
+              <div class="locker-card-specs">
+                <span>⚡ ${pgCost} MW</span>
+                <span>🧠 ${cpuCost} tf</span>
+              </div>
+              ${affixesText ? `<div class="locker-card-affixes">${affixesText}</div>` : ''}
+              <div class="locker-card-actions">
+                ${fitButtonsHtml}
+              </div>
+            `;
+
+            card.querySelectorAll('.fit-btn-small').forEach((btn) => {
+              btn.addEventListener('click', (ev) => {
+                const target = ev.currentTarget as HTMLElement;
+                const slot = target.dataset.slot!;
+                const invId = target.dataset.id!;
+                this.fitModule(invId, slot);
+              });
+            });
+
+            this.lockerModulesList.appendChild(card);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[OUTFITTING] Failed to load loadout:', err);
+    }
+  }
+
+  /**
+   * Day 13: Fits module to slot with server-authoritative validation
+   */
+  public async fitModule(inventoryId: string, slot: string): Promise<void> {
+    try {
+      const res = await fetch('/api/outfitting/fit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          playerId: 'acc_sol_captain',
+          inventoryId,
+          slot,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        this.audio.playApWarningSound();
+        this.showApNotification(`⚠️ FIT REJECTED: ${data.message || data.error || 'Capacity exceeded'}`, true);
+        return;
+      }
+      this.audio.playUiBlip();
+      this.showApNotification(`✅ MODULE INSTALLED TO SLOT [${slot}]`, false);
+      await this.loadOutfittingData();
+    } catch (err) {
+      console.error('[OUTFITTING] Fit error:', err);
+    }
+  }
+
+  /**
+   * Day 13: Unfits module from slot back to locker
+   */
+  public async unfitModule(slot: string): Promise<void> {
+    try {
+      const res = await fetch('/api/outfitting/unfit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          playerId: 'acc_sol_captain',
+          slot,
+        }),
+      });
+      if (res.ok) {
+        this.audio.playUiBlip();
+        this.showApNotification(`MODULE UNMOUNTED TO STATION LOCKER`, false);
+        await this.loadOutfittingData();
+      }
+    } catch (err) {
+      console.error('[OUTFITTING] Unfit error:', err);
+    }
+  }
+
+  /**
+   * Day 13: Loads naval armory blueprint catalog
+   */
+  public async loadArmoryData(): Promise<void> {
+    try {
+      const res = await fetch('/api/outfitting/catalog');
+      if (!res.ok) return;
+      const json = await res.json();
+      const blueprints = Array.isArray(json) ? json : json.catalog || [];
+      this.equipmentCatalog = blueprints;
+
+      if (this.elArmoryPlayerCredits) {
+        this.elArmoryPlayerCredits.textContent = `${this.playerCredits.toLocaleString()} Cr`;
+      }
+
+      if (this.elArmoryCatalogGrid) {
+        this.elArmoryCatalogGrid.innerHTML = '';
+        for (const bp of blueprints) {
+          const card = document.createElement('div');
+          const cat = bp.slot_type || bp.slotType || bp.category || 'HIGH';
+          card.className = 'armory-card';
+
+          const mfg = bp.manufacturer ? `<span class="mfg-badge">${bp.manufacturer}</span>` : '';
+          const pgCost = bp.power_grid_cost ?? bp.powerGridCost ?? 0;
+          const cpuCost = bp.cpu_cost ?? bp.cpuCost ?? 0;
+          const price = bp.base_price ?? bp.basePrice ?? 500;
+          const stats = bp.base_stats || bp.baseStats;
+          const statsText = stats ? Object.entries(stats).map(([k, v]) => `${k}: ${v}`).join(' | ') : '';
+
+          card.innerHTML = `
+            <div class="armory-card-header">
+              <span class="slot-tag-badge ${cat.toLowerCase()}">${cat}</span>
+              <span class="armory-price-pill">${price.toLocaleString()} Cr</span>
+            </div>
+            <div class="armory-item-title">${bp.name} ${mfg}</div>
+            <div class="locker-card-specs">
+              <span>⚡ ${pgCost} MW</span>
+              <span>🧠 ${cpuCost} tf</span>
+            </div>
+            ${statsText ? `<div class="locker-card-affixes">${statsText}</div>` : ''}
+            <button class="hud-btn primary fit-btn-small" style="margin-top: 0.4rem;" data-id="${bp.id}">
+              PURCHASE MODULE 🛒
+            </button>
+          `;
+
+          card.querySelector('button')?.addEventListener('click', () => {
+            this.buyModule(bp.id);
+          });
+
+          this.elArmoryCatalogGrid.appendChild(card);
+        }
+      }
+    } catch (err) {
+      console.error('[ARMORY] Catalog load error:', err);
+    }
+  }
+
+  /**
+   * Day 13: Purchases blueprint module from Armory and delivers to locker
+   */
+  public async buyModule(blueprintId: string): Promise<void> {
+    try {
+      const res = await fetch('/api/outfitting/buy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          playerId: 'acc_sol_captain',
+          blueprintId,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        this.audio.playApWarningSound();
+        this.showApNotification(`REQUISITION FAILED: ${data.error || 'Check funds'}`, true);
+        return;
+      }
+      this.audio.playTradeBuySound();
+      this.playerCredits = data.credits;
+      if (this.modalMarketPlayerCredits) this.modalMarketPlayerCredits.textContent = `${this.playerCredits.toLocaleString()} Cr`;
+      if (this.elTelemetryCredits) this.elTelemetryCredits.textContent = `${this.playerCredits.toLocaleString()} Cr`;
+      if (this.elArmoryPlayerCredits) this.elArmoryPlayerCredits.textContent = `${this.playerCredits.toLocaleString()} Cr`;
+      this.showApNotification(`🛒 MODULE PURCHASED & TRANSFERRED TO LOCKER`, false);
+      await this.loadArmoryData();
+    } catch (err) {
+      console.error('[ARMORY] Buy error:', err);
+    }
+  }
+
+  public getPlayerLoadout(): any {
+    return this.playerLoadout;
+  }
+
+  public getEquipmentCatalog(): any[] {
+    return this.equipmentCatalog;
   }
 }
 

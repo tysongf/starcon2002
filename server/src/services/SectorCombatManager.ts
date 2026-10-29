@@ -1,4 +1,6 @@
 import type { WebSocket } from 'ws';
+import { LootGenerator } from './LootGenerator';
+import { outfittingService } from './OutfittingService';
 
 export interface CombatInputs {
   forward: boolean;
@@ -9,6 +11,16 @@ export interface CombatInputs {
   firePrimary: boolean;
   fireTactical: boolean;
   activeWeaponId?: 'PULSE' | 'PLASMA' | 'FLAK';
+}
+
+export interface SectorLootContainer {
+  id: string;
+  x: number;
+  z: number;
+  title: string;
+  rarity: 'COMMON' | 'UNCOMMON' | 'RARE' | 'EPIC' | 'LEGENDARY';
+  items: any[];
+  createdAt: number;
 }
 
 export interface SectorEntity {
@@ -39,6 +51,8 @@ export interface SectorEntity {
   lastHitTime: number;
   fireCooldown: number;
   afterburnerActive?: boolean;
+  loadout?: any;
+  energyRegenRate?: number;
   // AI specific
   aiPatrolCenter?: { x: number; z: number };
   aiPatrolAngle?: number;
@@ -108,6 +122,16 @@ export interface SnapshotPayload {
     vx: number;
     vz: number;
     color: string;
+    projType?: 'PULSE' | 'PLASMA' | 'FLAK';
+    damage?: number;
+  }>;
+  containers: Array<{
+    id: string;
+    x: number;
+    z: number;
+    title: string;
+    rarity: string;
+    items: any[];
   }>;
   events: CombatEvent[];
 }
@@ -117,6 +141,7 @@ export class SectorRoom {
   public readonly clients: Map<string, WebSocket> = new Map();
   public readonly entities: Map<string, SectorEntity> = new Map();
   public projectiles: Projectile[] = [];
+  public containers: SectorLootContainer[] = [];
   public pendingEvents: CombatEvent[] = [];
 
   private tickInterval: NodeJS.Timeout | null = null;
@@ -175,6 +200,33 @@ export class SectorRoom {
         aiPatrolAngle: 0,
         lootedCargo: [],
         transponderActive: false,
+      });
+
+      // Spawn initial orbital salvage canister in Sector 2 Void Expanse
+      this.containers.push({
+        id: 'canister_sec2_orbital_cache',
+        x: 18.0,
+        z: -12.0,
+        title: 'Derelict Cargo Canister [SECTOR 2]',
+        rarity: 'RARE',
+        items: [
+          {
+            blueprintId: 'MOD_PLASMA_01',
+            customName: 'Prototype Heavy Plasma Accelerator',
+            name: 'Vaelic Heavy Plasma Accelerator',
+            rarity: 'RARE',
+            category: 'WEAPON',
+            slotType: 'HIGH',
+            manufacturer: 'Vaelic Ironworks',
+            energyCost: 35,
+            cpuCost: 55,
+            affixes: [
+              { stat: 'damage', multiplier: 1.18, description: '+18% Plasma Thermal Yield' }
+            ]
+          },
+          { name: 'Composite Alloy Scrap', quantity: 24, category: 'COMMODITY', unitValue: 120 }
+        ],
+        createdAt: Date.now()
       });
     }
   }
@@ -669,7 +721,75 @@ export class SectorRoom {
       target.cpuUsed = 0;
       target.vx *= 0.2;
       target.vz *= 0.2;
+    } else if (target.type === 'DRONE' || target.type === 'SCAVENGER') {
+      // Spawn persistent 3D Loot Container in Sector
+      outfittingService.getCatalog().then((catalog) => {
+        const drop = LootGenerator.generateDrop(catalog);
+        const containerId = `loot_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+        const container: SectorLootContainer = {
+          id: containerId,
+          x: Math.round(target.x * 10) / 10,
+          z: Math.round(target.z * 10) / 10,
+          title: `${target.name.split(' ')[0]} Salvage Canister`,
+          rarity: drop.rarity,
+          items: [
+            drop,
+            { name: 'Composite Alloy Scrap', quantity: 18, category: 'COMMODITY', unitValue: 120 },
+          ],
+          createdAt: Date.now(),
+        };
+
+        this.containers.push(container);
+        this.pendingEvents.push({
+          type: 'LOOT_SPAWNED',
+          targetId: containerId,
+          x: target.x,
+          z: target.z,
+          data: {
+            containerId,
+            title: container.title,
+            rarity: container.rarity,
+            items: container.items,
+          },
+        });
+      }).catch((err) => {
+        console.error('[COMBAT] Error generating loot drop:', err);
+      });
     }
+  }
+
+  public async lootContainer(playerId: string, containerId: string): Promise<any> {
+    const cIdx = this.containers.findIndex((c) => c.id === containerId);
+    if (cIdx < 0) return null;
+
+    const container = this.containers[cIdx];
+    const pEntity = this.entities.get(`player_${playerId}`);
+    if (!pEntity) return null;
+
+    const dist = Math.hypot(pEntity.x - container.x, pEntity.z - container.z);
+    if (dist > 35) return null;
+
+    for (const item of container.items) {
+      if (item.blueprintId) {
+        await outfittingService.addLootToPlayer(playerId, item);
+      }
+    }
+
+    this.containers.splice(cIdx, 1);
+    this.pendingEvents.push({
+      type: 'LOOT_COLLECTED',
+      targetId: pEntity.id,
+      x: container.x,
+      z: container.z,
+      data: {
+        containerId,
+        title: container.title,
+        items: container.items,
+      },
+    });
+
+    return container.items;
   }
 
   private broadcastSnapshot(now: number): void {
@@ -717,6 +837,14 @@ export class SectorRoom {
         projType: p.projType || 'PULSE',
         damage: p.damage,
       })),
+      containers: this.containers.map((c) => ({
+        id: c.id,
+        x: c.x,
+        z: c.z,
+        title: c.title,
+        rarity: c.rarity,
+        items: c.items,
+      })),
       events: [...this.pendingEvents],
     };
 
@@ -755,6 +883,8 @@ export class SectorCombatManager {
         const msg = JSON.parse(data.toString());
         if (msg.type === 'INPUT') {
           room.setPlayerInput(playerId, msg.inputs);
+        } else if (msg.type === 'LOOT_CONTAINER') {
+          room.lootContainer(playerId, msg.containerId);
         }
       } catch (err) {
         // Ignore malformed client frames

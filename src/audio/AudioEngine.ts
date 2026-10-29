@@ -502,6 +502,35 @@ export class AudioEngine {
     osc.start(now);
     osc.stop(now + 0.48);
   }
+
+  /**
+   * Harmonious three-stage chime when securing floating cargo containers
+   */
+  public playLootPickupSound(): void {
+    this.initContext();
+    if (!this.ctx) return;
+
+    const now = this.ctx.currentTime;
+    const pitches = [587.33, 739.99, 880.0, 1174.66]; // D5, F#5, A5, D6
+    pitches.forEach((freq, idx) => {
+      if (!this.ctx) return;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, now + idx * 0.06);
+
+      gain.gain.setValueAtTime(0.01, now + idx * 0.06);
+      gain.gain.linearRampToValueAtTime(0.18, now + idx * 0.06 + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.06 + 0.28);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      osc.start(now + idx * 0.06);
+      osc.stop(now + idx * 0.06 + 0.28);
+    });
+  }
 }
 
 

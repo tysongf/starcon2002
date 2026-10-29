@@ -117,11 +117,14 @@ ON CONFLICT (port_id, commodity_id) DO UPDATE SET
 CREATE TABLE IF NOT EXISTS equipment_blueprints (
   id VARCHAR(64) PRIMARY KEY,
   name VARCHAR(128) NOT NULL,
-  slot_type VARCHAR(32) NOT NULL, -- 'WEAPON', 'TACTICAL', 'SHIELD', 'REACTOR', 'MINING'
+  slot_type VARCHAR(16) NOT NULL, -- 'HIGH', 'MID', 'LOW'
+  category VARCHAR(32) NOT NULL,  -- 'WEAPON', 'MINING', 'PROPULSION', 'SHIELD', 'REACTOR', 'HULL', 'CARGO'
+  manufacturer VARCHAR(64) NOT NULL DEFAULT 'Sol Industrial',
   base_rarity VARCHAR(16) NOT NULL DEFAULT 'COMMON', -- 'COMMON', 'UNCOMMON', 'RARE', 'EPIC', 'LEGENDARY'
   power_grid_cost NUMERIC(8, 2) NOT NULL, -- MW
   cpu_cost NUMERIC(8, 2) NOT NULL,        -- tf
-  base_stats JSONB NOT NULL,              -- { damage, fireRate, shieldCapacity, energyRegen, etc }
+  base_price INT NOT NULL DEFAULT 400,
+  base_stats JSONB NOT NULL,              -- { damage, fireCooldown, muzzleSpeed, energyCost, etc }
   description TEXT
 );
 
@@ -129,12 +132,22 @@ CREATE TABLE IF NOT EXISTS player_inventory (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id VARCHAR(64) REFERENCES accounts(id) ON DELETE CASCADE,
   blueprint_id VARCHAR(64) REFERENCES equipment_blueprints(id),
-  rarity VARCHAR(16) NOT NULL,
+  custom_name VARCHAR(128) NOT NULL DEFAULT 'Equipment Module',
+  rarity VARCHAR(16) NOT NULL DEFAULT 'COMMON',
   affixes JSONB DEFAULT '[]'::jsonb,
   is_fitted BOOLEAN DEFAULT false,
-  fit_slot_index INT DEFAULT NULL,
+  fit_slot VARCHAR(16) DEFAULT NULL, -- 'H1', 'H2', 'M1', 'M2', 'L1', 'L2'
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Safe Alter Migrations for existing PGLite databases
+ALTER TABLE equipment_blueprints ADD COLUMN IF NOT EXISTS category VARCHAR(32) NOT NULL DEFAULT 'WEAPON';
+ALTER TABLE equipment_blueprints ADD COLUMN IF NOT EXISTS manufacturer VARCHAR(64) NOT NULL DEFAULT 'Sol Industrial';
+ALTER TABLE equipment_blueprints ADD COLUMN IF NOT EXISTS base_price INT NOT NULL DEFAULT 400;
+
+ALTER TABLE player_inventory ADD COLUMN IF NOT EXISTS custom_name VARCHAR(128) NOT NULL DEFAULT 'Equipment Module';
+ALTER TABLE player_inventory ADD COLUMN IF NOT EXISTS fit_slot VARCHAR(16) DEFAULT NULL;
+
 
 CREATE TABLE IF NOT EXISTS sector_wrecks (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -161,4 +174,83 @@ CREATE TABLE IF NOT EXISTS persistent_scavengers (
   victim_account_id VARCHAR(64) DEFAULT NULL,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS contracts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  creator_account_id VARCHAR(64) REFERENCES accounts(id) ON DELETE CASCADE,
+  contract_type VARCHAR(32) NOT NULL DEFAULT 'REVENGE_BOUNTY',
+  target_scavenger_id VARCHAR(64) REFERENCES persistent_scavengers(id) ON DELETE CASCADE,
+  is_public BOOLEAN DEFAULT false,
+  reward_credits INT DEFAULT 0,
+  status VARCHAR(16) DEFAULT 'OPEN',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Seed Equipment Blueprints Catalog
+INSERT INTO equipment_blueprints (id, name, slot_type, category, manufacturer, base_rarity, power_grid_cost, cpu_cost, base_price, base_stats, description)
+VALUES
+  ('MOD_PULSE_01', 'Sol-Standard Pulse Cannon', 'HIGH', 'WEAPON', 'Sol Industrial', 'COMMON', 16.0, 30.0, 450, 
+   '{"damage": 14, "fireCooldown": 0.16, "muzzleSpeed": 78, "energyCost": 8, "weaponType": "PULSE"}'::jsonb, 
+   'Standard high-velocity kinetic pulse battery. Low capacitor draw with high cycle rate.'),
+  
+  ('MOD_PLASMA_01', 'Vaelic Heavy Plasma Accelerator', 'HIGH', 'WEAPON', 'Vaelic Ironworks', 'RARE', 35.0, 55.0, 1200, 
+   '{"damage": 44, "fireCooldown": 0.45, "muzzleSpeed": 48, "energyCost": 22, "weaponType": "PLASMA"}'::jsonb, 
+   'High-impact superheated plasma bolt. Deals devastating hull damage at the cost of high capacitor consumption.'),
+  
+  ('MOD_FLAK_01', 'Phorid Scatter Flak Blaster', 'HIGH', 'WEAPON', 'Phorid Biotech', 'UNCOMMON', 22.0, 40.0, 750, 
+   '{"damage": 13, "fireCooldown": 0.35, "muzzleSpeed": 66, "energyCost": 18, "weaponType": "FLAK", "pellets": 3}'::jsonb, 
+   'Tri-pellet scattershot cannon designed for close-quarters dogfighting and point defense.'),
+  
+  ('MOD_MINING_01', 'Lithos Focused Mining Laser', 'HIGH', 'MINING', 'Lithos Axiom', 'COMMON', 18.0, 25.0, 500, 
+   '{"miningPower": 15, "range": 45, "energyCost": 12, "weaponType": "MINING"}'::jsonb, 
+   'Harmonic resonance beam tuned for dissecting planetary ore deposits and derelict spacecraft hulls.'),
+  
+  ('MOD_AFTERBURNER_01', 'Overdrive Afterburner Core', 'MID', 'PROPULSION', 'Sol Industrial', 'UNCOMMON', 30.0, 20.0, 600, 
+   '{"thrustMultiplier": 2.2, "maxSpeed": 48, "energyDrain": 38}'::jsonb, 
+   'Direct reactor injection manifold that delivers a 2.2x emergency combat thrust boost on Shift.'),
+  
+  ('MOD_SHIELD_01', 'Vaelic Bulwark Shield Matrix', 'MID', 'SHIELD', 'Vaelic Ironworks', 'RARE', 28.0, 45.0, 950, 
+   '{"shieldCapacity": 40, "shieldRecharge": 6.0, "boostAmount": 35, "boostCooldown": 6.0}'::jsonb, 
+   'Hexagonal electrostatic emitter matrix that reinforces maximum shield capacity and passive dissipation.'),
+  
+  ('MOD_ECM_01', 'Lithos Resonant Sensor Jammer', 'MID', 'SHIELD', 'Lithos Axiom', 'EPIC', 22.0, 50.0, 1400, 
+   '{"lockBreakRadius": 60, "cooldown": 12.0}'::jsonb, 
+   'Emits broad-spectrum electromagnetic interference that disrupts hostile radar lock-on acquisition.'),
+  
+  ('MOD_REACTOR_01', 'Vaelic Compact Reactor Core', 'LOW', 'REACTOR', 'Vaelic Ironworks', 'UNCOMMON', 0.0, 15.0, 650, 
+   '{"energyRegenMultiplier": 1.15, "maxEnergyBonus": 20}'::jsonb, 
+   'Auxiliary fusion reactor augment that increases ship capacitor capacity and regeneration rate by 15%.'),
+  
+  ('MOD_ARMOR_01', 'Reinforced Plasteel Armor Plating', 'LOW', 'HULL', 'Sol Industrial', 'COMMON', 12.0, 0.0, 400, 
+   '{"maxHpBonus": 25}'::jsonb, 
+   'Dense multilayer plasteel sheets welded to ship bulkheads, providing +25 maximum Hull Integrity.'),
+  
+  ('MOD_CARGO_01', 'Expanded Hold Nanofiber Rig', 'LOW', 'CARGO', 'Phorid Biotech', 'COMMON', 8.0, 10.0, 350, 
+   '{"cargoHoldBonus": 20}'::jsonb, 
+   'Pressurized micro-lattice storage bays expanding hold volume by 20 cubic meters.')
+ON CONFLICT (id) DO UPDATE SET
+  name = EXCLUDED.name,
+  slot_type = EXCLUDED.slot_type,
+  category = EXCLUDED.category,
+  manufacturer = EXCLUDED.manufacturer,
+  base_rarity = EXCLUDED.base_rarity,
+  power_grid_cost = EXCLUDED.power_grid_cost,
+  cpu_cost = EXCLUDED.cpu_cost,
+  base_price = EXCLUDED.base_price,
+  base_stats = EXCLUDED.base_stats,
+  description = EXCLUDED.description;
+
+-- Seed Initial Player Inventory (Fitted 2H/2M/2L + Locker items)
+INSERT INTO player_inventory (id, account_id, blueprint_id, custom_name, rarity, affixes, is_fitted, fit_slot)
+VALUES
+  ('a1b2c3d4-e5f6-7890-abcd-111111111111', 'acc_sol_captain', 'MOD_PULSE_01', 'Sol-Standard Pulse Cannon', 'COMMON', '[]'::jsonb, true, 'H1'),
+  ('a1b2c3d4-e5f6-7890-abcd-222222222222', 'acc_sol_captain', 'MOD_PLASMA_01', 'Calibrated Vaelic Plasma Accelerator', 'RARE', '[{"stat": "damage", "multiplier": 1.15}]'::jsonb, true, 'H2'),
+  ('a1b2c3d4-e5f6-7890-abcd-333333333333', 'acc_sol_captain', 'MOD_AFTERBURNER_01', 'Overdrive Afterburner Core', 'UNCOMMON', '[{"stat": "maxSpeed", "multiplier": 1.08}]'::jsonb, true, 'M1'),
+  ('a1b2c3d4-e5f6-7890-abcd-444444444444', 'acc_sol_captain', 'MOD_FLAK_01', 'Scatter Flak Blaster of Ruin', 'EPIC', '[{"stat": "damage", "multiplier": 1.25}]'::jsonb, true, 'M2'),
+  ('a1b2c3d4-e5f6-7890-abcd-555555555555', 'acc_sol_captain', 'MOD_REACTOR_01', 'Vaelic Compact Reactor Core Mk II', 'UNCOMMON', '[]'::jsonb, true, 'L1'),
+  ('a1b2c3d4-e5f6-7890-abcd-666666666666', 'acc_sol_captain', 'MOD_ARMOR_01', 'Reinforced Plasteel Armor Plating', 'COMMON', '[]'::jsonb, true, 'L2'),
+  ('a1b2c3d4-e5f6-7890-abcd-777777777777', 'acc_sol_captain', 'MOD_MINING_01', 'Lithos Focused Mining Laser', 'COMMON', '[]'::jsonb, false, NULL),
+  ('a1b2c3d4-e5f6-7890-abcd-888888888888', 'acc_sol_captain', 'MOD_CARGO_01', 'Expanded Hold Nanofiber Rig', 'COMMON', '[]'::jsonb, false, NULL)
+ON CONFLICT (id) DO NOTHING;
+
 

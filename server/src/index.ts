@@ -9,6 +9,7 @@ import { apService, AP_COSTS, type ActionType } from './services/ActionPointServ
 import { navigationService } from './services/NavigationService';
 import { tradeService } from './services/TradeService';
 import { combatManager } from './services/SectorCombatManager';
+import { outfittingService } from './services/OutfittingService';
 
 dotenv.config();
 
@@ -262,7 +263,73 @@ async function startServer() {
       reply.send(result);
     });
 
-    // 8. Authoritative 20Hz WebSocket Combat Room (Milestone 0.3)
+    // 8. EVE-Style Outfitting & Module Management Endpoints (Day 13)
+    server.get('/api/outfitting/catalog', async (_req, reply) => {
+      const catalog = await outfittingService.getCatalog();
+      reply.send({ catalog });
+    });
+
+    server.get('/api/outfitting/player', async (req, reply) => {
+      const query = (req.query || {}) as { playerId?: string };
+      const playerId = query.playerId || 'acc_sol_captain';
+      const loadout = await outfittingService.getPlayerLoadout(playerId);
+      reply.send(loadout);
+    });
+
+    server.post('/api/outfitting/fit', async (req, reply) => {
+      const body = (req.body || {}) as {
+        playerId?: string;
+        itemId?: string;
+        inventoryId?: string;
+        targetSlot?: 'H1' | 'H2' | 'M1' | 'M2' | 'L1' | 'L2';
+        slot?: 'H1' | 'H2' | 'M1' | 'M2' | 'L1' | 'L2';
+      };
+      const playerId = body.playerId || 'acc_sol_captain';
+      const itemId = body.itemId || body.inventoryId;
+      const targetSlot = body.targetSlot || body.slot;
+
+      if (!itemId || !targetSlot) {
+        return reply.status(400).send({ success: false, error: 'Missing itemId or targetSlot' });
+      }
+
+      try {
+        const loadout = await outfittingService.fitModule(playerId, itemId, targetSlot);
+        reply.send({ success: true, loadout });
+      } catch (err: any) {
+        reply.status(400).send({ success: false, error: err.message });
+      }
+    });
+
+    server.post('/api/outfitting/unfit', async (req, reply) => {
+      const body = (req.body || {}) as {
+        playerId?: string;
+        itemId?: string;
+        slot?: string;
+      };
+      const playerId = body.playerId || 'acc_sol_captain';
+      try {
+        const loadout = await outfittingService.unfitModule(playerId, body.itemId, body.slot);
+        reply.send({ success: true, loadout });
+      } catch (err: any) {
+        reply.status(400).send({ success: false, error: err.message });
+      }
+    });
+
+    server.post('/api/outfitting/buy', async (req, reply) => {
+      const body = (req.body || {}) as {
+        playerId?: string;
+        blueprintId: string;
+      };
+      const playerId = body.playerId || 'acc_sol_captain';
+      try {
+        const result = await outfittingService.buyModule(playerId, body.blueprintId);
+        reply.send(result);
+      } catch (err: any) {
+        reply.status(400).send({ success: false, error: err.message });
+      }
+    });
+
+    // 9. Authoritative 20Hz WebSocket Combat Room (Milestone 0.3)
     server.get('/ws/combat', { websocket: true }, async (socket, req) => {
       const query = (req.query || {}) as { playerId?: string; sectorId?: string };
       const playerId = query.playerId || 'acc_sol_captain';
@@ -270,13 +337,14 @@ async function startServer() {
 
       try {
         const ship = await navigationService.getPlayerShip(playerId);
-        combatManager.handleConnection(socket, sectorId, playerId, ship);
+        const loadout = await outfittingService.getPlayerLoadout(playerId);
+        combatManager.handleConnection(socket, sectorId, playerId, { ...ship, loadout });
       } catch (err) {
         combatManager.handleConnection(socket, sectorId, playerId);
       }
     });
 
-    // 9. Listen
+    // 10. Listen
     await server.listen({ port: PORT, host: '0.0.0.0' });
     console.log(`[Wayward Void API] Server listening on http://localhost:${PORT}`);
   } catch (err) {
