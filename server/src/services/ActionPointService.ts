@@ -156,6 +156,30 @@ export class ActionPointService {
   }
 
   /**
+   * Deducts AP for an arbitrary cost and action name
+   */
+  public async deductAP(
+    playerId: string,
+    cost: number,
+    actionName: string = 'GENERIC_ACTION'
+  ): Promise<{ success: boolean; currentAP: number; error?: string }> {
+    const res = await this.spendAP(playerId, 'ORBITAL_SCAN', cost);
+    return {
+      success: res.success,
+      currentAP: res.currentAP,
+      error: res.error,
+    };
+  }
+
+  /**
+   * Adds AP to a player's balance (e.g. earned from survey sales or missions)
+   */
+  public async addAP(playerId: string, amount: number): Promise<ActionPointState> {
+    const state = await this.getAP(playerId);
+    return this.debugSetAP(playerId, state.currentAP + amount);
+  }
+
+  /**
    * Directly sets AP balance (used for testing and admin overrides)
    */
   public async debugSetAP(playerId: string, amount: number): Promise<ActionPointState> {

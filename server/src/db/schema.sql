@@ -349,3 +349,59 @@ VALUES
     ('acc_sol_captain', 'FACTION_PHORID', 15),
     ('acc_sol_captain', 'FACTION_KRYLL', 5)
 ON CONFLICT (account_id, faction_id) DO NOTHING;
+
+-- Day 18: Planetary Orbital Survey, Surface Mineral Scanners & Atmospheric Probes
+CREATE TABLE IF NOT EXISTS planets (
+    id VARCHAR(64) PRIMARY KEY,
+    sector_id INT NOT NULL,
+    name VARCHAR(128) NOT NULL,
+    archetype VARCHAR(32) NOT NULL, -- 'TERRESTRIAL' | 'VOLCANIC' | 'BARREN' | 'GAS_GIANT' | 'PRECURSOR_RUIN'
+    radius FLOAT NOT NULL DEFAULT 22.0,
+    pos_x FLOAT NOT NULL,
+    pos_y FLOAT NOT NULL DEFAULT 0.0,
+    pos_z FLOAT NOT NULL,
+    texture_seed INT NOT NULL,
+    atmosphere_color VARCHAR(16) NOT NULL,
+    atmosphere_density FLOAT NOT NULL,
+    surface_temp_k INT NOT NULL,
+    hazard_class VARCHAR(32) NOT NULL,
+    habitability_rating INT NOT NULL, -- 0 to 100%
+    controlling_faction VARCHAR(32) NOT NULL,
+    description TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS planet_surveys (
+    account_id VARCHAR(64) NOT NULL,
+    planet_id VARCHAR(64) NOT NULL,
+    scanned_minerals BOOLEAN NOT NULL DEFAULT FALSE,
+    scanned_bio BOOLEAN NOT NULL DEFAULT FALSE,
+    scanned_anomalies BOOLEAN NOT NULL DEFAULT FALSE,
+    survey_completion INT NOT NULL DEFAULT 0, -- 0 to 100%
+    discovered_hotspots JSONB NOT NULL DEFAULT '[]'::jsonb,
+    is_data_sold BOOLEAN NOT NULL DEFAULT FALSE,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    PRIMARY KEY (account_id, planet_id)
+);
+
+CREATE TABLE IF NOT EXISTS planet_beacons (
+    id VARCHAR(64) PRIMARY KEY,
+    account_id VARCHAR(64) NOT NULL,
+    planet_id VARCHAR(64) NOT NULL,
+    beacon_type VARCHAR(32) NOT NULL DEFAULT 'SENSOR_PROBE',
+    surface_lat FLOAT NOT NULL,
+    surface_lng FLOAT NOT NULL,
+    yield_summary VARCHAR(128) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Seed Canonical Celestial Planets for Sectors 1 through 5
+INSERT INTO planets (id, sector_id, name, archetype, radius, pos_x, pos_y, pos_z, texture_seed, atmosphere_color, atmosphere_density, surface_temp_k, hazard_class, habitability_rating, controlling_faction, description)
+VALUES
+    ('planet_sec1_aegis', 1, 'Aegis Prime', 'BARREN', 24.0, -140.0, 0.0, 180.0, 101, '#38bdf8', 0.12, 215, 'LOW_RADIATION', 18, 'FACTION_SOL', 'Airless metallic moon rich in heavy silicate crust and structural plasteel strata.'),
+    ('planet_sec2_charybdis', 2, 'Charybdis Minor', 'VOLCANIC', 26.0, 160.0, 0.0, -170.0, 202, '#f97316', 0.85, 780, 'EXTREME_THERMAL', 5, 'FACTION_HEGEMONY', 'Tectonically unstable lava world venting superheated sulfur and high-grade mineral ore.'),
+    ('planet_sec3_ignis', 3, 'Ignis Tartarus', 'PRECURSOR_RUIN', 28.0, -180.0, 0.0, -150.0, 303, '#a855f7', 0.40, 110, 'IONIC_DISRUPTIONS', 24, 'FACTION_HEGEMONY', 'Glaciated tomb world crisscrossed with dormant Precursor conduits and energy monoliths.'),
+    ('planet_sec4_mycelia', 4, 'Mycelia IV', 'TERRESTRIAL', 25.0, 150.0, 0.0, 140.0, 404, '#10b981', 1.05, 292, 'BIOLOGICAL_SPORES', 84, 'FACTION_PHORID', 'Lush photosynthetic planetary biome covered in dense fungal canopies and bio-protein reserves.'),
+    ('planet_sec5_skrit', 5, 'Skrit-V', 'GAS_GIANT', 34.0, -220.0, 0.0, 190.0, 505, '#f59e0b', 4.50, 85, 'HIGH_PRESSURE_STORMS', 0, 'FACTION_KRYLL', 'Massive banded gas giant with cryo-hydrocarbon rings suitable for Deuterium fuel skimming.')
+ON CONFLICT (id) DO NOTHING;
+

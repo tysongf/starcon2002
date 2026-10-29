@@ -4218,6 +4218,678 @@ kbd {
   border: 1px solid rgba(239, 68, 68, 0.45);
 }
 
+/* ==========================================================================
+   Day 18: Star Control II Planetary Orbital Survey, CRT Console & Probes
+   ========================================================================== */
+
+/* In-Flight Planetary Orbital Guidance Banner */
+.hud-orbital-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: rgba(15, 23, 42, 0.88);
+  border: 1px solid #38bdf8;
+  border-radius: 6px;
+  padding: 0.35rem 0.85rem;
+  box-shadow: 0 0 15px rgba(56, 189, 248, 0.25);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #38bdf8;
+  animation: orbital-pulse 2s infinite ease-in-out;
+}
+
+.hud-orbital-banner.hidden {
+  display: none !important;
+}
+
+.orbital-pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #38bdf8;
+  box-shadow: 0 0 10px #38bdf8;
+  animation: pulse-glow 1.2s infinite alternate ease-in-out;
+}
+
+@keyframes orbital-pulse {
+  0%, 100% { border-color: rgba(56, 189, 248, 0.5); box-shadow: 0 0 10px rgba(56, 189, 248, 0.2); }
+  50% { border-color: rgba(56, 189, 248, 0.95); box-shadow: 0 0 20px rgba(56, 189, 248, 0.45); }
+}
+
+/* Star Control II CRT Orbital Survey Console Modal Overlay */
+.survey-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(2, 6, 23, 0.94);
+  backdrop-filter: blur(14px);
+  padding: 1.5rem;
+}
+
+.survey-modal-overlay.hidden {
+  display: none !important;
+}
+
+.survey-crt-screen {
+  position: relative;
+  width: 100%;
+  max-width: 1180px;
+  max-height: 92vh;
+  background: #060d19;
+  border: 2px solid #38bdf8;
+  border-radius: 12px;
+  box-shadow: 0 0 40px rgba(56, 189, 248, 0.25), inset 0 0 35px rgba(0, 0, 0, 0.85);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-family: var(--font-sans);
+}
+
+.survey-crt-scanlines {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(0, 0, 0, 0.3) 0px,
+    rgba(0, 0, 0, 0.3) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  pointer-events: none;
+  z-index: 10;
+  opacity: 0.7;
+}
+
+.survey-crt-vignette {
+  position: absolute;
+  inset: 0;
+  box-shadow: inset 0 0 95px rgba(0, 0, 0, 0.85);
+  pointer-events: none;
+  z-index: 11;
+}
+
+/* Header */
+.survey-header {
+  position: relative;
+  z-index: 5;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.4rem;
+  background: rgba(15, 23, 42, 0.85);
+  border-bottom: 2px solid rgba(56, 189, 248, 0.35);
+}
+
+.survey-header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.survey-signal-badge {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.12em;
+  color: #38bdf8;
+  font-weight: 700;
+}
+
+.survey-planet-name {
+  margin: 0;
+  font-size: 1.55rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  color: #f8fafc;
+  text-shadow: 0 0 15px rgba(56, 189, 248, 0.4);
+}
+
+.survey-planet-archetype {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: #94a3b8;
+  letter-spacing: 0.05em;
+}
+
+.survey-header-right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.survey-hab-card,
+.survey-completion-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: rgba(30, 41, 59, 0.75);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  padding: 0.35rem 0.8rem;
+  border-radius: 6px;
+}
+
+.survey-hab-label,
+.survey-comp-label {
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  color: #94a3b8;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+}
+
+.survey-hab-val {
+  font-family: var(--font-mono);
+  font-size: 1.15rem;
+  font-weight: 900;
+  color: #10b981;
+}
+
+.survey-comp-val {
+  font-family: var(--font-mono);
+  font-size: 1.15rem;
+  font-weight: 900;
+  color: #38bdf8;
+}
+
+.survey-close-btn {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 800;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid #ef4444;
+  color: #f87171;
+  padding: 0.55rem 0.95rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.survey-close-btn:hover {
+  background: rgba(239, 68, 68, 0.35);
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.45);
+}
+
+/* Body */
+.survey-body {
+  position: relative;
+  z-index: 5;
+  display: grid;
+  grid-template-columns: 410px 1fr;
+  gap: 1.2rem;
+  padding: 1.2rem;
+  overflow-y: auto;
+  max-height: calc(92vh - 140px);
+}
+
+/* Left: Globe Viewport */
+.survey-globe-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.globe-viewport {
+  position: relative;
+  width: 100%;
+  height: 340px;
+  background: #020617;
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  box-shadow: inset 0 0 35px rgba(0, 0, 0, 0.85);
+  cursor: grab;
+}
+
+.globe-viewport:active {
+  cursor: grabbing;
+}
+
+#orbital-globe-canvas {
+  width: 340px;
+  height: 340px;
+  display: block;
+}
+
+.globe-crosshair {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 36px;
+  height: 36px;
+  border: 1px dashed rgba(56, 189, 248, 0.35);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.globe-coords-overlay {
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: #38bdf8;
+  display: flex;
+  gap: 0.75rem;
+  background: rgba(15, 23, 42, 0.8);
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  pointer-events: none;
+}
+
+.globe-drag-hint {
+  position: absolute;
+  bottom: 8px;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: #94a3b8;
+  letter-spacing: 0.05em;
+  background: rgba(15, 23, 42, 0.8);
+  padding: 0.2rem 0.6rem;
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+/* Telemetry 2x2 Matrix */
+.survey-telemetry-matrix {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.55rem;
+}
+
+.telemetry-cell {
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.cell-label {
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  color: #64748b;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.cell-val {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: #f1f5f9;
+  font-weight: 800;
+}
+
+.cell-val.highlight-hazard {
+  color: #f59e0b;
+}
+
+/* Right: Console Panel */
+.survey-console-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+}
+
+.section-title {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: #38bdf8;
+  margin-bottom: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* 3-Band Scanner Buttons */
+.scanner-btn-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.65rem;
+}
+
+.scanner-btn {
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: 6px;
+  padding: 0.75rem 0.65rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+}
+
+.scanner-btn:hover {
+  background: rgba(56, 189, 248, 0.15);
+  border-color: #38bdf8;
+  transform: translateY(-1px);
+  box-shadow: 0 0 15px rgba(56, 189, 248, 0.25);
+}
+
+.btn-scan-header {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.scan-key {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #f59e0b;
+}
+
+.scan-name {
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: #f8fafc;
+  letter-spacing: 0.04em;
+}
+
+.btn-scan-sub {
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  color: #94a3b8;
+}
+
+.btn-scan-sub.active {
+  color: #10b981;
+  font-weight: 700;
+}
+
+/* Probe Launcher */
+.survey-probe-section {
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  border-radius: 8px;
+  padding: 0.85rem;
+}
+
+.probe-controls-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.probe-shield-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: #94a3b8;
+  cursor: pointer;
+}
+
+.probe-shield-toggle input {
+  cursor: pointer;
+  accent-color: #38bdf8;
+}
+
+.probe-launch-btn {
+  background: linear-gradient(135deg, #0284c7, #0369a1);
+  border: 1px solid #38bdf8;
+  color: #ffffff;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 800;
+  padding: 0.6rem 1.1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  letter-spacing: 0.06em;
+}
+
+.probe-launch-btn:hover {
+  background: linear-gradient(135deg, #0369a1, #0284c7);
+  box-shadow: 0 0 18px rgba(56, 189, 248, 0.4);
+}
+
+/* Probe Descent Display */
+.probe-descent-display {
+  margin-top: 0.8rem;
+  background: rgba(2, 6, 23, 0.8);
+  border: 1px dashed rgba(56, 189, 248, 0.4);
+  border-radius: 6px;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.probe-descent-display.hidden {
+  display: none !important;
+}
+
+.descent-track {
+  position: relative;
+  width: 100%;
+  height: 8px;
+  background: rgba(30, 41, 59, 0.8);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.descent-marker {
+  position: absolute;
+  left: 0%;
+  top: 0;
+  bottom: 0;
+  width: 15%;
+  background: linear-gradient(90deg, #f59e0b, #ef4444);
+  border-radius: 4px;
+  transition: width 0.1s linear;
+}
+
+.descent-stats {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: #94a3b8;
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.descent-stats strong {
+  color: #38bdf8;
+}
+
+.probe-status-live {
+  color: #f59e0b !important;
+  font-weight: 700;
+}
+
+/* Hotspots Ledger */
+.survey-hotspots-list {
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  border-radius: 8px;
+  padding: 0.75rem;
+  max-height: 180px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.ledger-empty {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: #64748b;
+  text-align: center;
+  padding: 1.5rem 0.5rem;
+}
+
+.hotspot-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(30, 41, 59, 0.5);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  border-radius: 6px;
+  padding: 0.45rem 0.75rem;
+  transition: all 0.15s ease;
+}
+
+.hotspot-card:hover {
+  border-color: #38bdf8;
+  background: rgba(56, 189, 248, 0.1);
+}
+
+.hotspot-card-left {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.hotspot-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  box-shadow: 0 0 8px currentColor;
+}
+
+.hotspot-name {
+  font-size: 0.76rem;
+  font-weight: 800;
+  color: #f8fafc;
+}
+
+.hotspot-coords {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  color: #94a3b8;
+}
+
+.hotspot-yield {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: #38bdf8;
+  font-weight: 700;
+}
+
+/* Footer */
+.survey-footer {
+  position: relative;
+  z-index: 5;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1.4rem;
+  background: rgba(15, 23, 42, 0.85);
+  border-top: 1px solid rgba(56, 189, 248, 0.25);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: #94a3b8;
+}
+
+.survey-telemetry-item span {
+  color: #38bdf8;
+  font-weight: 700;
+}
+
+.survey-hint {
+  color: #64748b;
+  letter-spacing: 0.05em;
+}
+
+/* Astrometry Cartography Bureau Cards */
+.astrometry-planets-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.astrometry-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: 8px;
+  padding: 0.85rem 1.1rem;
+  gap: 1rem;
+}
+
+.astrometry-card-left {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.astrometry-planet-title {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #f8fafc;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.astrometry-comp-badge {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  background: rgba(16, 185, 129, 0.2);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.4);
+}
+
+.astrometry-planet-details {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: #94a3b8;
+}
+
+.astrometry-bounty-btn {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 800;
+  background: rgba(16, 185, 129, 0.2);
+  border: 1px solid #10b981;
+  color: #10b981;
+  padding: 0.55rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.astrometry-bounty-btn:hover {
+  background: rgba(16, 185, 129, 0.4);
+  box-shadow: 0 0 15px rgba(16, 185, 129, 0.4);
+}
+
+.astrometry-bounty-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  border-color: #64748b;
+  color: #64748b;
+  background: rgba(30, 41, 59, 0.4);
+}
+
+
 
 
 

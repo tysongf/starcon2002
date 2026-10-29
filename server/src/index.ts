@@ -14,6 +14,8 @@ import { contractService } from './services/ContractService';
 import { wreckService } from './services/WreckService';
 import { dialogService, DIALOG_TREES } from './services/DialogService';
 import { reputationService, FACTION_METADATA } from './services/ReputationService';
+import { planetaryService } from './services/PlanetaryService';
+
 
 
 dotenv.config();
@@ -684,13 +686,93 @@ async function startServer() {
     });
 
     server.post('/api/player/debug-credits', async (req, reply) => {
-
       const body = (req.body || {}) as { accountId?: string; credits?: number };
       const accountId = body.accountId || 'acc_sol_captain';
       const credits = typeof body.credits === 'number' ? body.credits : 2500;
       await db.query('UPDATE accounts SET credits = $1 WHERE id = $2', [credits, accountId]);
       reply.send({ success: true, credits });
     });
+
+    // Day 18: Planetary Orbital Survey, Surface Mineral Scanners & Atmospheric Probes (Milestone 0.4)
+    server.get('/api/planets/sector/:sectorId', async (req, reply) => {
+      const { sectorId } = req.params as { sectorId: string };
+      const query = (req.query || {}) as { accountId?: string };
+      const accountId = query.accountId || 'acc_sol_captain';
+      try {
+        const planets = await planetaryService.getSectorPlanets(parseInt(sectorId, 10), accountId);
+        reply.send({ success: true, planets });
+      } catch (err: any) {
+        reply.status(500).send({ success: false, error: err.message });
+      }
+    });
+
+    server.get('/api/planets/:planetId', async (req, reply) => {
+      const { planetId } = req.params as { planetId: string };
+      const query = (req.query || {}) as { accountId?: string };
+      const accountId = query.accountId || 'acc_sol_captain';
+      try {
+        const planet = await planetaryService.getPlanetDetail(planetId, accountId);
+        reply.send({ success: true, planet });
+      } catch (err: any) {
+        reply.status(404).send({ success: false, error: err.message });
+      }
+    });
+
+    server.post('/api/planets/:planetId/scan', async (req, reply) => {
+      const { planetId } = req.params as { planetId: string };
+      const body = (req.body || {}) as { accountId?: string; scanBand: 'MINERALS' | 'BIO' | 'ANOMALIES' };
+      const accountId = body.accountId || 'acc_sol_captain';
+      try {
+        const result = await planetaryService.performScannerSweep(accountId, planetId, body.scanBand);
+        reply.send(result);
+      } catch (err: any) {
+        reply.status(400).send({ success: false, error: err.message });
+      }
+    });
+
+    server.post('/api/planets/:planetId/probe', async (req, reply) => {
+      const { planetId } = req.params as { planetId: string };
+      const body = (req.body || {}) as { accountId?: string; targetLat?: number; targetLng?: number; shieldBoost?: boolean };
+      const accountId = body.accountId || 'acc_sol_captain';
+      try {
+        const result = await planetaryService.launchAtmosphericProbe(
+          accountId,
+          planetId,
+          body.targetLat,
+          body.targetLng,
+          body.shieldBoost || false
+        );
+        reply.send(result);
+      } catch (err: any) {
+        reply.status(400).send({ success: false, error: err.message });
+      }
+    });
+
+    server.post('/api/planets/:planetId/sell-data', async (req, reply) => {
+      const { planetId } = req.params as { planetId: string };
+      const body = (req.body || {}) as { accountId?: string; portId?: string };
+      const accountId = body.accountId || 'acc_sol_captain';
+      try {
+        const result = await planetaryService.sellSurveyData(accountId, planetId, body.portId || 'PORT_AEGIS_01');
+        reply.send(result);
+      } catch (err: any) {
+        reply.status(400).send({ success: false, error: err.message });
+      }
+    });
+
+    server.post('/api/player/debug-reset-survey', async (req, reply) => {
+      const body = (req.body || {}) as { accountId?: string; planetId?: string };
+      const accountId = body.accountId || 'acc_sol_captain';
+      if (body.planetId) {
+        await db.query('DELETE FROM planet_surveys WHERE account_id = $1 AND planet_id = $2', [accountId, body.planetId]);
+        await db.query('DELETE FROM planet_beacons WHERE account_id = $1 AND planet_id = $2', [accountId, body.planetId]);
+      } else {
+        await db.query('DELETE FROM planet_surveys WHERE account_id = $1', [accountId]);
+        await db.query('DELETE FROM planet_beacons WHERE account_id = $1', [accountId]);
+      }
+      reply.send({ success: true, message: 'Survey state reset successfully.' });
+    });
+
 
 
 

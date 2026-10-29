@@ -9,6 +9,7 @@ import { AsteroidField } from './entities/AsteroidField';
 import { type DockingStatus } from './entities/DockingZone';
 import { AudioEngine } from './audio/AudioEngine';
 import { ShieldBubble, CombatVfxSystem } from './vfx/CombatVfxSystem';
+import { ProceduralPlanet, type PlanetData } from './entities/ProceduralPlanet';
 
 class GameEngine {
   private canvas: HTMLCanvasElement;
@@ -25,6 +26,25 @@ class GameEngine {
   private audio: AudioEngine;
   private cameraMode: 'CHASE' | 'ORBIT' = 'CHASE';
   private isDocked: boolean = false;
+  private isInOrbit: boolean = false;
+
+  // Day 18: Planetary Orbital Survey & Probes
+  private activePlanet: ProceduralPlanet | null = null;
+  private activePlanetDetail: any = null;
+  private modalPlanetarySurvey: HTMLElement | null = null;
+  private elOrbitalBanner: HTMLElement | null = null;
+  private elOrbitalMsg: HTMLElement | null = null;
+  private globeCanvas: HTMLCanvasElement | null = null;
+  private globeCtx: CanvasRenderingContext2D | null = null;
+  private globeRotY: number = 0;
+  private globeRotX: number = 0.2;
+  private globeIsDragging: boolean = false;
+  private globeDragLastX: number = 0;
+  private globeDragLastY: number = 0;
+  private globeAnimId: number | null = null;
+  private targetedLat: number = 0;
+  private targetedLng: number = 0;
+  private hoveredHotspot: any = null;
 
   // Navigation & Sector Jump System (Day 8)
   private currentSectorId: number = 1;
@@ -1000,6 +1020,23 @@ class GameEngine {
     this.elHudTruceTimerPill = document.getElementById('hud-truce-timer-pill');
     this.refreshFactionStandings();
 
+    // Day 18: Star Control II Planetary Orbital Survey & CRT Console DOM Lookups
+    this.modalPlanetarySurvey = document.getElementById('planetary-survey-modal');
+    this.elOrbitalBanner = document.getElementById('hud-orbital-banner');
+    this.elOrbitalMsg = document.getElementById('orbital-msg');
+    this.globeCanvas = document.getElementById('orbital-globe-canvas') as HTMLCanvasElement;
+    if (this.globeCanvas) {
+      this.globeCtx = this.globeCanvas.getContext('2d');
+    }
+
+    document.getElementById('btn-exit-orbit')?.addEventListener('click', () => this.exitOrbit());
+    document.getElementById('btn-scan-minerals')?.addEventListener('click', () => this.performScannerSweep('MINERALS'));
+    document.getElementById('btn-scan-bio')?.addEventListener('click', () => this.performScannerSweep('BIO'));
+    document.getElementById('btn-scan-anomalies')?.addEventListener('click', () => this.performScannerSweep('ANOMALIES'));
+    document.getElementById('btn-launch-probe')?.addEventListener('click', () => this.launchAtmosphericProbe());
+
+    this.initGlobeCanvasControls();
+
 
     this.btnPostBounty?.addEventListener('click', () => this.postRevengeBounty());
     this.btnCopyKmUrl?.addEventListener('click', () => {
@@ -1746,6 +1783,10 @@ class GameEngine {
       this.asteroidField.dispose();
       this.asteroidField = null;
     }
+    if (this.activePlanet) {
+      this.scene.remove(this.activePlanet.group);
+      this.activePlanet = null;
+    }
 
     // 2. Adjust lighting & fog per sector atmosphere
     if (sectorId === 1) {
@@ -1812,6 +1853,9 @@ class GameEngine {
 
     // Connect Authoritative 20Hz Combat WebSocket for new sector (Milestone 0.3)
     this.initCombatWebSocket(sectorId);
+
+    // Day 18: Load Sector Celestial Planet
+    this.loadSectorPlanet(sectorId);
   }
 
   private setupEventListeners(): void {
@@ -1966,6 +2010,38 @@ class GameEngine {
         return; // Suppress other flight/game keys while in alien comms
       }
 
+      // Day 18: Star Control II Planetary Orbital Survey Key Handling
+      if (this.modalPlanetarySurvey && !this.modalPlanetarySurvey.classList.contains('hidden')) {
+        if (e.code === 'Escape' || e.code === 'KeyO') {
+          this.exitOrbit();
+          return;
+        }
+        if (e.code === 'Digit1' || e.code === 'Numpad1') {
+          this.performScannerSweep('MINERALS');
+          return;
+        }
+        if (e.code === 'Digit2' || e.code === 'Numpad2') {
+          this.performScannerSweep('BIO');
+          return;
+        }
+        if (e.code === 'Digit3' || e.code === 'Numpad3') {
+          this.performScannerSweep('ANOMALIES');
+          return;
+        }
+        if (e.code === 'KeyP') {
+          this.launchAtmosphericProbe();
+          return;
+        }
+        return; // Suppress flight keys while in orbital survey console
+      }
+
+      if (e.code === 'KeyO') {
+        if (this.activePlanet && this.activePlanet.isOrbitalProximity(this.flightController.position)) {
+          this.enterOrbit();
+          return;
+        }
+      }
+
       if (e.code === 'KeyJ') {
         if (this.modalNav && !this.modalNav.classList.contains('hidden')) {
           this.closeNavModal();
@@ -1976,6 +2052,10 @@ class GameEngine {
       }
 
       if (e.code === 'Escape') {
+        if (this.modalPlanetarySurvey && !this.modalPlanetarySurvey.classList.contains('hidden')) {
+          this.exitOrbit();
+          return;
+        }
         if (this.modalContainerLoot && !this.modalContainerLoot.classList.contains('hidden')) {
           this.closeContainerLootModal();
           return;
@@ -2446,6 +2526,9 @@ class GameEngine {
 
     // 9b. Day 15: Update Sector Derelict Wrecks, Proximity Targeting & Tow Tether
     this.updateWrecksAndTether(deltaSec);
+
+    // 9c. Day 18: Update Celestial Planet & In-Flight Orbital Guidance Banner
+    this.updatePlanetaryGuidance(deltaSec);
 
     // 10. Render
     this.renderer.render(this.scene, this.camera);
@@ -3296,6 +3379,7 @@ class GameEngine {
       this.loadSalvageData();
     } else if (tab === 'diplomacy') {
       this.loadDiplomacyData();
+      this.refreshAstrometryBureau();
     } else if (tab === 'exchange') {
       this.loadPortInventory();
     }
@@ -5107,6 +5191,813 @@ class GameEngine {
     ctx.stroke();
   }
 
+  // ============================================================================
+  // DAY 18: PLANETARY ORBITAL SURVEY, SURFACE SCANNERS & ATMOSPHERIC PROBES
+  // ============================================================================
+
+  /**
+   * Fetches sector planets from backend and spawns 3D ProceduralPlanet in the sector.
+   */
+  public async loadSectorPlanet(sectorId: number): Promise<void> {
+    try {
+      const res = await fetch(`http://localhost:3000/api/planets/sector/${sectorId}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.success && Array.isArray(data.planets) && data.planets.length > 0) {
+        const pData: PlanetData = data.planets[0];
+        if (this.activePlanet) {
+          this.scene.remove(this.activePlanet.group);
+          this.activePlanet = null;
+        }
+        this.activePlanet = new ProceduralPlanet(pData);
+        this.scene.add(this.activePlanet.group);
+        this.activePlanetDetail = pData;
+        console.log(`[DAY 18] Spawned 3D Planet: ${pData.name} at (${pData.posX}, ${pData.posZ})`);
+      }
+    } catch (err) {
+      console.warn('[DAY 18] Failed to load sector planets:', err);
+    }
+  }
+
+  /**
+   * Updates distance to sector planet and toggles HUD orbital guidance banner.
+   */
+  public updatePlanetaryGuidance(deltaSec: number): void {
+    if (!this.activePlanet) {
+      if (this.elOrbitalBanner) this.elOrbitalBanner.classList.add('hidden');
+      return;
+    }
+
+    this.activePlanet.update(deltaSec);
+    const dist = this.activePlanet.getDistanceTo(this.flightController.position);
+
+    if (this.elOrbitalBanner && this.elOrbitalMsg) {
+      if (dist <= 65.0) {
+        this.elOrbitalBanner.classList.remove('hidden');
+        if (dist <= this.activePlanet.orbitalRadius) {
+          this.elOrbitalMsg.textContent = `SYNCHRONOUS ORBIT READY // DIST: ${dist.toFixed(1)}u [O]`;
+          this.elOrbitalBanner.style.borderColor = '#10b981';
+          this.elOrbitalBanner.style.color = '#10b981';
+        } else {
+          this.elOrbitalMsg.textContent = `APPROACHING ${this.activePlanet.data.name} // DIST: ${dist.toFixed(1)}u`;
+          this.elOrbitalBanner.style.borderColor = '#38bdf8';
+          this.elOrbitalBanner.style.color = '#38bdf8';
+        }
+      } else {
+        this.elOrbitalBanner.classList.add('hidden');
+      }
+    }
+  }
+
+  /**
+   * Locks ship thrusters into synchronous orbit and launches the CRT Survey Console.
+   */
+  public async enterOrbit(): Promise<void> {
+    if (!this.activePlanet) return;
+    this.isInOrbit = true;
+
+    // Smooth thruster dampening
+    this.flightController.reset(this.flightController.position.clone());
+
+    // Sensory Immersion
+    this.audio.playOrbitalCaptureSound();
+    this.audio.startPlanetaryAmbience(this.activePlanet.data.archetype);
+
+    // Populate modal telemetry
+    const p = this.activePlanet.data;
+    const elName = document.getElementById('survey-planet-name');
+    const elArch = document.getElementById('survey-planet-archetype');
+    const elHab = document.getElementById('survey-hab-val');
+    const elTemp = document.getElementById('val-telemetry-temp');
+    const elDensity = document.getElementById('val-telemetry-density');
+    const elHazard = document.getElementById('val-telemetry-hazard');
+    const elFaction = document.getElementById('val-telemetry-faction');
+    const elAp = document.getElementById('survey-player-ap');
+
+    if (elName) elName.textContent = p.name.toUpperCase();
+    if (elArch) elArch.textContent = `${p.archetype} CELESTIAL WORLD // SECTOR 0${p.sectorId}`;
+    if (elHab) elHab.textContent = `${p.habitabilityRating}%`;
+    if (elTemp) elTemp.textContent = `${p.surfaceTempK} K`;
+    if (elDensity) elDensity.textContent = `${p.atmosphereDensity.toFixed(2)} Bar`;
+    if (elHazard) elHazard.textContent = p.hazardClass.replace(/_/g, ' ');
+    if (elFaction) elFaction.textContent = p.controllingFaction.replace(/_/g, ' ');
+    if (elAp) elAp.textContent = `${this.playerAP.currentAP} / ${this.playerAP.maxAP}`;
+
+    // Fetch authoritative survey state
+    try {
+      const res = await fetch(`http://localhost:3000/api/planets/${p.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.planet) {
+          this.activePlanetDetail = data.planet;
+        }
+      }
+    } catch (err) {
+      console.warn('[DAY 18] Failed to fetch planet survey detail:', err);
+    }
+
+    this.updateSurveyConsoleUI();
+    this.startGlobeRender();
+
+    if (this.modalPlanetarySurvey) {
+      this.modalPlanetarySurvey.classList.remove('hidden');
+    }
+  }
+
+  /**
+   * Disengages orbital capture and returns to flight view.
+   */
+  public exitOrbit(): void {
+    this.isInOrbit = false;
+    this.audio.stopPlanetaryAmbience();
+    this.audio.playUiBlip();
+    this.stopGlobeRender();
+
+    if (this.modalPlanetarySurvey) {
+      this.modalPlanetarySurvey.classList.add('hidden');
+    }
+
+    // Nudge ship slightly away from planet center
+    if (this.activePlanet) {
+      const awayDir = this.flightController.position.clone().sub(this.activePlanet.position).normalize();
+      this.flightController.position.addScaledVector(awayDir, 3.5);
+    }
+  }
+
+  /**
+   * Initializes mouse drag and hover listeners for the 3D canvas globe.
+   */
+  private initGlobeCanvasControls(): void {
+    if (!this.globeCanvas) return;
+
+    this.globeCanvas.addEventListener('mousedown', (e: MouseEvent) => {
+      this.globeIsDragging = true;
+      this.globeDragLastX = e.clientX;
+      this.globeDragLastY = e.clientY;
+    });
+
+    window.addEventListener('mouseup', () => {
+      this.globeIsDragging = false;
+    });
+
+    this.globeCanvas.addEventListener('mousemove', (e: MouseEvent) => {
+      const rect = this.globeCanvas!.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      if (this.globeIsDragging) {
+        const dx = e.clientX - this.globeDragLastX;
+        const dy = e.clientY - this.globeDragLastY;
+        this.globeRotY += dx * 0.012;
+        this.globeRotX = Math.max(-1.3, Math.min(1.3, this.globeRotX + dy * 0.012));
+        this.globeDragLastX = e.clientX;
+        this.globeDragLastY = e.clientY;
+      }
+
+      // Calculate spherical coordinates under cursor
+      const cx = 170;
+      const cy = 170;
+      const R = 125;
+      const dx = mouseX - cx;
+      const dy = mouseY - cy;
+      const d = Math.sqrt(dx * dx + dy * dy);
+
+      const elLat = document.getElementById('val-cursor-lat');
+      const elLng = document.getElementById('val-cursor-lng');
+
+      if (d <= R) {
+        const z = Math.sqrt(R * R - d * d);
+        // Inverse sphere rotation
+        const cosX = Math.cos(-this.globeRotX);
+        const sinX = Math.sin(-this.globeRotX);
+        const cosY = Math.cos(-this.globeRotY);
+        const sinY = Math.sin(-this.globeRotY);
+
+        const y1 = dy * cosX - z * sinX;
+        const z1 = dy * sinX + z * cosX;
+        const x2 = dx * cosY + z1 * sinY;
+        const z2 = -dx * sinY + z1 * cosY;
+
+        const latDeg = Math.round((-y1 / R) * 90);
+        const lngDeg = Math.round(Math.atan2(x2, z2) * (180 / Math.PI));
+
+        if (elLat) elLat.textContent = `${latDeg >= 0 ? '+' : ''}${latDeg}°`;
+        if (elLng) elLng.textContent = `${lngDeg >= 0 ? '+' : ''}${lngDeg}°`;
+
+        // Check if hovering near a hotspot
+        this.hoveredHotspot = null;
+        if (this.activePlanetDetail?.survey?.discoveredHotspots) {
+          for (const h of this.activePlanetDetail.survey.discoveredHotspots) {
+            const hPos = this.getHotspotScreenPos(h.lat, h.lng, R, cx, cy);
+            if (hPos && Math.hypot(mouseX - hPos.x, mouseY - hPos.y) < 14) {
+              this.hoveredHotspot = h;
+              break;
+            }
+          }
+        }
+      } else {
+        this.hoveredHotspot = null;
+      }
+    });
+
+    this.globeCanvas.addEventListener('click', (e: MouseEvent) => {
+      const rect = this.globeCanvas!.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+      const cx = 170;
+      const cy = 170;
+      const R = 125;
+      const dx = mouseX - cx;
+      const dy = mouseY - cy;
+      const d = Math.sqrt(dx * dx + dy * dy);
+
+      if (d <= R) {
+        const z = Math.sqrt(R * R - d * d);
+        const cosX = Math.cos(-this.globeRotX);
+        const sinX = Math.sin(-this.globeRotX);
+        const cosY = Math.cos(-this.globeRotY);
+        const sinY = Math.sin(-this.globeRotY);
+
+        const y1 = dy * cosX - z * sinX;
+        const z1 = dy * sinX + z * cosX;
+        const x2 = dx * cosY + z1 * sinY;
+        const z2 = -dx * sinY + z1 * cosY;
+
+        this.targetedLat = Math.round((-y1 / R) * 90);
+        this.targetedLng = Math.round(Math.atan2(x2, z2) * (180 / Math.PI));
+        this.audio.playUiBlip();
+        this.showApNotification(`🎯 PROBE TARGET LOCKED: Lat ${this.targetedLat}°, Lng ${this.targetedLng}°`, false);
+      }
+    });
+  }
+
+  /**
+   * Helper to project (lat, lng) to 2D canvas coordinates on the rotating sphere.
+   */
+  private getHotspotScreenPos(lat: number, lng: number, R: number, cx: number, cy: number): { x: number; y: number } | null {
+    const phi = (lat * Math.PI) / 180;
+    const lambda = (lng * Math.PI) / 180;
+
+    // Local sphere coordinates
+    const x = R * Math.cos(phi) * Math.sin(lambda);
+    const y = -R * Math.sin(phi);
+    const z = R * Math.cos(phi) * Math.cos(lambda);
+
+    // Apply Y-axis rotation (spin)
+    const cosY = Math.cos(this.globeRotY);
+    const sinY = Math.sin(this.globeRotY);
+    const x1 = x * cosY - z * sinY;
+    const z1 = x * sinY + z * cosY;
+
+    // Apply X-axis rotation (tilt)
+    const cosX = Math.cos(this.globeRotX);
+    const sinX = Math.sin(this.globeRotX);
+    const y2 = y * cosX - z1 * sinX;
+    const z2 = y * sinX + z1 * cosX;
+
+    // Visible on front hemisphere only
+    if (z2 <= 0) return null;
+
+    return {
+      x: cx + x1,
+      y: cy + y2,
+    };
+  }
+
+  /**
+   * Starts the 60fps render loop for the 3D rotating canvas globe.
+   */
+  private startGlobeRender(): void {
+    this.stopGlobeRender();
+    const render = () => {
+      if (!this.isInOrbit) return;
+      this.drawGlobeCanvas();
+      this.globeAnimId = requestAnimationFrame(render);
+    };
+    this.globeAnimId = requestAnimationFrame(render);
+  }
+
+  /**
+   * Stops the canvas globe animation loop.
+   */
+  private stopGlobeRender(): void {
+    if (this.globeAnimId !== null) {
+      cancelAnimationFrame(this.globeAnimId);
+      this.globeAnimId = null;
+    }
+  }
+
+  /**
+   * Draws the Star Control II style shaded 3D globe with latitude/longitude grid and phosphor hotspots.
+   */
+  private drawGlobeCanvas(): void {
+    if (!this.globeCtx || !this.globeCanvas) return;
+    const ctx = this.globeCtx;
+    const w = this.globeCanvas.width;
+    const h = this.globeCanvas.height;
+    const cx = w / 2;
+    const cy = h / 2;
+    const R = 125;
+
+    // Continuous auto-rotation when not dragging
+    if (!this.globeIsDragging) {
+      this.globeRotY += 0.003;
+    }
+
+    // Clear background
+    ctx.fillStyle = '#020617';
+    ctx.fillRect(0, 0, w, h);
+
+    // 1. Shaded Sphere Base with Archetype Gradient
+    const archetype = this.activePlanetDetail?.archetype || 'BARREN';
+    let lightColor = '#64748b';
+    let darkColor = '#0f172a';
+    let rimColor = 'rgba(56, 189, 248, 0.4)';
+
+    if (archetype === 'VOLCANIC') {
+      lightColor = '#b91c1c';
+      darkColor = '#450a0a';
+      rimColor = 'rgba(249, 115, 22, 0.5)';
+    } else if (archetype === 'TERRESTRIAL') {
+      lightColor = '#059669';
+      darkColor = '#022c22';
+      rimColor = 'rgba(16, 185, 129, 0.5)';
+    } else if (archetype === 'GAS_GIANT') {
+      lightColor = '#0284c7';
+      darkColor = '#082f49';
+      rimColor = 'rgba(56, 189, 248, 0.6)';
+    } else if (archetype === 'PRECURSOR_RUIN') {
+      lightColor = '#7e22ce';
+      darkColor = '#3b0764';
+      rimColor = 'rgba(236, 72, 153, 0.5)';
+    }
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, 0, Math.PI * 2);
+    ctx.clip();
+
+    // Radial gradient simulating sun lighting from top-left
+    const grad = ctx.createRadialGradient(cx - 40, cy - 40, 10, cx, cy, R);
+    grad.addColorStop(0, lightColor);
+    grad.addColorStop(0.7, darkColor);
+    grad.addColorStop(1.0, '#020617');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, w, h);
+
+    // 2. Latitude Circles
+    const latBands = [-60, -30, 0, 30, 60];
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.22)';
+    ctx.lineWidth = 1.0;
+
+    for (const lat of latBands) {
+      ctx.beginPath();
+      let started = false;
+      for (let lng = -180; lng <= 180; lng += 10) {
+        const pt = this.getHotspotScreenPos(lat, lng, R, cx, cy);
+        if (pt) {
+          if (!started) {
+            ctx.moveTo(pt.x, pt.y);
+            started = true;
+          } else {
+            ctx.lineTo(pt.x, pt.y);
+          }
+        } else {
+          started = false;
+        }
+      }
+      ctx.stroke();
+    }
+
+    // 3. Longitude Meridians
+    for (let lng = -180; lng < 180; lng += 30) {
+      ctx.beginPath();
+      let started = false;
+      for (let lat = -80; lat <= 80; lat += 5) {
+        const pt = this.getHotspotScreenPos(lat, lng, R, cx, cy);
+        if (pt) {
+          if (!started) {
+            ctx.moveTo(pt.x, pt.y);
+            started = true;
+          } else {
+            ctx.lineTo(pt.x, pt.y);
+          }
+        } else {
+          started = false;
+        }
+      }
+      ctx.stroke();
+    }
+
+    // 4. Discovered Hotspots (Phosphor Blips)
+    if (this.activePlanetDetail?.survey?.discoveredHotspots) {
+      const now = performance.now();
+      const pulse = 0.7 + 0.3 * Math.sin(now * 0.006);
+
+      for (const h of this.activePlanetDetail.survey.discoveredHotspots) {
+        const pt = this.getHotspotScreenPos(h.lat, h.lng, R, cx, cy);
+        if (!pt) continue;
+
+        ctx.save();
+        ctx.fillStyle = h.color || '#38bdf8';
+        ctx.shadowColor = h.color || '#38bdf8';
+        ctx.shadowBlur = 8 * pulse;
+
+        // Diamond blip
+        const size = (this.hoveredHotspot?.id === h.id ? 7 : 4.5) * pulse;
+        ctx.beginPath();
+        ctx.moveTo(pt.x, pt.y - size);
+        ctx.lineTo(pt.x + size, pt.y);
+        ctx.lineTo(pt.x, pt.y + size);
+        ctx.lineTo(pt.x - size, pt.y);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    // 5. Active Sensor Beacons (Pulsating Rings)
+    if (this.activePlanetDetail?.beacons) {
+      const now = performance.now();
+      for (const b of this.activePlanetDetail.beacons) {
+        const pt = this.getHotspotScreenPos(b.surfaceLat, b.surfaceLng, R, cx, cy);
+        if (!pt) continue;
+
+        const ringR = 3 + ((now * 0.005) % 8);
+        ctx.save();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.2;
+        ctx.shadowColor = '#38bdf8';
+        ctx.shadowBlur = 6;
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, ringR, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    ctx.restore(); // End sphere clip
+
+    // 6. Atmospheric Rim Glow
+    ctx.save();
+    ctx.strokeStyle = rimColor;
+    ctx.lineWidth = 2.5;
+    ctx.shadowColor = rimColor;
+    ctx.shadowBlur = 12;
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+
+    // 7. Hovered Hotspot Tooltip
+    if (this.hoveredHotspot) {
+      const pt = this.getHotspotScreenPos(this.hoveredHotspot.lat, this.hoveredHotspot.lng, R, cx, cy);
+      if (pt) {
+        ctx.save();
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+        ctx.strokeStyle = this.hoveredHotspot.color || '#38bdf8';
+        ctx.lineWidth = 1;
+        const text = `${this.hoveredHotspot.name} [${this.hoveredHotspot.yieldEstimate}]`;
+        ctx.font = 'bold 9px monospace';
+        const tw = ctx.measureText(text).width;
+        ctx.fillRect(pt.x + 8, pt.y - 18, tw + 10, 16);
+        ctx.strokeRect(pt.x + 8, pt.y - 18, tw + 10, 16);
+
+        ctx.fillStyle = '#f8fafc';
+        ctx.fillText(text, pt.x + 13, pt.y - 6);
+        ctx.restore();
+      }
+    }
+  }
+
+  /**
+   * Updates all survey modal widgets, buttons, and progress counters.
+   */
+  private updateSurveyConsoleUI(): void {
+    if (!this.activePlanetDetail) return;
+    const survey = this.activePlanetDetail.survey;
+
+    const elCompVal = document.getElementById('survey-comp-val');
+    if (elCompVal) elCompVal.textContent = `${survey.surveyCompletion}%`;
+
+    const elStatMin = document.getElementById('status-scan-minerals');
+    const elStatBio = document.getElementById('status-scan-bio');
+    const elStatAno = document.getElementById('status-scan-anomalies');
+
+    if (elStatMin) {
+      if (survey.scannedMinerals) {
+        elStatMin.textContent = 'ACTIVE // SCAN COMPLETE';
+        elStatMin.classList.add('active');
+      } else {
+        elStatMin.textContent = 'UNSCANNED // 2 AP';
+        elStatMin.classList.remove('active');
+      }
+    }
+
+    if (elStatBio) {
+      if (survey.scannedBio) {
+        elStatBio.textContent = 'ACTIVE // SCAN COMPLETE';
+        elStatBio.classList.add('active');
+      } else {
+        elStatBio.textContent = 'UNSCANNED // 2 AP';
+        elStatBio.classList.remove('active');
+      }
+    }
+
+    if (elStatAno) {
+      if (survey.scannedAnomalies) {
+        elStatAno.textContent = 'ACTIVE // SCAN COMPLETE';
+        elStatAno.classList.add('active');
+      } else {
+        elStatAno.textContent = 'UNSCANNED // 2 AP';
+        elStatAno.classList.remove('active');
+      }
+    }
+
+    const elBeaconsCount = document.getElementById('survey-beacons-count');
+    if (elBeaconsCount) {
+      elBeaconsCount.textContent = `${this.activePlanetDetail.beacons?.length || 0}`;
+    }
+
+    const elAp = document.getElementById('survey-player-ap');
+    if (elAp) elAp.textContent = `${this.playerAP.currentAP} / ${this.playerAP.maxAP}`;
+
+    this.refreshHotspotsLedger();
+  }
+
+  /**
+   * Refreshes the scrollable list of discovered hotspots and active beacons.
+   */
+  private refreshHotspotsLedger(): void {
+    const list = document.getElementById('survey-hotspots-list');
+    if (!list) return;
+
+    const hotspots = this.activePlanetDetail?.survey?.discoveredHotspots || [];
+    const beacons = this.activePlanetDetail?.beacons || [];
+
+    if (hotspots.length === 0 && beacons.length === 0) {
+      list.innerHTML = `<div class="ledger-empty">NO HOTSPOTS DETECTED. INITIATE SENSOR SWEEPS [1-3] TO IDENTIFY SURFACE DEPOSITS.</div>`;
+      return;
+    }
+
+    let html = '';
+    for (const h of hotspots) {
+      html += `
+        <div class="hotspot-card" data-lat="${h.lat}" data-lng="${h.lng}">
+          <div class="hotspot-card-left">
+            <span class="hotspot-dot" style="color: ${h.color};"></span>
+            <div class="hotspot-card-info">
+              <span class="hotspot-name">${h.name}</span>
+              <span class="hotspot-coords">LAT: ${h.lat.toFixed(1)}° // LNG: ${h.lng.toFixed(1)}°</span>
+            </div>
+          </div>
+          <span class="hotspot-yield">${h.yieldEstimate}</span>
+        </div>
+      `;
+    }
+
+    for (const b of beacons) {
+      html += `
+        <div class="hotspot-card" style="border-color: rgba(255, 255, 255, 0.4);">
+          <div class="hotspot-card-left">
+            <span class="hotspot-dot" style="color: #ffffff; box-shadow: 0 0 10px #ffffff;"></span>
+            <div class="hotspot-card-info">
+              <span class="hotspot-name">SURFACE SENSOR BEACON</span>
+              <span class="hotspot-coords">LAT: ${b.surfaceLat.toFixed(1)}° // LNG: ${b.surfaceLng.toFixed(1)}°</span>
+            </div>
+          </div>
+          <span class="hotspot-yield" style="color: #10b981;">${b.yieldSummary}</span>
+        </div>
+      `;
+    }
+
+    list.innerHTML = html;
+  }
+
+  /**
+   * Executes a specialized sensor sweep across the chosen sensor band.
+   */
+  public async performScannerSweep(band: 'MINERALS' | 'BIO' | 'ANOMALIES'): Promise<void> {
+    if (!this.activePlanet || !this.activePlanetDetail) return;
+
+    if (this.playerAP.currentAP < 2) {
+      this.showApNotification('⚠️ INSUFFICIENT ACTION POINTS: Sweep requires 2 AP.', true);
+      return;
+    }
+
+    // Play band sonar ping
+    this.audio.playScannerSonarPing(band);
+
+    try {
+      const res = await fetch(`http://localhost:3000/api/planets/${this.activePlanet.data.id}/scan`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accountId: 'acc_sol_captain',
+          scanBand: band,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        this.showApNotification(`⚠️ ${data.error || 'Scan sweep failed'}`, true);
+        return;
+      }
+
+      this.activePlanetDetail.survey = data.survey;
+      this.fetchPlayerAP();
+      this.updateSurveyConsoleUI();
+      this.showApNotification(`📡 ${data.message}`, false);
+    } catch (err) {
+      console.error('[DAY 18] Scanner sweep failed:', err);
+    }
+  }
+
+  /**
+   * Launches an Atmospheric / Surface Probe to sample materials and establish a permanent beacon.
+   */
+  public async launchAtmosphericProbe(): Promise<void> {
+    if (!this.activePlanet || !this.activePlanetDetail) return;
+
+    const checkShield = document.getElementById('check-probe-shield') as HTMLInputElement | null;
+    const shieldBoost = checkShield ? checkShield.checked : false;
+
+    if (shieldBoost && this.playerAP.currentAP < 1) {
+      this.showApNotification('⚠️ INSUFFICIENT AP: Shield reinforcement requires 1 AP.', true);
+      return;
+    }
+
+    const btn = document.getElementById('btn-launch-probe') as HTMLButtonElement | null;
+    if (btn) btn.disabled = true;
+
+    // Show descent telemetry display
+    const descentBox = document.getElementById('probe-descent-display');
+    const altMarker = document.getElementById('probe-altitude-marker');
+    const altVal = document.getElementById('probe-alt-val');
+    const velVal = document.getElementById('probe-vel-val');
+    const shieldVal = document.getElementById('probe-shield-val');
+    const statusMsg = document.getElementById('probe-status-msg');
+
+    if (descentBox) descentBox.classList.remove('hidden');
+
+    this.audio.playProbeAtmosphericBurn(shieldBoost);
+
+    // Animate descent
+    let progress = 0;
+    const interval = setInterval(() => {
+      progress += 0.08;
+      const pct = Math.min(100, Math.round(progress * 100));
+      const altKm = Math.max(0, Math.round(120 * (1 - progress)));
+      const velKms = Math.max(0.5, Number((4.2 * (1 - progress * 0.7)).toFixed(1)));
+
+      if (altMarker) altMarker.style.width = `${pct}%`;
+      if (altVal) altVal.textContent = `${altKm} km`;
+      if (velVal) velVal.textContent = `${velKms} km/s`;
+      if (shieldVal) shieldVal.textContent = shieldBoost ? '94%' : '68%';
+
+      if (progress >= 1.0) {
+        clearInterval(interval);
+      }
+    }, 80);
+
+    try {
+      const res = await fetch(`http://localhost:3000/api/planets/${this.activePlanet.data.id}/probe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accountId: 'acc_sol_captain',
+          targetLat: this.targetedLat,
+          targetLng: this.targetedLng,
+          shieldBoost,
+        }),
+      });
+
+      const data = await res.json();
+      if (btn) btn.disabled = false;
+
+      if (!res.ok || !data.success) {
+        this.showApNotification(`⚠️ ${data.error || 'Probe deployment failed'}`, true);
+        if (statusMsg) statusMsg.textContent = 'PROBE TELEMETRY LOST';
+        return;
+      }
+
+      if (statusMsg) statusMsg.textContent = `TOUCHDOWN CONFIRMED // BEACON ONLINE`;
+
+      // Update local state
+      this.activePlanetDetail.beacons.unshift({
+        id: data.beaconId,
+        surfaceLat: this.targetedLat,
+        surfaceLng: this.targetedLng,
+        yieldSummary: data.yieldSummary,
+        createdAt: new Date().toISOString(),
+      });
+
+      this.fetchPlayerAP();
+      this.updateSurveyConsoleUI();
+      this.showApNotification(`🚀 ${data.message}`, false);
+
+      setTimeout(() => {
+        if (descentBox) descentBox.classList.add('hidden');
+      }, 4000);
+    } catch (err) {
+      if (btn) btn.disabled = false;
+      console.error('[DAY 18] Probe launch failed:', err);
+    }
+  }
+
+  /**
+   * Refreshes the Station Astrometry Cartography Bureau in the diplomacy lounge.
+   */
+  public async refreshAstrometryBureau(): Promise<void> {
+    const list = document.getElementById('astrometry-planets-list');
+    if (!list) return;
+
+    try {
+      const res = await fetch(`http://localhost:3000/api/planets/sector/${this.currentSectorId}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const planets = data.planets || [];
+
+      let html = '';
+      let qualifyingCount = 0;
+
+      for (const p of planets) {
+        const comp = p.survey?.surveyCompletion || 0;
+        if (comp >= 33) {
+          qualifyingCount++;
+          const isSold = p.survey.isDataSold;
+          const factionMultiplier = p.controllingFaction === 'FACTION_SOL' ? 1.4 : 1.0;
+          const creditReward = Math.round((comp / 100) * 1000 * factionMultiplier);
+
+          html += `
+            <div class="astrometry-card">
+              <div class="astrometry-card-left">
+                <div class="astrometry-planet-title">
+                  <span>${p.name}</span>
+                  <span class="astrometry-comp-badge">${comp}% SURVEYED</span>
+                </div>
+                <div class="astrometry-planet-details">
+                  ${p.archetype} WORLD // HABITABILITY: ${p.habitabilityRating}% // BEACONS: ${p.beacons?.length || 0}
+                </div>
+              </div>
+              <button class="astrometry-bounty-btn" data-planet-id="${p.id}" ${isSold ? 'disabled' : ''}>
+                ${isSold ? 'REMITTED // PAID' : `REMIT DATA (+${creditReward} CR, +5 AP, +15 Goodwill)`}
+              </button>
+            </div>
+          `;
+        }
+      }
+
+      if (qualifyingCount === 0) {
+        html = `
+          <div class="ledger-empty" style="color: #94a3b8; text-align: left; padding: 0.8rem 0;">
+            No authenticated survey logs in archive. Scan celestial planets in the sector to >=33% completion to sell astrometry logs here.
+          </div>
+        `;
+      }
+
+      list.innerHTML = html;
+
+      // Bind remit buttons
+      const btns = list.querySelectorAll('.astrometry-bounty-btn:not([disabled])');
+      btns.forEach((b) => {
+        b.addEventListener('click', async (e) => {
+          const planetId = (e.currentTarget as HTMLElement).getAttribute('data-planet-id');
+          if (!planetId) return;
+          try {
+            const sellRes = await fetch(`http://localhost:3000/api/planets/${planetId}/sell-data`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                accountId: 'acc_sol_captain',
+                portId: 'PORT_AEGIS_01',
+              }),
+            });
+            const sellData = await sellRes.json();
+            if (sellRes.ok && sellData.success) {
+              this.audio.playUiBlip();
+              this.showApNotification(`💰 ${sellData.message}`, false);
+              this.fetchPlayerAP();
+              this.refreshFactionStandings();
+              this.refreshAstrometryBureau();
+            } else {
+              this.showApNotification(`⚠️ ${sellData.error || 'Sale failed'}`, true);
+            }
+          } catch (err) {
+            console.error('[DAY 18] Failed to sell survey data:', err);
+          }
+        });
+      });
+    } catch (err) {
+      console.warn('[DAY 18] Astrometry bureau fetch failed:', err);
+    }
+  }
+
   public getPlayerLoadout(): any {
     return this.playerLoadout;
   }
@@ -5118,5 +6009,5 @@ class GameEngine {
 
 // Instantiate engine when DOM is ready
 window.addEventListener('DOMContentLoaded', () => {
-  new GameEngine();
+  (window as any).gameEngine = new GameEngine();
 });
