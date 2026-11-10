@@ -1,5 +1,6 @@
 import { db } from '../db/Database';
 import { apService } from './ActionPointService';
+import { reputationService } from './ReputationService';
 
 export interface ColonyDetail {
   id: string;
@@ -49,6 +50,9 @@ export class ColonyService {
     beaconId: string,
     name?: string
   ): Promise<ColonyDetail> {
+    // 0. Day 21: Hostile airspace requires an active ceasefire truce (checked at action start)
+    await reputationService.assertAirspaceClearance(accountId, planetId, 'Colony outpost founding');
+
     // 1. Verify beacon exists on the planet
     const bRes = await db.query<any>(
       'SELECT * FROM planet_beacons WHERE id = $1 AND planet_id = $2 AND account_id = $3',

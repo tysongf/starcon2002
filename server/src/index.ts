@@ -13,7 +13,7 @@ import { outfittingService } from './services/OutfittingService';
 import { contractService } from './services/ContractService';
 import { wreckService } from './services/WreckService';
 import { dialogService, DIALOG_TREES } from './services/DialogService';
-import { reputationService, FACTION_METADATA } from './services/ReputationService';
+import { reputationService, FACTION_METADATA, FactionId } from './services/ReputationService';
 import { planetaryService } from './services/PlanetaryService';
 import { colonyService } from './services/ColonyService';
 import { precursorService } from './services/PrecursorService';
@@ -672,6 +672,30 @@ async function startServer() {
       }
     });
 
+    // Day 21: Airspace clearance (hostile faction planets require an active ceasefire truce)
+    server.get('/api/planets/:planetId/airspace', async (req, reply) => {
+      const { planetId } = req.params as { planetId: string };
+      const query = (req.query || {}) as { accountId?: string };
+      const accountId = query.accountId || 'acc_sol_captain';
+      try {
+        const clearance = await reputationService.getAirspaceClearance(accountId, planetId);
+        reply.send({ success: true, clearance, serverTime: new Date().toISOString() });
+      } catch (err: any) {
+        reply.status(404).send({ success: false, error: err.message });
+      }
+    });
+
+    server.post('/api/reputation/debug-expire-truce', async (req, reply) => {
+      const body = (req.body || {}) as { accountId?: string; sectorId?: number; factionId?: string };
+      const accountId = body.accountId || 'acc_sol_captain';
+      try {
+        const expired = await reputationService.debugExpireTruces(accountId, body.sectorId, body.factionId);
+        reply.send({ success: true, expired });
+      } catch (err: any) {
+        reply.status(400).send({ success: false, error: err.message });
+      }
+    });
+
     server.get('/api/reputation/check-docking', async (req, reply) => {
       const query = (req.query || {}) as {
         accountId?: string;
@@ -780,6 +804,43 @@ async function startServer() {
       reply.send({ success: true, message: 'Survey, colony, and precursor state reset successfully.' });
     });
 
+    // Day 21: Fresh-pilot baseline reset for milestone suites (Sector 1, 2500 Cr, 100 Fuel, 600 AP,
+    // empty hold, seed standings, no truces/dialog memory, untouched planets, no prototype modules).
+    server.post('/api/player/debug-baseline', async (req, reply) => {
+      const body = (req.body || {}) as { accountId?: string };
+      const accountId = body.accountId || 'acc_sol_captain';
+      try {
+        await db.query('UPDATE accounts SET credits = 2500 WHERE id = $1', [accountId]);
+        await db.query(
+          'UPDATE ships SET current_sector_id = 1, fuel = 100, cargo_capacity = 40, armor = 100, max_armor = 100, shield = 100, max_shield = 100, updated_at = NOW() WHERE account_id = $1',
+          [accountId]
+        );
+        await db.query('DELETE FROM ship_cargo WHERE ship_id IN (SELECT id FROM ships WHERE account_id = $1)', [accountId]);
+        await apService.debugSetAP(accountId, 600);
+        const seedStandings: Array<[FactionId, number]> = [
+          ['FACTION_SOL', 35],
+          ['FACTION_HEGEMONY', -25],
+          ['FACTION_PHORID', 15],
+          ['FACTION_KRYLL', 5],
+          ['FACTION_LITHOS', 0],
+        ];
+        for (const [fid, score] of seedStandings) {
+          await reputationService.debugSetStanding(accountId, fid, score);
+        }
+        await db.query('DELETE FROM diplomatic_truces WHERE account_id = $1', [accountId]);
+        await db.query('DELETE FROM player_dialog_state WHERE account_id = $1', [accountId]);
+        await db.query('DELETE FROM planet_surveys WHERE account_id = $1', [accountId]);
+        await db.query('DELETE FROM planet_beacons WHERE account_id = $1', [accountId]);
+        await db.query('DELETE FROM colonies WHERE account_id = $1', [accountId]);
+        await db.query('UPDATE precursor_sites SET is_deciphered = FALSE');
+        await db.query('DELETE FROM precursor_research WHERE account_id = $1', [accountId]);
+        await db.query(`DELETE FROM player_inventory WHERE account_id = $1 AND blueprint_id LIKE 'BP_PRECURSOR_%'`, [accountId]);
+        reply.send({ success: true, message: 'Pilot reset to fresh-start baseline.' });
+      } catch (err: any) {
+        reply.status(500).send({ success: false, error: err.message });
+      }
+    });
+
     // Day 19: Colony Outposts, Terraforming & Mining Infrastructure Endpoints
     server.post('/api/colonies/found', async (req, reply) => {
       const body = (req.body || {}) as {
@@ -848,12 +909,35 @@ async function startServer() {
       }
     });
 
+    // Day 21: Debug time-travel for colony accrual (backdates the last harvest tick by N seconds)
+    server.post('/api/colony/debug-fast-forward', async (req, reply) => {
+      const body = (req.body || {}) as { accountId?: string; colonyId?: string; seconds?: number };
+      const accountId = body.accountId || 'acc_sol_captain';
+      const seconds = Math.max(0, Math.floor(Number(body.seconds) || 0));
+      try {
+        const params: unknown[] = [accountId, seconds];
+        let where = 'account_id = $1';
+        if (body.colonyId) {
+          params.push(body.colonyId);
+          where += ' AND id = $3';
+        }
+        const { rows } = await db.query<{ id: string }>(
+          `UPDATE colonies SET last_harvest_at = last_harvest_at - make_interval(secs => $2::double precision) WHERE ${where} RETURNING id`,
+          params
+        );
+        reply.send({ success: true, fastForwardedSeconds: seconds, colonies: rows.map((r) => r.id) });
+      } catch (err: any) {
+        reply.status(400).send({ success: false, error: err.message });
+      }
+    });
+
     // Day 20: Precursor Megastructures, Ancient Lore Vaults & Prototype Tech Tree
     server.get('/api/precursor/planet/:planetId', async (req, reply) => {
       const { planetId } = req.params as { planetId: string };
       const accountId = ((req.query as any)?.accountId as string) || 'acc_sol_captain';
       try {
-        const sites = await precursorService.getPlanetPrecursorSites(planetId);
+        // Day 21: Sites resolve only once the pilot's orbital survey reaches the threshold
+        const view = await precursorService.getPlanetPrecursorSitesForPlayer(planetId, accountId);
         const relicRes = await db.query<any>(
           `SELECT sc.quantity FROM ship_cargo sc
            JOIN ships s ON s.id = sc.ship_id
@@ -861,7 +945,7 @@ async function startServer() {
           [accountId]
         );
         const relics = relicRes.rows[0]?.quantity || 0;
-        reply.send({ success: true, sites, relics });
+        reply.send({ success: true, ...view, relics });
       } catch (err: any) {
         reply.status(400).send({ success: false, error: err.message });
       }

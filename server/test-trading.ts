@@ -22,6 +22,11 @@ async function runTradingTest() {
 
   // Step 1: Clean reset of player position, credits, and cargo
   console.log('[1/7] Resetting pilot state (Sector 1, 2500 Credits, 100 Fuel, Empty Cargo)...');
+  await fetch(`${BASE_URL}/api/player/debug-baseline`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ accountId: PLAYER_ID }),
+  });
   await fetch(`${BASE_URL}/api/player/ship/debug-set`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

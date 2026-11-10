@@ -1,6 +1,6 @@
 import { db } from '../db/Database';
 
-export type FactionId = 'FACTION_SOL' | 'FACTION_HEGEMONY' | 'FACTION_PHORID' | 'FACTION_KRYLL';
+export type FactionId = 'FACTION_SOL' | 'FACTION_HEGEMONY' | 'FACTION_PHORID' | 'FACTION_KRYLL' | 'FACTION_LITHOS';
 export type StandingTier = 'HONORED' | 'FRIENDLY' | 'NEUTRAL' | 'HOSTILE' | 'NEMESIS';
 
 export interface FactionMetadata {
@@ -40,7 +40,31 @@ export const FACTION_METADATA: Record<FactionId, FactionMetadata> = {
     description: 'Hyper-capitalist rodentoid scavenger clans trading illicit rumors, scrap alloys, and surplus hyperdrives.',
     primaryColor: '#f59e0b',
   },
+  FACTION_LITHOS: {
+    id: 'FACTION_LITHOS',
+    name: 'The Lithos Axiom',
+    crestIcon: '💠',
+    description: 'Silicon-crystalline geometers who administer the Obsidian Smelter and guard Precursor ruins with mathematical detachment.',
+    primaryColor: '#8ee3ef',
+  },
 };
+
+/**
+ * Day 21: Airspace clearance verdict for operating around a faction-controlled planet.
+ * Hostile factions (standing < 0) require an active ceasefire truce in the planet's sector.
+ */
+export interface AirspaceClearance {
+  cleared: boolean;
+  planetId: string;
+  planetName: string;
+  sectorId: number;
+  factionId: string;
+  factionName: string;
+  standing: number;
+  truceRequired: boolean;
+  truceActive: boolean;
+  truceExpiresAt: string | null;
+}
 
 export interface FactionStanding {
   factionId: FactionId;
@@ -123,14 +147,19 @@ export class ReputationService {
       standingsMap.set(r.faction_id, parseInt(r.standing, 10));
     }
 
-    const factions: FactionId[] = ['FACTION_SOL', 'FACTION_HEGEMONY', 'FACTION_PHORID', 'FACTION_KRYLL'];
+    const factions: FactionId[] = ['FACTION_SOL', 'FACTION_HEGEMONY', 'FACTION_PHORID', 'FACTION_KRYLL', 'FACTION_LITHOS'];
     const results: FactionStanding[] = [];
 
     for (const fid of factions) {
       let score = standingsMap.get(fid);
       if (score === undefined) {
         // Seed default standing
-        score = fid === 'FACTION_SOL' ? 35 : fid === 'FACTION_HEGEMONY' ? -25 : fid === 'FACTION_PHORID' ? 15 : 5;
+        score =
+          fid === 'FACTION_SOL' ? 35
+          : fid === 'FACTION_HEGEMONY' ? -25
+          : fid === 'FACTION_PHORID' ? 15
+          : fid === 'FACTION_LITHOS' ? 0
+          : 5;
         await db.query(
           `INSERT INTO faction_standings (account_id, faction_id, standing)
            VALUES ($1, $2, $3)
@@ -352,6 +381,97 @@ export class ReputationService {
       [accountId, sectorId, normalized]
     );
     return rows.length > 0;
+  }
+
+  /**
+   * Returns the active truce expiry timestamp for a faction in a sector, or null if none.
+   */
+  public async getActiveTruceExpiry(
+    accountId: string,
+    sectorId: number,
+    factionId: string
+  ): Promise<string | null> {
+    const normalized = factionId === 'FACTION_VAELIC' ? 'FACTION_HEGEMONY' : factionId;
+    const { rows } = await db.query<any>(
+      `SELECT expires_at FROM diplomatic_truces
+       WHERE account_id = $1 AND sector_id = $2 AND faction_id = $3 AND expires_at > NOW()
+       ORDER BY expires_at DESC LIMIT 1`,
+      [accountId, sectorId, normalized]
+    );
+    if (rows.length === 0) return null;
+    const exp = rows[0].expires_at;
+    return exp instanceof Date ? exp.toISOString() : new Date(exp).toISOString();
+  }
+
+  /**
+   * Day 21: Evaluates whether the pilot may operate (survey, probe, colonize, decipher) around a planet.
+   * Planets controlled by a faction the pilot is hostile toward (standing < 0) require an active
+   * ceasefire truce with that faction in the planet's sector. Checked at the START of each action.
+   */
+  public async getAirspaceClearance(accountId: string, planetId: string): Promise<AirspaceClearance> {
+    const { rows } = await db.query<any>(
+      'SELECT id, name, sector_id, controlling_faction FROM planets WHERE id = $1',
+      [planetId]
+    );
+    if (rows.length === 0) {
+      throw new Error(`Planet with ID ${planetId} not found.`);
+    }
+    const planet = rows[0];
+    const factionId = (planet.controlling_faction === 'FACTION_VAELIC' ? 'FACTION_HEGEMONY' : planet.controlling_faction) || 'FACTION_SOL';
+    const sectorId = Number(planet.sector_id);
+
+    const standings = await this.getStandings(accountId);
+    const standing = standings.find((s) => s.factionId === factionId)?.standing ?? 0;
+    const truceRequired = standing < 0;
+    const truceExpiresAt = truceRequired ? await this.getActiveTruceExpiry(accountId, sectorId, factionId) : null;
+    const truceActive = truceExpiresAt !== null;
+
+    return {
+      cleared: !truceRequired || truceActive,
+      planetId: planet.id,
+      planetName: planet.name,
+      sectorId,
+      factionId,
+      factionName: FACTION_METADATA[factionId as FactionId]?.name || factionId,
+      standing,
+      truceRequired,
+      truceActive,
+      truceExpiresAt,
+    };
+  }
+
+  /**
+   * Day 21: Throws TRUCE_REQUIRED if the pilot lacks airspace clearance around a planet.
+   */
+  public async assertAirspaceClearance(accountId: string, planetId: string, actionLabel: string): Promise<AirspaceClearance> {
+    const clearance = await this.getAirspaceClearance(accountId, planetId);
+    if (!clearance.cleared) {
+      throw new Error(
+        `TRUCE_REQUIRED: ${clearance.factionName} airspace over ${clearance.planetName}. ${actionLabel} denied without an active ceasefire truce (standing ${clearance.standing}). Hail the sector patrol to negotiate.`
+      );
+    }
+    return clearance;
+  }
+
+  /**
+   * Debug: Force-expire all active truces for an account (optionally scoped to a sector/faction).
+   */
+  public async debugExpireTruces(accountId: string, sectorId?: number, factionId?: string): Promise<number> {
+    const conditions = ['account_id = $1', 'expires_at > NOW()'];
+    const params: any[] = [accountId];
+    if (sectorId !== undefined) {
+      params.push(sectorId);
+      conditions.push(`sector_id = $${params.length}`);
+    }
+    if (factionId) {
+      params.push(factionId === 'FACTION_VAELIC' ? 'FACTION_HEGEMONY' : factionId);
+      conditions.push(`faction_id = $${params.length}`);
+    }
+    const { rows } = await db.query<{ id: string }>(
+      `UPDATE diplomatic_truces SET expires_at = NOW() - INTERVAL '1 second' WHERE ${conditions.join(' AND ')} RETURNING id`,
+      params
+    );
+    return rows.length;
   }
 
   /**

@@ -285,6 +285,9 @@ export class PlanetaryService {
     message: string;
     survey: PlanetSurveyState;
   }> {
+    // 0. Day 21: Hostile airspace requires an active ceasefire truce (checked at action start)
+    await reputationService.assertAirspaceClearance(accountId, planetId, 'Orbital scanner sweep');
+
     // 1. Deduct 2 AP
     const apCheck = await apService.deductAP(accountId, 2, `Orbital ${scanBand} Sweep`);
     if (!apCheck.success) {
@@ -369,6 +372,9 @@ export class PlanetaryService {
     yieldSummary: string;
     message: string;
   }> {
+    // Day 21: Hostile airspace requires an active ceasefire truce (checked at action start)
+    await reputationService.assertAirspaceClearance(accountId, planetId, 'Atmospheric probe launch');
+
     if (shieldBoost) {
       const apRes = await apService.deductAP(accountId, 1, 'Atmospheric Probe Shield Reinforcement');
       if (!apRes.success) {
@@ -501,8 +507,8 @@ export class PlanetaryService {
       multiplier = 1.5; // Kryll pays premium for fuels and dense heavy metals
     } else if (factionId === 'FACTION_SOL' && (planet.archetype === 'BARREN' || planet.archetype === 'TERRESTRIAL')) {
       multiplier = 1.4; // Sol Nexus pays premium for habitability and structural silicates
-    } else if (factionId === 'FACTION_OBSIDIAN' && planet.archetype === 'PRECURSOR_RUIN') {
-      multiplier = 1.6; // Obsidian syndicate values ancient precursor tech anomalies
+    } else if (factionId === 'FACTION_LITHOS' && planet.archetype === 'PRECURSOR_RUIN') {
+      multiplier = 1.6; // Lithos Axiom (Obsidian Smelter) values ancient precursor tech anomalies
     }
 
     // Base credits: 100% = 1,000 CR, 66% = 660 CR, 33% = 330 CR, scaled by faction multiplier

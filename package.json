@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "dev:server": "tsx watch server/src/index.ts",
+    "typecheck": "tsc --noEmit -p . && tsc --noEmit -p server",
+    "test:m04": "tsx server/test-milestone-0.4.ts",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "format": "prettier --write ."
@@ -13,6 +15,7 @@
   "devDependencies": {
     "@types/node": "^26.6.5",
     "@types/pg": "^8.23.1",
+    "@types/ws": "^8.18.2",
     "pino-pretty": "^13.2.0",
     "prettier": "^3.9.10",
     "tsx": "^4.23.15",

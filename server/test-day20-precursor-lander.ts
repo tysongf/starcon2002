@@ -20,6 +20,14 @@ async function runTests() {
   });
   assert.equal(resetRes.status, 200, 'Precursor and survey reset should succeed');
 
+  // Day 21: Orbital survey of at least 33% is required before Precursor signatures resolve into sites
+  const scanAegis = await fetch(`${BASE_URL}/api/planets/planet_sec1_aegis/scan`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ accountId: 'acc_sol_captain', scanBand: 'MINERALS' }),
+  });
+  assert.equal(scanAegis.status, 200, 'Aegis survey scan should succeed');
+
   // 1. Query Precursor Sites on Aegis Prime
   console.log('[Test 1] Query Precursor Megastructure sites on Aegis Prime...');
   const sitesRes = await fetch(`${BASE_URL}/api/precursor/planet/planet_sec1_aegis`);
@@ -127,6 +135,13 @@ async function runTests() {
 
   // 8. Decipher Second Site on Ignis Tartarus for More Relics
   console.log('[Test 8] Decipher Subterranean Energy Vault on Ignis Tartarus...');
+  const scanIgnis = await fetch(`${BASE_URL}/api/planets/planet_sec3_ignis/scan`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ accountId: 'acc_sol_captain', scanBand: 'MINERALS' }),
+  });
+  assert.equal(scanIgnis.status, 200, 'Ignis survey scan should succeed');
+
   const ignisRes = await fetch(`${BASE_URL}/api/precursor/site_ignis_vault/decipher`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -156,7 +171,7 @@ async function runTests() {
   }
   assert.equal(remitRes.status, 200);
   assert.ok(remitData.success);
-  assert.equal(remitData.rewardCredits, 2500);
+  assert.equal(remitData.rewardCredits, 600);
   assert.equal(remitData.reputationGain, 50);
   console.log(` -> Remittance Accepted! +${remitData.rewardCredits} Credits, +${remitData.reputationGain} Goodwill (New Standing: ${remitData.newStanding})`);
 

@@ -70,12 +70,15 @@ INSERT INTO ships (id, account_id, hull_class, hull_seed, current_sector_id, fue
 VALUES ('ship_sol_flagship', 'acc_sol_captain', 'CORVETTE', 12345, 1, 100, 100, 100, 100, 100, 100, 40)
 ON CONFLICT (id) DO NOTHING;
 
--- Seed Initial Static 3-Sector Graph (Sector 1 <-> Sector 2 <-> Sector 3)
+-- Seed Static Sector Graph (Sector 1 <-> Sector 2 <-> Sector 3 <-> {Sector 4, Sector 5})
+-- Sectors 4 (Phorid) and 5 (Kryll) are Milestone 0.5 frontier placeholders: reachable dead-ends, no ports yet.
 INSERT INTO sectors (id, name, system_seed, controlling_faction, connected_sectors)
 VALUES 
   (1, 'Sol-Perimeter Nexus', 101, 'FACTION_SOL', '[2]'::jsonb),
   (2, 'Void Expanse Hazard Zone', 202, 'FACTION_SOL', '[1, 3]'::jsonb),
-  (3, 'Obsidian Smelter Station', 303, 'FACTION_LITHOS', '[2]'::jsonb)
+  (3, 'Obsidian Smelter Station', 303, 'FACTION_LITHOS', '[2, 4, 5]'::jsonb),
+  (4, 'Mycelia Spore Reach', 404, 'FACTION_PHORID', '[3]'::jsonb),
+  (5, 'Skrit Cartel Drift', 505, 'FACTION_KRYLL', '[3]'::jsonb)
 ON CONFLICT (id) DO UPDATE SET 
   name = EXCLUDED.name,
   system_seed = EXCLUDED.system_seed,
@@ -347,7 +350,8 @@ VALUES
     ('acc_sol_captain', 'FACTION_SOL', 35),
     ('acc_sol_captain', 'FACTION_HEGEMONY', -25),
     ('acc_sol_captain', 'FACTION_PHORID', 15),
-    ('acc_sol_captain', 'FACTION_KRYLL', 5)
+    ('acc_sol_captain', 'FACTION_KRYLL', 5),
+    ('acc_sol_captain', 'FACTION_LITHOS', 0)
 ON CONFLICT (account_id, faction_id) DO NOTHING;
 
 -- Day 18: Planetary Orbital Survey, Surface Mineral Scanners & Atmospheric Probes
@@ -400,10 +404,13 @@ INSERT INTO planets (id, sector_id, name, archetype, radius, pos_x, pos_y, pos_z
 VALUES
     ('planet_sec1_aegis', 1, 'Aegis Prime', 'BARREN', 24.0, -140.0, 0.0, 180.0, 101, '#38bdf8', 0.12, 215, 'LOW_RADIATION', 18, 'FACTION_SOL', 'Airless metallic moon rich in heavy silicate crust and structural plasteel strata.'),
     ('planet_sec2_charybdis', 2, 'Charybdis Minor', 'VOLCANIC', 26.0, 160.0, 0.0, -170.0, 202, '#f97316', 0.85, 780, 'EXTREME_THERMAL', 5, 'FACTION_HEGEMONY', 'Tectonically unstable lava world venting superheated sulfur and high-grade mineral ore.'),
-    ('planet_sec3_ignis', 3, 'Ignis Tartarus', 'PRECURSOR_RUIN', 28.0, -180.0, 0.0, -150.0, 303, '#a855f7', 0.40, 110, 'IONIC_DISRUPTIONS', 24, 'FACTION_HEGEMONY', 'Glaciated tomb world crisscrossed with dormant Precursor conduits and energy monoliths.'),
+    ('planet_sec3_ignis', 3, 'Ignis Tartarus', 'PRECURSOR_RUIN', 28.0, -180.0, 0.0, -150.0, 303, '#a855f7', 0.40, 110, 'IONIC_DISRUPTIONS', 24, 'FACTION_LITHOS', 'Glaciated tomb world crisscrossed with dormant Precursor conduits and energy monoliths.'),
     ('planet_sec4_mycelia', 4, 'Mycelia IV', 'TERRESTRIAL', 25.0, 150.0, 0.0, 140.0, 404, '#10b981', 1.05, 292, 'BIOLOGICAL_SPORES', 84, 'FACTION_PHORID', 'Lush photosynthetic planetary biome covered in dense fungal canopies and bio-protein reserves.'),
     ('planet_sec5_skrit', 5, 'Skrit-V', 'GAS_GIANT', 34.0, -220.0, 0.0, 190.0, 505, '#f59e0b', 4.50, 85, 'HIGH_PRESSURE_STORMS', 0, 'FACTION_KRYLL', 'Massive banded gas giant with cryo-hydrocarbon rings suitable for Deuterium fuel skimming.')
 ON CONFLICT (id) DO NOTHING;
+
+-- Day 21: Ignis Tartarus sits inside Lithos Axiom jurisdiction (Sector 3); correct legacy seeds.
+UPDATE planets SET controlling_faction = 'FACTION_LITHOS' WHERE id = 'planet_sec3_ignis' AND controlling_faction <> 'FACTION_LITHOS';
 
 -- Day 19: Colony Outposts, Terraforming & Mining Infrastructure
 CREATE TABLE IF NOT EXISTS colonies (
@@ -469,7 +476,7 @@ VALUES
     ('site_charybdis_forge', 'planet_sec2_charybdis', 'Charybdis Geothermal Crucible', 'ENERGY_VAULT', -15.0, 60.0, 520, 240, 60,
      'Chronicles of the First Builders: Sub-Crustal Synthesis',
      'Transmission Archive #004: In the volcanic mantle of Charybdis, thermal energy was harnessed to temper crystalline phase matrices. The extreme tectonic pressures permitted the stabilization of superdense relativistic alloys.',
-     1),
+     2),
     ('site_ignis_vault', 'planet_sec3_ignis', 'Ignis Subterranean Energy Vault', 'ENERGY_VAULT', -35.0, 85.0, 720, 90, 75,
      'The Dark Void Resonance: The Unbroken Defense',
      'Transmission Archive #002: Beneath the permafrost of Ignis Tartarus lies an automated defensive battery constructed during the First Interstellar War. The phase lances were engineered to project high-energy coherent beams capable of bypassing polarized shields. The builders sealed the vault when the cosmic void entities breached the outer rim.',

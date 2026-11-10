@@ -58,6 +58,11 @@ class GameEngine {
   private precursorResearchCatalog: any[] = [];
   private playerRelicCount: number = 0;
 
+  // Day 21: Airspace Clearance & Unresolved Precursor Signals
+  private activeAirspaceClearance: any = null;
+  private unresolvedPrecursorSignals: number = 0;
+  private precursorRequiredSurvey: number = 33;
+
   private modalPlanetaryLander: HTMLElement | null = null;
   private landerCanvas: HTMLCanvasElement | null = null;
   private landerCtx: CanvasRenderingContext2D | null = null;
@@ -5010,6 +5015,13 @@ class GameEngine {
     this.isAlienSpeaking = false;
     this.currentAlienNpcId = null;
     this.audio.playCommsCloseSound();
+
+    // Day 21: If currently in orbit, refresh airspace clearance and re-evaluate locked controls
+    if (this.isInOrbit && this.activePlanet) {
+      this.fetchPlanetAirspace(this.activePlanet.data.id).then(() => {
+        this.updateSurveyConsoleUI();
+      });
+    }
   }
 
   public startAlienPortraitLoop(): void {
@@ -5552,6 +5564,9 @@ class GameEngine {
       console.warn('[DAY 18] Failed to fetch planet survey detail:', err);
     }
 
+    // Day 21: Fetch Hostile Airspace Clearance
+    await this.fetchPlanetAirspace(p.id);
+
     // Day 19: Fetch Authoritative Colony State
     await this.fetchPlanetColonies(p.id);
 
@@ -5985,6 +6000,56 @@ class GameEngine {
       }
     }
 
+    // 5c. Day 21: Precursor Megastructures & Unresolved Signal Blips
+    if (this.planetPrecursorSites && this.planetPrecursorSites.length > 0) {
+      const now = performance.now();
+      const pulse = 0.7 + 0.3 * Math.sin(now * 0.007);
+      for (const site of this.planetPrecursorSites) {
+        const pt = this.getHotspotScreenPos(site.surfaceLat, site.surfaceLng, R, cx, cy);
+        if (!pt) continue;
+        ctx.save();
+        ctx.strokeStyle = '#00f0ff';
+        ctx.fillStyle = '#00f0ff';
+        ctx.shadowColor = '#00f0ff';
+        ctx.shadowBlur = 10 * pulse;
+
+        // Monolith marker
+        ctx.beginPath();
+        ctx.rect(pt.x - 3, pt.y - 7, 6, 14);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.font = 'bold 8px monospace';
+        const label = site.name.toUpperCase();
+        const lw = ctx.measureText(label).width;
+        ctx.fillStyle = 'rgba(2, 6, 23, 0.85)';
+        ctx.fillRect(pt.x - lw / 2 - 2, pt.y - 20, lw + 4, 10);
+        ctx.fillStyle = '#00f0ff';
+        ctx.fillText(label, pt.x - lw / 2, pt.y - 12);
+        ctx.restore();
+      }
+    } else if (this.unresolvedPrecursorSignals > 0) {
+      const now = performance.now();
+      const pulse = 0.6 + 0.4 * Math.sin(now * 0.006);
+      const pt = this.getHotspotScreenPos(-15.0, 60.0, R, cx, cy);
+      if (pt) {
+        ctx.save();
+        ctx.strokeStyle = '#a855f7';
+        ctx.lineWidth = 1.5;
+        ctx.shadowColor = '#c084fc';
+        ctx.shadowBlur = 10 * pulse;
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, 6 * pulse, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.fillStyle = '#e9d5ff';
+        ctx.font = 'bold 9px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('?', pt.x, pt.y + 3);
+        ctx.restore();
+      }
+    }
+
     ctx.restore(); // End sphere clip
 
     // 6. Atmospheric Rim Glow
@@ -6053,8 +6118,67 @@ class GameEngine {
     const elStatBio = document.getElementById('status-scan-bio');
     const elStatAno = document.getElementById('status-scan-anomalies');
 
+    const isAirspaceLocked = Boolean(
+      this.activeAirspaceClearance &&
+      !this.activeAirspaceClearance.cleared &&
+      this.activeAirspaceClearance.truceRequired
+    );
+
+    // Day 21: Dynamic Airspace Banner & Lock-State Controls
+    const scannerSection = document.querySelector('.survey-scanner-section');
+    let banner = document.getElementById('survey-airspace-banner');
+
+    if (isAirspaceLocked) {
+      if (!banner && scannerSection) {
+        banner = document.createElement('div');
+        banner.id = 'survey-airspace-banner';
+        banner.className = 'survey-airspace-banner';
+        scannerSection.prepend(banner);
+      }
+      if (banner) {
+        const facName = this.activeAirspaceClearance.factionName || 'FACTION';
+        banner.innerHTML = `
+          <div class="airspace-banner-text">
+            <span class="airspace-banner-title">⚠️ ${facName.toUpperCase()} AIRSPACE — TRUCE REQUIRED</span>
+            <span class="airspace-banner-sub">Standing: ${this.activeAirspaceClearance.standing}. Ceasefire truce required for planetary survey and surface operations.</span>
+          </div>
+          <button class="btn-hail-airspace" id="btn-hail-airspace-patrol">HAIL PATROL [COMM]</button>
+        `;
+        const hailBtn = document.getElementById('btn-hail-airspace-patrol');
+        if (hailBtn) {
+          hailBtn.onclick = () => {
+            const fid = this.activeAirspaceClearance.factionId;
+            const npcId = fid === 'FACTION_PHORID' ? 'npc_mycelis' : fid === 'FACTION_KRYLL' ? 'npc_skrit' : 'npc_vorash';
+            this.openAlienComms(npcId);
+          };
+        }
+      }
+    } else {
+      if (banner) {
+        banner.remove();
+      }
+    }
+
+    // Buttons
+    const btnMin = document.getElementById('btn-scan-minerals') as HTMLButtonElement | null;
+    const btnBio = document.getElementById('btn-scan-bio') as HTMLButtonElement | null;
+    const btnAno = document.getElementById('btn-scan-anomalies') as HTMLButtonElement | null;
+    const btnProbe = document.getElementById('btn-launch-probe') as HTMLButtonElement | null;
+    const btnLander = document.getElementById('btn-deploy-lander') as HTMLButtonElement | null;
+    const btnFoundColony = document.getElementById('btn-found-colony') as HTMLButtonElement | null;
+
+    if (btnMin) btnMin.disabled = isAirspaceLocked;
+    if (btnBio) btnBio.disabled = isAirspaceLocked;
+    if (btnAno) btnAno.disabled = isAirspaceLocked;
+    if (btnProbe) btnProbe.disabled = isAirspaceLocked;
+    if (btnLander) btnLander.disabled = isAirspaceLocked;
+    if (btnFoundColony) btnFoundColony.disabled = isAirspaceLocked;
+
     if (elStatMin) {
-      if (survey.scannedMinerals) {
+      if (isAirspaceLocked && !survey.scannedMinerals) {
+        elStatMin.textContent = 'HEGEMONY AIRSPACE — TRUCE REQUIRED';
+        elStatMin.classList.remove('active');
+      } else if (survey.scannedMinerals) {
         elStatMin.textContent = 'ACTIVE // SCAN COMPLETE';
         elStatMin.classList.add('active');
       } else {
@@ -6064,7 +6188,10 @@ class GameEngine {
     }
 
     if (elStatBio) {
-      if (survey.scannedBio) {
+      if (isAirspaceLocked && !survey.scannedBio) {
+        elStatBio.textContent = 'HEGEMONY AIRSPACE — TRUCE REQUIRED';
+        elStatBio.classList.remove('active');
+      } else if (survey.scannedBio) {
         elStatBio.textContent = 'ACTIVE // SCAN COMPLETE';
         elStatBio.classList.add('active');
       } else {
@@ -6074,7 +6201,10 @@ class GameEngine {
     }
 
     if (elStatAno) {
-      if (survey.scannedAnomalies) {
+      if (isAirspaceLocked && !survey.scannedAnomalies) {
+        elStatAno.textContent = 'HEGEMONY AIRSPACE — TRUCE REQUIRED';
+        elStatAno.classList.remove('active');
+      } else if (survey.scannedAnomalies) {
         elStatAno.textContent = 'ACTIVE // SCAN COMPLETE';
         elStatAno.classList.add('active');
       } else {
@@ -6104,12 +6234,29 @@ class GameEngine {
     const hotspots = this.activePlanetDetail?.survey?.discoveredHotspots || [];
     const beacons = this.activePlanetDetail?.beacons || [];
 
-    if (hotspots.length === 0 && beacons.length === 0) {
+    if (hotspots.length === 0 && beacons.length === 0 && this.unresolvedPrecursorSignals === 0) {
       list.innerHTML = `<div class="ledger-empty">NO HOTSPOTS DETECTED. INITIATE SENSOR SWEEPS [1-3] TO IDENTIFY SURFACE DEPOSITS.</div>`;
       return;
     }
 
     let html = '';
+
+    // Day 21: Unresolved Precursor Signal entry
+    if (this.unresolvedPrecursorSignals > 0 && this.planetPrecursorSites.length === 0) {
+      html += `
+        <div class="hotspot-card unresolved">
+          <div class="hotspot-card-left">
+            <span class="hotspot-dot" style="color: #a855f7; box-shadow: 0 0 10px #a855f7;"></span>
+            <div class="hotspot-card-info">
+              <span class="hotspot-name">UNRESOLVED PRECURSOR SIGNAL</span>
+              <span class="hotspot-coords">SURFACE RESONANCE DETECTED // CARRIER FREQUENCIES OBSCURED</span>
+            </div>
+          </div>
+          <span class="unresolved-pill">REQ >= ${this.precursorRequiredSurvey}% SURVEY (${this.activePlanetDetail?.survey?.surveyCompletion || 0}%)</span>
+        </div>
+      `;
+    }
+
     for (const h of hotspots) {
       html += `
         <div class="hotspot-card" data-lat="${h.lat}" data-lng="${h.lng}">
@@ -6699,6 +6846,25 @@ class GameEngine {
   }
 
   // ============================================================================
+  // DAY 21: AIRSPACE CLEARANCE, CEASEFIRE TRUCE GATING & PRECURSOR RESOLUTION
+  // ============================================================================
+
+  /**
+   * Day 21: Checks whether the pilot has airspace clearance (or needs a ceasefire truce) over a planet.
+   */
+  public async fetchPlanetAirspace(planetId: string): Promise<void> {
+    try {
+      const res = await fetch(`http://localhost:3000/api/planets/${planetId}/airspace?accountId=acc_sol_captain`);
+      if (res.ok) {
+        const data = await res.json();
+        this.activeAirspaceClearance = data.clearance || null;
+      }
+    } catch (err) {
+      console.warn('[DAY 21] Failed to fetch airspace clearance:', err);
+    }
+  }
+
+  // ============================================================================
   // DAY 20: STAR CONTROL II SURFACE LANDER, PRECURSOR MEGASTRUCTURES & RELIC TECH TREE
   // ============================================================================
 
@@ -6711,11 +6877,18 @@ class GameEngine {
       if (res.ok) {
         const data = await res.json();
         this.planetPrecursorSites = data.sites || [];
+        this.unresolvedPrecursorSignals = data.unresolvedSignals || 0;
+        this.precursorRequiredSurvey = data.requiredSurvey || 33;
         this.playerRelicCount = data.relics || 0;
 
         const relicPill = document.getElementById('survey-relics-pill');
         if (relicPill) {
-          relicPill.textContent = `${this.playerRelicCount} RELICS`;
+          relicPill.textContent =
+            this.planetPrecursorSites.length > 0
+              ? `${this.playerRelicCount} RELICS`
+              : this.unresolvedPrecursorSignals > 0
+              ? `${this.unresolvedPrecursorSignals} UNRESOLVED`
+              : `${this.playerRelicCount} RELICS`;
         }
 
         const relicCount = document.getElementById('precursor-relic-count');
@@ -6840,7 +7013,7 @@ class GameEngine {
   }
 
   /**
-   * Remits a Precursor Relic Core to an alien ambassador for +2,500 Credits and +50 Goodwill.
+   * Remits a Precursor Relic Core to an alien ambassador for +600 Credits and +50 Goodwill.
    */
   public async remitPrecursorRelic(): Promise<void> {
     const sel = document.getElementById('select-remit-faction') as HTMLSelectElement | null;

@@ -185,7 +185,7 @@ export class TradeService {
     items: MarketItem[];
     hold: PlayerHoldStatus | null;
   } | null> {
-    const portRes = await db.query('SELECT * FROM ports WHERE id = $1', [portId]);
+    const portRes = await db.query<any>('SELECT * FROM ports WHERE id = $1', [portId]);
     if (portRes.rows.length === 0) return null;
     const port = portRes.rows[0];
 

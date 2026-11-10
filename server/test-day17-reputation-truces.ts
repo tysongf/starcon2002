@@ -28,7 +28,7 @@ async function runTests() {
   assert(res1.status === 200, 'GET /api/reputation/standings returns 200 OK');
   const data1 = await res1.json();
   assert(data1.success === true, 'Response contains success: true');
-  assert(Array.isArray(data1.standings) && data1.standings.length === 4, 'Returns 4 faction standings');
+  assert(Array.isArray(data1.standings) && data1.standings.length >= 4, 'Returns at least 4 faction standings');
   
   const sol = data1.standings.find((s: any) => s.factionId === 'FACTION_SOL');
   const heg = data1.standings.find((s: any) => s.factionId === 'FACTION_HEGEMONY');

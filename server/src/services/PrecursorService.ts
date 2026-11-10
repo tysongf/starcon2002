@@ -84,7 +84,46 @@ export const PROTOTYPE_CATALOG: Omit<PrecursorPrototypeTech, 'isSynthesized'>[] 
   },
 ];
 
+/** Day 21: Minimum orbital survey completion (%) before Precursor signatures resolve into sites. */
+export const PRECURSOR_SURVEY_THRESHOLD = 33;
+
+export interface PlayerPrecursorSiteView {
+  sites: PrecursorSite[];
+  unresolvedSignals: number;
+  surveyCompletion: number;
+  requiredSurvey: number;
+}
+
 export class PrecursorService {
+  /**
+   * Day 21: Reads a pilot's orbital survey completion (%) for a planet (0 if never surveyed).
+   */
+  public async getSurveyCompletion(accountId: string, planetId: string): Promise<number> {
+    const { rows } = await db.query<any>(
+      'SELECT survey_completion FROM planet_surveys WHERE account_id = $1 AND planet_id = $2',
+      [accountId, planetId]
+    );
+    return Number(rows[0]?.survey_completion || 0);
+  }
+
+  /**
+   * Day 21: Player-scoped site listing. Sites stay hidden as unresolved signals until the pilot's
+   * orbital survey reaches PRECURSOR_SURVEY_THRESHOLD, so tuning parameters never leak early.
+   */
+  public async getPlanetPrecursorSitesForPlayer(planetId: string, accountId: string): Promise<PlayerPrecursorSiteView> {
+    const [allSites, surveyCompletion] = await Promise.all([
+      this.getPlanetPrecursorSites(planetId),
+      this.getSurveyCompletion(accountId, planetId),
+    ]);
+    const resolved = surveyCompletion >= PRECURSOR_SURVEY_THRESHOLD;
+    return {
+      sites: resolved ? allSites : [],
+      unresolvedSignals: resolved ? 0 : allSites.length,
+      surveyCompletion,
+      requiredSurvey: PRECURSOR_SURVEY_THRESHOLD,
+    };
+  }
+
   /**
    * Fetches all Precursor Megastructure sites associated with a planet.
    */
@@ -156,6 +195,15 @@ export class PrecursorService {
       createdAt: row.created_at,
     };
 
+    // Day 21: Site must be resolved by orbital survey, and hostile airspace requires an active truce
+    const surveyCompletion = await this.getSurveyCompletion(accountId, site.planetId);
+    if (surveyCompletion < PRECURSOR_SURVEY_THRESHOLD) {
+      throw new Error(
+        `UNRESOLVED_SIGNAL: Orbital survey at ${surveyCompletion}%. Precursor signatures resolve at ${PRECURSOR_SURVEY_THRESHOLD}% survey completion.`
+      );
+    }
+    await reputationService.assertAirspaceClearance(accountId, site.planetId, 'Precursor excavation');
+
     // If already deciphered, return unlocked codex
     if (site.isDeciphered) {
       return {
@@ -200,7 +248,7 @@ export class PrecursorService {
     }
 
     // Award +5 AP for major scientific breakthrough
-    await apService.addAP(accountId, 5, `Decoded Precursor Codex: ${site.name}`);
+    await apService.addAP(accountId, 5);
 
     return {
       success: true,
@@ -360,7 +408,7 @@ export class PrecursorService {
     );
 
     // 3. Grant 2,500 Credits
-    const rewardCredits = 2500;
+    const rewardCredits = 600; // Day 21: rebalanced from 2,500 so the Milestone 0.4 explorer loop stays an investment
     await db.query('UPDATE accounts SET credits = credits + $1 WHERE id = $2', [rewardCredits, accountId]);
 
     // 4. Grant +50 Reputation with target faction
