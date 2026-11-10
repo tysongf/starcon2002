@@ -9,7 +9,13 @@ import { AsteroidField } from './entities/AsteroidField';
 import { type DockingStatus } from './entities/DockingZone';
 import { AudioEngine } from './audio/AudioEngine';
 import { ShieldBubble, CombatVfxSystem } from './vfx/CombatVfxSystem';
-import { ProceduralPlanet, type PlanetData } from './entities/ProceduralPlanet';
+import { ProceduralPlanet } from './entities/ProceduralPlanet';
+import { PrecursorTerminalController, type PrecursorSiteData } from './controllers/PrecursorTerminalController';
+import { LanderController } from './controllers/LanderController';
+import { CommsController } from './controllers/CommsController';
+import { ColonyController } from './controllers/ColonyController';
+import { SurveyController } from './controllers/SurveyController';
+import { CombatClient } from './controllers/CombatClient';
 
 class GameEngine {
   private canvas: HTMLCanvasElement;
@@ -26,95 +32,14 @@ class GameEngine {
   private audio: AudioEngine;
   private cameraMode: 'CHASE' | 'ORBIT' = 'CHASE';
   private isDocked: boolean = false;
-  private isInOrbit: boolean = false;
 
-  // Day 18: Planetary Orbital Survey & Probes
-  private activePlanet: ProceduralPlanet | null = null;
-  private activePlanetDetail: any = null;
-  private modalPlanetarySurvey: HTMLElement | null = null;
-  private elOrbitalBanner: HTMLElement | null = null;
-  private elOrbitalMsg: HTMLElement | null = null;
-  private globeCanvas: HTMLCanvasElement | null = null;
-  private globeCtx: CanvasRenderingContext2D | null = null;
-  private globeRotY: number = 0;
-  private globeRotX: number = 0.2;
-  private globeIsDragging: boolean = false;
-  private globeDragLastX: number = 0;
-  private globeDragLastY: number = 0;
-  private globeAnimId: number | null = null;
-  private targetedLat: number = 0;
-  private targetedLng: number = 0;
-  private hoveredHotspot: any = null;
-
-  // Day 19: Colony Outposts, Terraforming & Mining Infrastructure
-  private activeColony: any | null = null;
-  private activeColoniesList: any[] = [];
-  private hoveredColony: any | null = null;
-  private activeSurveyTab: 'SENSORS' | 'COLONY' | 'PRECURSOR' = 'SENSORS';
-
-  // Day 20: Precursor Megastructures, Surface Lander & Relic Tech Tree
-  private planetPrecursorSites: any[] = [];
-  private activePrecursorSite: any | null = null;
-  private precursorResearchCatalog: any[] = [];
-  private playerRelicCount: number = 0;
-
-  // Day 21: Airspace Clearance & Unresolved Precursor Signals
-  private activeAirspaceClearance: any = null;
-  private unresolvedPrecursorSignals: number = 0;
-  private precursorRequiredSurvey: number = 33;
-
-  private modalPlanetaryLander: HTMLElement | null = null;
-  private landerCanvas: HTMLCanvasElement | null = null;
-  private landerCtx: CanvasRenderingContext2D | null = null;
-  private landerAnimId: number | null = null;
-  private isLanderActive: boolean = false;
-  private landerState = {
-    x: 380,
-    y: 240,
-    vx: 0,
-    vy: 0,
-    heading: -Math.PI / 2,
-    fuel: 100,
-    maxFuel: 100,
-    hull: 100,
-    maxHull: 100,
-    cargo: 0,
-    maxCargo: 25,
-    isDocked: false,
-    dockedSite: null as any,
-  };
-  private landerKeys = {
-    up: false,
-    down: false,
-    left: false,
-    right: false,
-  };
-  private landerParticles: Array<{ x: number; y: number; vx: number; vy: number; life: number; maxLife: number; color: string; size: number }> = [];
-  private landerSonarWaves: Array<{ x: number; y: number; radius: number; maxRadius: number; alpha: number }> = [];
-  private landerNodes: Array<{
-    id: string;
-    x: number;
-    y: number;
-    type: 'MINERAL' | 'MEGASTRUCTURE';
-    name: string;
-    mineralType?: string;
-    amount?: number;
-    collected?: boolean;
-    siteData?: any;
-    discovered: boolean;
-    color: string;
-  }> = [];
-
-  private modalPrecursorTerminal: HTMLElement | null = null;
-  private waveformCanvas: HTMLCanvasElement | null = null;
-  private waveformCtx: CanvasRenderingContext2D | null = null;
-  private waveformAnimId: number | null = null;
-  private waveformTime: number = 0;
-  private precursorTuning = {
-    freq: 220,
-    phase: 0,
-    damping: 10,
-  };
+  // Modular Sub-System Controllers
+  public commsController!: CommsController;
+  public precursorTerminalController!: PrecursorTerminalController;
+  public landerController!: LanderController;
+  public colonyController!: ColonyController;
+  public surveyController!: SurveyController;
+  public combatClient!: CombatClient;
 
   // Navigation & Sector Jump System (Day 8)
   private currentSectorId: number = 1;
@@ -221,27 +146,10 @@ class GameEngine {
   private modalDockSubtext: HTMLElement | null = null;
   private hasInitialSceneLoaded: boolean = false;
 
-  // Milestone 0.3 Authoritative 20Hz Combat & AI Entities
-  private combatSocket: WebSocket | null = null;
-  private combatInputs: {
-    forward: boolean;
-    reverse: boolean;
-    turnLeft: boolean;
-    turnRight: boolean;
-    brake: boolean;
-    firePrimary: boolean;
-    fireTactical: boolean;
-    activeWeaponId: 'PULSE' | 'PLASMA' | 'FLAK';
-  } = {
-    forward: false,
-    reverse: false,
-    turnLeft: false,
-    turnRight: false,
-    brake: false,
-    firePrimary: false,
-    fireTactical: false,
-    activeWeaponId: 'PULSE',
-  };
+  // Milestone 0.3 Authoritative 20Hz Combat Inputs
+  public get combatInputs() {
+    return this.combatClient.combatInputs;
+  }
 
   // Day 12 Weapon Profiles & Combat VFX
   private activeWeaponIndex: number = 0;
@@ -252,40 +160,11 @@ class GameEngine {
   ];
   private combatVfx!: CombatVfxSystem;
   private playerShieldBubble!: ShieldBubble;
-  private droneShieldBubbles: Map<string, ShieldBubble> = new Map();
-  private lastPlayerShields: number = 100;
-  private lastPlayerMaxShields: number = 100;
 
-  private droneMeshes: Map<string, THREE.Mesh> = new Map();
-  private projectileMeshes: Map<string, THREE.Mesh> = new Map();
-  private projectileGeom = new THREE.CylinderGeometry(0.16, 0.16, 2.0, 6);
-  private projectileSphereGeom = new THREE.SphereGeometry(0.42, 8, 8);
-  private projectileFlakGeom = new THREE.CylinderGeometry(0.12, 0.12, 1.4, 5);
-  private projectileMatCyan = new THREE.MeshBasicMaterial({ color: 0x00f0ff });
-  private projectileMatRed = new THREE.MeshBasicMaterial({ color: 0xff2a5f });
-  private projectileMatEmerald = new THREE.MeshBasicMaterial({ color: 0x10b981 });
-  private projectileMatAmber = new THREE.MeshBasicMaterial({ color: 0xfbbf24 });
-
-  private elTelemetryShields: HTMLElement | null = null;
-  private elTelemetryHull: HTMLElement | null = null;
-  private elTelemetryEnergy: HTMLElement | null = null;
-  private elTelemetryCombat: HTMLElement | null = null;
   private elActiveWeapon: HTMLElement | null = null;
   private elTacticalModule: HTMLElement | null = null;
-  private elTacticalReticle: HTMLElement | null = null;
-  private elReticleName: HTMLElement | null = null;
-  private elReticleShieldFill: HTMLElement | null = null;
-  private elReticleHullFill: HTMLElement | null = null;
-  private elReticleRange: HTMLElement | null = null;
-  private primaryDroneTarget: { id: string; x: number; z: number; hp: number; maxHp: number; shields: number; maxShields: number; name: string; faction?: string } | null = null;
 
-  // MMORPG Ability Hotbar & Stacked Vitals (Day 12 / Milestone 0.3)
-  private elVitalShieldBar: HTMLElement | null = null;
-  private elVitalShieldText: HTMLElement | null = null;
-  private elVitalHullBar: HTMLElement | null = null;
-  private elVitalHullText: HTMLElement | null = null;
-  private elVitalEnergyBar: HTMLElement | null = null;
-  private elVitalEnergyText: HTMLElement | null = null;
+  // MMORPG Ability Hotbar Cooldown Elements
   private elSlotHigh1: HTMLElement | null = null;
   private elSlotHigh2: HTMLElement | null = null;
   private elSlotMid1: HTMLElement | null = null;
@@ -294,14 +173,6 @@ class GameEngine {
   private elCdHigh2: HTMLElement | null = null;
   private elCdMid1: HTMLElement | null = null;
   private elCdMid2: HTMLElement | null = null;
-  private elTargetTelemetryHud: HTMLElement | null = null;
-  private elTargetName: HTMLElement | null = null;
-  private elTargetFaction: HTMLElement | null = null;
-  private elTargetDistance: HTMLElement | null = null;
-  private elTargetShieldBar: HTMLElement | null = null;
-  private elTargetShieldVal: HTMLElement | null = null;
-  private elTargetHullBar: HTMLElement | null = null;
-  private elTargetHullVal: HTMLElement | null = null;
 
   private lastFireTimes = {
     PULSE: 0,
@@ -309,8 +180,6 @@ class GameEngine {
     FLAK: 0,
     BOOST: 0,
   };
-  private targetLockIndex: number = 0;
-  private availableDrones: any[] = [];
 
   // Action Point (AP) System (Day 7)
   private playerAP = {
@@ -362,45 +231,7 @@ class GameEngine {
   private elArmoryPlayerCredits: HTMLElement | null = null;
   private equipmentCatalog: any[] = [];
 
-  // Day 13: Floating Cargo Canisters & Loot Modal DOM
-  private elLootPromptHud: HTMLElement | null = null;
-  private elLootPromptText: HTMLElement | null = null;
-  private modalContainerLoot: HTMLElement | null = null;
-  private modalLootRarity: HTMLElement | null = null;
-  private modalLootTitle: HTMLElement | null = null;
-  private elLootDistanceDisplay: HTMLElement | null = null;
-  private elLootItemCount: HTMLElement | null = null;
-  private elLootItemsList: HTMLElement | null = null;
-  private btnCloseLoot: HTMLElement | null = null;
-  private btnLootAll: HTMLElement | null = null;
-
-  private containerMeshes: Map<string, THREE.Group> = new Map();
-  private activeLootContainers: Map<string, any> = new Map();
-  private targetedContainerId: string | null = null;
-  private activeLootModalContainer: any = null;
-
-  // Day 14: Hardcore Death Loop, Escape Pod & Revenge Contracts
-  private elEscapePodHud: HTMLElement | null = null;
-  private elPodTimerClock: HTMLElement | null = null;
-  private modalKillmail: HTMLElement | null = null;
-  private elKmTimestamp: HTMLElement | null = null;
-  private elKmLossValuation: HTMLElement | null = null;
-  private elKmKillerName: HTMLElement | null = null;
-  private elKmSectorName: HTMLElement | null = null;
-  private elKmTotalLoss: HTMLElement | null = null;
-  private elKmDroppedSummary: HTMLElement | null = null;
-  private btnPostBounty: HTMLElement | null = null;
-  private elKmShareRow: HTMLElement | null = null;
-  private elKmShareUrl: HTMLInputElement | null = null;
-  private btnCopyKmUrl: HTMLElement | null = null;
-  private elKmCopyToast: HTMLElement | null = null;
-  private btnCloseKm: HTMLElement | null = null;
-  private selectedBountyAmount: number = 1000;
-  private activeKillmailData: any = null;
-
-  private modalClinicRescue: HTMLElement | null = null;
-  private btnClaimFrigate: HTMLElement | null = null;
-
+  // Station Tabs
   private tabBtnContracts: HTMLElement | null = null;
   private viewTabContracts: HTMLElement | null = null;
   private elContractsActiveList: HTMLElement | null = null;
@@ -409,90 +240,25 @@ class GameEngine {
   private elKillmailsCount: HTMLElement | null = null;
   private elContractsPlayerCredits: HTMLElement | null = null;
 
-  // Day 15: Persistent Ship Wrecks, Laser Mining, Elastic Towing & Salvage Bay
   private tabBtnSalvage: HTMLElement | null = null;
   private viewTabSalvage: HTMLElement | null = null;
-  private elSalvagePlayerCredits: HTMLElement | null = null;
-  private elSalvageTetherStatus: HTMLElement | null = null;
-  private elSalvageEmptyCard: HTMLElement | null = null;
-  private elSalvageWreckCard: HTMLElement | null = null;
-  private elSalvageWreckFaction: HTMLElement | null = null;
-  private elSalvageWreckTitle: HTMLElement | null = null;
-  private elSalvageWreckClass: HTMLElement | null = null;
-  private elSalvageWreckScrap: HTMLElement | null = null;
-  private elSalvageWreckIntactness: HTMLElement | null = null;
-  private elSalvageWreckVal: HTMLElement | null = null;
-  private btnDismantleWreck: HTMLElement | null = null;
-  private btnRefurbishWreck: HTMLElement | null = null;
-  private elSalvageDerelictsList: HTMLElement | null = null;
-  private elSalvageSweepCount: HTMLElement | null = null;
 
-  // Flight HUD & Tow Cable
-  private elTargetQuickActions: HTMLElement | null = null;
-  private btnHudSalvageBeam: HTMLElement | null = null;
-  private btnHudTetherWreck: HTMLElement | null = null;
-  private elTowCableHud: HTMLElement | null = null;
-  private elTowTargetName: HTMLElement | null = null;
-  private elTowDistMetric: HTMLElement | null = null;
-  private elTowTensionBadge: HTMLElement | null = null;
-  private btnHudReleaseTow: HTMLElement | null = null;
-
-  private wreckMeshes: Map<string, THREE.Group> = new Map();
-  private activeWrecks: Map<string, any> = new Map();
-  private towCableMesh: THREE.Line | null = null;
-  private salvageBeamMesh: THREE.Group | null = null;
-  private isMiningLaserActive: boolean = false;
-  private currentTowedWreckId: string | null = null;
-  private targetedWreckId: string | null = null;
-  private tetheredStationWreck: any = null;
-
-  // Day 16: Star Control II Alien Comms & Diplomacy Properties
   private tabBtnDiplomacy: HTMLElement | null = null;
   private viewTabDiplomacy: HTMLElement | null = null;
-  private elDiplomacyEnvoysList: HTMLElement | null = null;
-  private elDiplomacyEnvoysCount: HTMLElement | null = null;
   private btnHudHailTarget: HTMLElement | null = null;
 
-  private elAlienCommsModal: HTMLElement | null = null;
-  private elAlienCommsSpeakerName: HTMLElement | null = null;
-  private elAlienCommsSpeakerTitle: HTMLElement | null = null;
-  private elAlienCommsMoodBadge: HTMLElement | null = null;
-  private elAlienCommsSpeciesLabel: HTMLElement | null = null;
-  private elAlienCommsCrestIcon: HTMLElement | null = null;
-  private elAlienCommsCrestLabel: HTMLElement | null = null;
-  private elAlienCommsDialogueSpeaker: HTMLElement | null = null;
-  private elAlienCommsDialogueText: HTMLElement | null = null;
-  private elAlienCommsOptionsList: HTMLElement | null = null;
-  private elAlienPortraitCanvas: HTMLCanvasElement | null = null;
-  private elCommsWaveformCanvas: HTMLCanvasElement | null = null;
-  private elBtnCloseAlienComms: HTMLButtonElement | null = null;
-
-  private currentAlienNpcId: string | null = null;
-  private currentAlienSpecies: string = 'VAELIC';
-  private currentAlienMood: string = 'AGGRESSIVE';
-  private alienPortraitAnimId: number | null = null;
-  private commsWaveformAnimId: number | null = null;
-  private alienTypewriterTimer: any = null;
-  private isAlienSpeaking: boolean = false;
-  private alienCurrentOptions: any[] = [];
-  private alienPortraitTime: number = 0;
-
-  // Day 17: Faction Reputation Matrix & Diplomatic Ceasefire Truces
-  private elFactionDossierList: HTMLElement | null = null;
-  private elHudFactionBadge: HTMLElement | null = null;
-  private elHudFactionCrest: HTMLElement | null = null;
-  private elHudFactionName: HTMLElement | null = null;
-  private elHudFactionStandingTier: HTMLElement | null = null;
-  private elHudTruceTimerPill: HTMLElement | null = null;
-  private activeTruceExpiresAt: number | null = null;
-  private truceTimerInterval: any = null;
-  private playerStandings: any[] = [];
-
-  public isEscapePod: boolean = false;
-
-  private lastKlaxonTime: number = 0;
-  private escapePodMesh: THREE.Group | null = null;
-  private scavengerMeshes: Map<string, THREE.Group> = new Map();
+  public get activeTruceExpiresAt(): number | null {
+    return this.commsController?.activeTruceExpiresAt ?? null;
+  }
+  public set activeTruceExpiresAt(time: number | null) {
+    if (this.commsController) this.commsController.activeTruceExpiresAt = time;
+  }
+  public get truceTimerInterval(): any {
+    return this.commsController?.truceTimerInterval;
+  }
+  public set truceTimerInterval(interval: any) {
+    if (this.commsController) this.commsController.truceTimerInterval = interval;
+  }
 
   // Camera tracking vectors
   private currentLookTarget = new THREE.Vector3(0, 0, 0);
@@ -605,6 +371,9 @@ class GameEngine {
     // 14. Setup Event Listeners
     this.setupEventListeners();
 
+    // 14b. Initialize Modular Sub-System Controllers
+    this.initControllers();
+
     // 15. Start Animation & Physics Loop
     this.animate = this.animate.bind(this);
     requestAnimationFrame(this.animate);
@@ -673,8 +442,8 @@ class GameEngine {
 
     // Day 14: If docking while in an escape pod, open Clinic Rescue Modal!
     if (this.isEscapePod) {
-      if (this.modalClinicRescue) {
-        this.modalClinicRescue.classList.remove('hidden');
+      if (this.combatClient.modalClinicRescue) {
+        this.combatClient.modalClinicRescue.classList.remove('hidden');
       }
       return;
     }
@@ -884,26 +653,8 @@ class GameEngine {
     this.navFuelDisplay = document.getElementById('nav-fuel-display');
     this.hudSector = document.getElementById('hud-sector');
 
-    // Milestone 0.3 Combat Elements
-    this.elTelemetryShields = document.getElementById('val-telemetry-shields');
-    this.elTelemetryHull = document.getElementById('val-telemetry-hull');
-    this.elTelemetryEnergy = document.getElementById('val-telemetry-energy');
-    this.elTelemetryCombat = document.getElementById('val-telemetry-combat');
-    this.elTacticalReticle = document.getElementById('tactical-target-reticle');
-    this.elReticleName = document.getElementById('reticle-name');
-    this.elReticleShieldFill = document.getElementById('reticle-shield-fill');
-    this.elReticleHullFill = document.getElementById('reticle-hull-fill');
-    this.elReticleRange = document.getElementById('reticle-range');
     this.elActiveWeapon = document.getElementById('val-active-weapon');
     this.elTacticalModule = document.getElementById('val-tactical-module');
-
-    // Stacked Vitals
-    this.elVitalShieldBar = document.getElementById('vital-shield-bar');
-    this.elVitalShieldText = document.getElementById('vital-shield-text');
-    this.elVitalHullBar = document.getElementById('vital-hull-bar');
-    this.elVitalHullText = document.getElementById('vital-hull-text');
-    this.elVitalEnergyBar = document.getElementById('vital-energy-bar');
-    this.elVitalEnergyText = document.getElementById('vital-energy-text');
 
     // Ability Hotbar Slots
     this.elSlotHigh1 = document.getElementById('slot-high-1');
@@ -914,16 +665,6 @@ class GameEngine {
     this.elCdHigh2 = document.getElementById('cd-high-2');
     this.elCdMid1 = document.getElementById('cd-mid-1');
     this.elCdMid2 = document.getElementById('cd-mid-2');
-
-    // Top-Center Target Telemetry Box
-    this.elTargetTelemetryHud = document.getElementById('target-telemetry-hud');
-    this.elTargetName = document.getElementById('target-name');
-    this.elTargetFaction = document.getElementById('target-faction');
-    this.elTargetDistance = document.getElementById('target-distance');
-    this.elTargetShieldBar = document.getElementById('target-shield-bar');
-    this.elTargetShieldVal = document.getElementById('target-shield-val');
-    this.elTargetHullBar = document.getElementById('target-hull-bar');
-    this.elTargetHullVal = document.getElementById('target-hull-val');
 
     // Slot click bindings
     this.elSlotHigh1?.addEventListener('click', () => {
@@ -971,46 +712,10 @@ class GameEngine {
     this.elArmoryCatalogGrid = document.getElementById('armory-catalog-grid');
     this.elArmoryPlayerCredits = document.getElementById('armory-player-credits');
 
-    // Day 13 Targeted Canister & Loot Modal DOM Lookups
-    this.elLootPromptHud = document.getElementById('loot-prompt-hud');
-    this.elLootPromptText = document.getElementById('loot-prompt-text');
-    this.modalContainerLoot = document.getElementById('container-loot-modal');
-    this.modalLootRarity = document.getElementById('loot-modal-rarity');
-    this.modalLootTitle = document.getElementById('loot-modal-title');
-    this.elLootDistanceDisplay = document.getElementById('loot-distance-display');
-    this.elLootItemCount = document.getElementById('loot-item-count');
-    this.elLootItemsList = document.getElementById('loot-items-list');
-    this.btnCloseLoot = document.getElementById('btn-close-loot');
-    this.btnLootAll = document.getElementById('btn-loot-all');
-
-    this.btnCloseLoot?.addEventListener('click', () => this.closeContainerLootModal());
-    this.btnLootAll?.addEventListener('click', () => this.lootAllCurrentContainer());
-
     if (this.hudSector) {
       this.hudSector.classList.add('clickable');
       this.hudSector.title = 'Click to open Hyperspace Nav Computer (J)';
     }
-
-    // Day 14: Escape Pod, Killmail, Clinic & Contracts DOM Lookups
-    this.elEscapePodHud = document.getElementById('escape-pod-hud');
-    this.elPodTimerClock = document.getElementById('pod-timer-clock');
-
-    this.modalKillmail = document.getElementById('killmail-modal');
-    this.elKmTimestamp = document.getElementById('km-timestamp');
-    this.elKmLossValuation = document.getElementById('km-loss-valuation');
-    this.elKmKillerName = document.getElementById('km-killer-name');
-    this.elKmSectorName = document.getElementById('km-sector-name');
-    this.elKmTotalLoss = document.getElementById('km-total-loss');
-    this.elKmDroppedSummary = document.getElementById('km-dropped-summary');
-    this.btnPostBounty = document.getElementById('btn-post-bounty');
-    this.elKmShareRow = document.getElementById('km-share-link-row');
-    this.elKmShareUrl = document.getElementById('km-share-url') as HTMLInputElement;
-    this.btnCopyKmUrl = document.getElementById('btn-copy-km-url');
-    this.elKmCopyToast = document.getElementById('km-copy-toast');
-    this.btnCloseKm = document.getElementById('btn-close-km');
-
-    this.modalClinicRescue = document.getElementById('clinic-rescue-modal');
-    this.btnClaimFrigate = document.getElementById('btn-claim-frigate');
 
     this.tabBtnContracts = document.getElementById('tab-btn-contracts');
     this.viewTabContracts = document.getElementById('view-tab-contracts');
@@ -1019,162 +724,21 @@ class GameEngine {
     this.elKillmailsArchiveList = document.getElementById('killmails-archive-list');
     this.elKillmailsCount = document.getElementById('killmails-count');
     this.elContractsPlayerCredits = document.getElementById('contracts-player-credits');
-
     this.tabBtnContracts?.addEventListener('click', () => this.switchStationTab('contracts'));
 
-    // Day 15: Station Salvage Bay & Flight Tow Cable DOM Bindings
+    // Day 15 & 16: Station Salvage Bay & Diplomacy Station Tabs
     this.tabBtnSalvage = document.getElementById('tab-btn-salvage');
     this.viewTabSalvage = document.getElementById('view-tab-salvage');
-    this.elSalvagePlayerCredits = document.getElementById('salvage-player-credits');
-    this.elSalvageTetherStatus = document.getElementById('salvage-tether-status');
-    this.elSalvageEmptyCard = document.getElementById('salvage-empty-card');
-    this.elSalvageWreckCard = document.getElementById('salvage-wreck-card');
-    this.elSalvageWreckFaction = document.getElementById('salvage-wreck-faction');
-    this.elSalvageWreckTitle = document.getElementById('salvage-wreck-title');
-    this.elSalvageWreckClass = document.getElementById('salvage-wreck-class');
-    this.elSalvageWreckScrap = document.getElementById('salvage-wreck-scrap');
-    this.elSalvageWreckIntactness = document.getElementById('salvage-wreck-intactness');
-    this.elSalvageWreckVal = document.getElementById('salvage-wreck-val');
-    this.btnDismantleWreck = document.getElementById('btn-dismantle-wreck');
-    this.btnRefurbishWreck = document.getElementById('btn-refurbish-wreck');
-    this.elSalvageDerelictsList = document.getElementById('salvage-derelicts-list');
-    this.elSalvageSweepCount = document.getElementById('salvage-sweep-count');
-
-    this.elTargetQuickActions = document.getElementById('target-quick-actions');
-    this.btnHudSalvageBeam = document.getElementById('btn-hud-salvage-beam');
-    this.btnHudTetherWreck = document.getElementById('btn-hud-tether-wreck');
-    this.elTowCableHud = document.getElementById('tow-cable-hud');
-    this.elTowTargetName = document.getElementById('tow-target-name');
-    this.elTowDistMetric = document.getElementById('tow-dist-metric');
-    this.elTowTensionBadge = document.getElementById('tow-tension-badge');
-    this.btnHudReleaseTow = document.getElementById('btn-hud-release-tow');
-
     this.tabBtnSalvage?.addEventListener('click', () => this.switchStationTab('salvage'));
-    this.btnDismantleWreck?.addEventListener('click', () => this.dismantleTetheredWreck());
-    this.btnRefurbishWreck?.addEventListener('click', () => this.refurbishTetheredWreck());
-    this.btnHudSalvageBeam?.addEventListener('click', () => this.toggleSalvageMining());
-    this.btnHudTetherWreck?.addEventListener('click', () => this.toggleTowTether());
-    this.btnHudReleaseTow?.addEventListener('click', () => this.toggleTowTether());
 
-    // Day 16: Star Control II Alien Comms & Diplomacy DOM Bindings
     this.tabBtnDiplomacy = document.getElementById('tab-btn-diplomacy');
     this.viewTabDiplomacy = document.getElementById('view-tab-diplomacy');
-    this.elDiplomacyEnvoysList = document.getElementById('diplomacy-envoys-list');
-    this.elDiplomacyEnvoysCount = document.getElementById('diplomacy-envoys-count');
-    this.btnHudHailTarget = document.getElementById('btn-hud-hail-target');
-
-    this.elAlienCommsModal = document.getElementById('alien-comms-modal');
-    this.elAlienCommsSpeakerName = document.getElementById('comms-speaker-name');
-    this.elAlienCommsSpeakerTitle = document.getElementById('comms-speaker-title');
-    this.elAlienCommsMoodBadge = document.getElementById('comms-mood-badge');
-    this.elAlienCommsSpeciesLabel = document.getElementById('comms-species-label');
-    this.elAlienCommsCrestIcon = document.getElementById('comms-crest-icon');
-    this.elAlienCommsCrestLabel = document.getElementById('comms-crest-label');
-    this.elAlienCommsDialogueSpeaker = document.getElementById('comms-dialogue-speaker');
-    this.elAlienCommsDialogueText = document.getElementById('comms-dialogue-text');
-    this.elAlienCommsOptionsList = document.getElementById('comms-options-list');
-    this.elAlienPortraitCanvas = document.getElementById('alien-portrait-canvas') as HTMLCanvasElement;
-    this.elCommsWaveformCanvas = document.getElementById('comms-waveform-canvas') as HTMLCanvasElement;
-    this.elBtnCloseAlienComms = document.getElementById('btn-close-alien-comms') as HTMLButtonElement;
-
     this.tabBtnDiplomacy?.addEventListener('click', () => this.switchStationTab('diplomacy'));
+
+    this.btnHudHailTarget = document.getElementById('btn-hud-hail-target');
     this.btnHudHailTarget?.addEventListener('click', () => this.hailCurrentTargetOrEnvoy());
-    this.elBtnCloseAlienComms?.addEventListener('click', () => this.closeAlienComms());
 
-    // Day 17: Faction Reputation & Allegiance DOM Lookups
-    this.elFactionDossierList = document.getElementById('faction-dossier-list');
-    this.elHudFactionBadge = document.getElementById('hud-faction-badge');
-    this.elHudFactionCrest = document.getElementById('hud-faction-crest');
-    this.elHudFactionName = document.getElementById('hud-faction-name');
-    this.elHudFactionStandingTier = document.getElementById('hud-faction-standing-tier');
-    this.elHudTruceTimerPill = document.getElementById('hud-truce-timer-pill');
     this.refreshFactionStandings();
-
-    // Day 18: Star Control II Planetary Orbital Survey & CRT Console DOM Lookups
-    this.modalPlanetarySurvey = document.getElementById('planetary-survey-modal');
-    this.elOrbitalBanner = document.getElementById('hud-orbital-banner');
-    this.elOrbitalMsg = document.getElementById('orbital-msg');
-    this.elOrbitalBanner?.addEventListener('click', () => this.enterOrbit());
-    this.globeCanvas = document.getElementById('orbital-globe-canvas') as HTMLCanvasElement;
-    if (this.globeCanvas) {
-      this.globeCtx = this.globeCanvas.getContext('2d');
-    }
-
-    document.getElementById('btn-hud-orbit')?.addEventListener('click', () => this.enterOrbit());
-    document.getElementById('btn-exit-orbit')?.addEventListener('click', () => this.exitOrbit());
-    document.getElementById('btn-scan-minerals')?.addEventListener('click', () => this.performScannerSweep('MINERALS'));
-    document.getElementById('btn-scan-bio')?.addEventListener('click', () => this.performScannerSweep('BIO'));
-    document.getElementById('btn-scan-anomalies')?.addEventListener('click', () => this.performScannerSweep('ANOMALIES'));
-    document.getElementById('btn-launch-probe')?.addEventListener('click', () => this.launchAtmosphericProbe());
-
-    // Day 19: CRT Console Tabs
-    document.getElementById('tab-survey-sensors')?.addEventListener('click', () => this.switchSurveyTab('SENSORS'));
-    document.getElementById('tab-survey-colony')?.addEventListener('click', () => this.switchSurveyTab('COLONY'));
-    document.getElementById('tab-survey-precursor')?.addEventListener('click', () => this.switchSurveyTab('PRECURSOR'));
-
-    // Day 19: Colony Actions & Upgrades
-    document.getElementById('btn-found-colony')?.addEventListener('click', () => this.foundColony());
-    document.getElementById('btn-harvest-cargo')?.addEventListener('click', () => this.harvestColonyCargo());
-    document.getElementById('btn-upgrade-derrick')?.addEventListener('click', () => this.upgradeColonyFacility('DERRICK'));
-    document.getElementById('btn-upgrade-habitation')?.addEventListener('click', () => this.upgradeColonyFacility('HABITATION'));
-    document.getElementById('btn-upgrade-terraformer')?.addEventListener('click', () => this.upgradeColonyFacility('TERRAFORMER'));
-    document.getElementById('btn-upgrade-silo')?.addEventListener('click', () => this.upgradeColonyFacility('SILO'));
-
-    // Day 20: Precursor Megastructures, Surface Lander & Decryption Matrix
-    this.modalPlanetaryLander = document.getElementById('planetary-lander-modal');
-    this.landerCanvas = document.getElementById('surface-lander-canvas') as HTMLCanvasElement;
-    if (this.landerCanvas) {
-      this.landerCtx = this.landerCanvas.getContext('2d');
-    }
-
-    this.modalPrecursorTerminal = document.getElementById('precursor-terminal-modal');
-    this.waveformCanvas = document.getElementById('precursor-waveform-canvas') as HTMLCanvasElement;
-    if (this.waveformCanvas) {
-      this.waveformCtx = this.waveformCanvas.getContext('2d');
-    }
-
-    document.getElementById('btn-deploy-lander')?.addEventListener('click', () => this.openSurfaceLander());
-    document.getElementById('btn-lander-ascend')?.addEventListener('click', () => this.closeSurfaceLander());
-    document.getElementById('btn-open-precursor-terminal')?.addEventListener('click', () => {
-      if (this.landerState.dockedSite) {
-        this.openPrecursorTerminal(this.landerState.dockedSite);
-      }
-    });
-    document.getElementById('btn-close-precursor-terminal')?.addEventListener('click', () => this.closePrecursorTerminal());
-    document.getElementById('btn-precursor-decipher')?.addEventListener('click', () => this.decipherActivePrecursorSite());
-    document.getElementById('btn-remit-relic')?.addEventListener('click', () => this.remitPrecursorRelic());
-
-    // Tuning Sliders
-    const sliderFreq = document.getElementById('slider-carrier-freq') as HTMLInputElement | null;
-    const sliderPhase = document.getElementById('slider-harmonic-phase') as HTMLInputElement | null;
-    const sliderDamping = document.getElementById('slider-damping') as HTMLInputElement | null;
-
-    sliderFreq?.addEventListener('input', (e) => {
-      const val = parseInt((e.target as HTMLInputElement).value, 10);
-      this.precursorTuning.freq = val;
-      const el = document.getElementById('val-carrier-freq');
-      if (el) el.textContent = `${val} Hz`;
-      this.audio.updateResonanceCarrierDrone(this.precursorTuning.freq, this.precursorTuning.phase, this.precursorTuning.damping);
-      this.checkPrecursorAlignment();
-    });
-
-    sliderPhase?.addEventListener('input', (e) => {
-      const val = parseInt((e.target as HTMLInputElement).value, 10);
-      this.precursorTuning.phase = val;
-      const el = document.getElementById('val-harmonic-phase');
-      if (el) el.textContent = `${val}°`;
-      this.audio.updateResonanceCarrierDrone(this.precursorTuning.freq, this.precursorTuning.phase, this.precursorTuning.damping);
-      this.checkPrecursorAlignment();
-    });
-
-    sliderDamping?.addEventListener('input', (e) => {
-      const val = parseInt((e.target as HTMLInputElement).value, 10);
-      this.precursorTuning.damping = val;
-      const el = document.getElementById('val-damping');
-      if (el) el.textContent = `${val}%`;
-      this.audio.updateResonanceCarrierDrone(this.precursorTuning.freq, this.precursorTuning.phase, this.precursorTuning.damping);
-      this.checkPrecursorAlignment();
-    });
 
     // Hash routing for direct modal access / deep linking (#survey, #lander, #precursor, #terminal)
     const handleHash = () => {
@@ -1195,34 +759,6 @@ class GameEngine {
     window.addEventListener('hashchange', handleHash);
     handleHash();
     setTimeout(handleHash, 300);
-
-    this.initGlobeCanvasControls();
-
-
-    this.btnPostBounty?.addEventListener('click', () => this.postRevengeBounty());
-    this.btnCopyKmUrl?.addEventListener('click', () => {
-      if (this.elKmShareUrl) {
-        navigator.clipboard.writeText(this.elKmShareUrl.value);
-        if (this.elKmCopyToast) {
-          this.elKmCopyToast.classList.remove('hidden');
-          setTimeout(() => this.elKmCopyToast?.classList.add('hidden'), 2500);
-        }
-      }
-    });
-    this.btnCloseKm?.addEventListener('click', () => {
-      if (this.modalKillmail) this.modalKillmail.classList.add('hidden');
-    });
-    this.btnClaimFrigate?.addEventListener('click', () => this.claimReplacementFrigate());
-
-    // Bounty Chips selection
-    document.querySelectorAll('.bounty-chip').forEach(chip => {
-      chip.addEventListener('click', (ev) => {
-        document.querySelectorAll('.bounty-chip').forEach(c => c.classList.remove('active'));
-        const target = ev.currentTarget as HTMLElement;
-        target.classList.add('active');
-        this.selectedBountyAmount = parseInt(target.dataset.bounty || '1000', 10);
-      });
-    });
 
     // Shareable Contract URL detection on startup
     const urlParams = new URLSearchParams(window.location.search);
@@ -2019,6 +1555,89 @@ class GameEngine {
     this.loadSectorPlanet(sectorId);
   }
 
+  private initControllers(): void {
+    this.commsController = new CommsController({
+      audio: this.audio,
+      showApNotification: (msg: string, isErr?: boolean) => this.showApNotification(msg, !!isErr),
+      getCurrentSectorId: () => this.currentSectorId,
+      refreshPlayerHold: () => this.refreshPlayerHold(),
+    });
+
+    this.precursorTerminalController = new PrecursorTerminalController({
+      audio: this.audio,
+      showApNotification: (msg: string, isErr?: boolean) => this.showApNotification(msg, !!isErr),
+      onSiteDeciphered: async (_site: PrecursorSiteData) => {
+        if (this.colonyController && this.activePlanet) {
+          await this.colonyController.fetchPlanetPrecursorSites(this.activePlanet.data.id);
+          await this.colonyController.fetchPrecursorResearch();
+        }
+      },
+      getDockedSite: () => this.landerController?.landerState.dockedSite || null,
+      getPlanetPrecursorSites: () => this.colonyController?.planetPrecursorSites || [],
+    });
+
+    this.landerController = new LanderController({
+      audio: this.audio,
+      showApNotification: (msg, isErr) => this.showApNotification(msg, !!isErr),
+      openPrecursorTerminal: (site) => this.precursorTerminalController.openPrecursorTerminal(site),
+      getActivePlanet: () => this.activePlanet,
+      getPlanetPrecursorSites: () => this.colonyController?.planetPrecursorSites || [],
+      isInOrbit: () => this.isInOrbit,
+    });
+
+    this.colonyController = new ColonyController({
+      audio: this.audio,
+      showApNotification: (msg, isErr) => this.showApNotification(msg, !!isErr),
+      fetchPlayerAP: () => this.fetchPlayerAP(),
+      refreshPlayerHold: () => this.refreshPlayerHold(),
+      refreshFactionStandings: () => this.refreshFactionStandings(),
+      getActivePlanet: () => this.activePlanet,
+      getActivePlanetDetail: () => this.activePlanetDetail,
+      getPlayerAP: () => this.playerAP,
+    });
+
+    this.surveyController = new SurveyController({
+      audio: this.audio,
+      showApNotification: (msg, isErr) => this.showApNotification(msg, !!isErr),
+      fetchPlayerAP: () => this.fetchPlayerAP(),
+      refreshFactionStandings: () => this.refreshFactionStandings(),
+      getPlayerAP: () => this.playerAP,
+      getCurrentSectorId: () => this.currentSectorId,
+      getScene: () => this.scene,
+      getFlightController: () => this.flightController,
+      getColonyController: () => this.colonyController,
+      getCommsController: () => this.commsController,
+      getLanderController: () => this.landerController,
+      getPrecursorTerminalController: () => this.precursorTerminalController,
+    });
+
+    this.combatClient = new CombatClient({
+      audio: this.audio,
+      combatVfx: this.combatVfx,
+      playerShieldBubble: this.playerShieldBubble,
+      showApNotification: (msg, isErr) => this.showApNotification(msg, !!isErr),
+      getFlightController: () => this.flightController,
+      getScene: () => this.scene,
+      getCamera: () => this.camera,
+      getCurrentSectorId: () => this.currentSectorId,
+      setCurrentSectorId: (id) => { this.currentSectorId = id; },
+      getShipMesh: () => this.shipMesh,
+      dockShip: () => this.dockShip(),
+      refreshFactionStandings: () => this.refreshFactionStandings(),
+      startTruceCountdown: (sec) => this.startTruceCountdown(sec),
+      getTruceTimerInterval: () => this.truceTimerInterval,
+      setTruceTimerInterval: (interval) => { this.truceTimerInterval = interval; },
+      setActiveTruceExpiresAt: (time) => { this.activeTruceExpiresAt = time; },
+      getPlayerCredits: () => this.playerCredits,
+      setPlayerCredits: (cr) => {
+        this.playerCredits = cr;
+        if (this.modalMarketPlayerCredits) this.modalMarketPlayerCredits.textContent = `${this.playerCredits.toLocaleString()} Cr`;
+        if (this.elTelemetryCredits) this.elTelemetryCredits.textContent = `${this.playerCredits.toLocaleString()} Cr`;
+        if (this.elContractsPlayerCredits) this.elContractsPlayerCredits.textContent = `${this.playerCredits.toLocaleString()} Cr`;
+      },
+    });
+  }
+
   private setupEventListeners(): void {
     window.addEventListener('resize', () => {
       const width = window.innerWidth;
@@ -2156,15 +1775,16 @@ class GameEngine {
       }
 
       // Day 16: Star Control II Alien Comms Modal Key Handling
-      if (this.elAlienCommsModal && !this.elAlienCommsModal.classList.contains('hidden')) {
+      const commsModal = document.getElementById('alien-comms-modal');
+      if (commsModal && !commsModal.classList.contains('hidden')) {
         if (e.code === 'Escape') {
           this.closeAlienComms();
           return;
         }
         if (['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Numpad1', 'Numpad2', 'Numpad3', 'Numpad4', 'Numpad5'].includes(e.code)) {
           const num = parseInt(e.key, 10);
-          if (!isNaN(num) && num >= 1 && num <= this.alienCurrentOptions.length) {
-            this.selectAlienDialogOption(num - 1);
+          if (!isNaN(num) && num >= 1 && num <= (this.commsController.alienCurrentOptions?.length || 0)) {
+            this.commsController.selectAlienDialogOption(num - 1);
           }
           return;
         }
@@ -2172,7 +1792,8 @@ class GameEngine {
       }
 
       // Day 20: Star Control II Precursor Archaeological Terminal Key Handling
-      if (this.modalPrecursorTerminal && !this.modalPrecursorTerminal.classList.contains('hidden')) {
+      const precursorModal = document.getElementById('precursor-terminal-modal');
+      if (precursorModal && !precursorModal.classList.contains('hidden')) {
         if (e.code === 'Escape') {
           this.closePrecursorTerminal();
           return;
@@ -2200,11 +1821,11 @@ class GameEngine {
         }
         if (e.code === 'Space') {
           e.preventDefault();
-          this.fireSeismicRadarPing();
+          this.landerController.fireSeismicRadarPing();
           return;
         }
         if (e.code === 'KeyE') {
-          if (this.landerState.isDocked && this.landerState.dockedSite) {
+          if (this.landerState?.isDocked && this.landerState?.dockedSite) {
             this.openPrecursorTerminal(this.landerState.dockedSite);
             return;
           }
@@ -2217,7 +1838,8 @@ class GameEngine {
       }
 
       // Day 18 & 20: Star Control II Planetary Orbital Survey Key Handling
-      if (this.modalPlanetarySurvey && !this.modalPlanetarySurvey.classList.contains('hidden')) {
+      const surveyModal = document.getElementById('planetary-survey-modal');
+      if (surveyModal && !surveyModal.classList.contains('hidden')) {
         if (e.code === 'Escape' || e.code === 'KeyO') {
           this.exitOrbit();
           return;
@@ -2262,12 +1884,12 @@ class GameEngine {
       }
 
       if (e.code === 'Escape') {
-        if (this.modalPlanetarySurvey && !this.modalPlanetarySurvey.classList.contains('hidden')) {
+        if (this.surveyController.modalPlanetarySurvey && !this.surveyController.modalPlanetarySurvey.classList.contains('hidden')) {
           this.exitOrbit();
           return;
         }
-        if (this.modalContainerLoot && !this.modalContainerLoot.classList.contains('hidden')) {
-          this.closeContainerLootModal();
+        if (this.combatClient.modalContainerLoot && !this.combatClient.modalContainerLoot.classList.contains('hidden')) {
+          this.combatClient.closeContainerLootModal();
           return;
         }
         if (this.modalNav && !this.modalNav.classList.contains('hidden')) {
@@ -2288,10 +1910,10 @@ class GameEngine {
       switch (e.code) {
         case 'KeyF': {
           e.preventDefault();
-          if (this.modalContainerLoot && !this.modalContainerLoot.classList.contains('hidden')) {
-            this.lootAllCurrentContainer();
-          } else if (this.targetedContainerId) {
-            this.openContainerLootModal(this.targetedContainerId);
+          if (this.combatClient.modalContainerLoot && !this.combatClient.modalContainerLoot.classList.contains('hidden')) {
+            this.combatClient.lootAllCurrentContainer();
+          } else if (this.combatClient.targetedContainerId) {
+            this.combatClient.openContainerLootModal(this.combatClient.targetedContainerId);
           }
           break;
         }
@@ -2547,16 +2169,7 @@ class GameEngine {
   }
 
   private cycleTargetLock(): void {
-    if (this.availableDrones.length === 0) {
-      this.primaryDroneTarget = null;
-      return;
-    }
-    this.targetLockIndex = (this.targetLockIndex + 1) % this.availableDrones.length;
-    this.primaryDroneTarget = this.availableDrones[this.targetLockIndex];
-    this.audio.playUiBlip();
-    if (this.primaryDroneTarget) {
-      this.showApNotification(`🎯 TARGET LOCKED: ${this.primaryDroneTarget.name}`, false);
-    }
+    this.combatClient.cycleTargetLock();
   }
 
   /**
@@ -2659,8 +2272,8 @@ class GameEngine {
     this.playerShieldBubble.update(
       deltaSec,
       this.flightController.position,
-      this.lastPlayerShields,
-      this.lastPlayerMaxShields
+      this.combatClient.lastPlayerShields,
+      this.combatClient.lastPlayerMaxShields
     );
 
     // 5. Update Orbital Space Station or Asteroid Field
@@ -2748,14 +2361,14 @@ class GameEngine {
     }
 
     // 9. Update Tactical Target Reticle & Floating Loot Canisters (Milestone 0.3 / Day 13)
-    this.updateTacticalReticle();
-    this.updateLootCanisters(deltaSec);
+    this.combatClient.updateTacticalReticle();
+    this.combatClient.updateLootCanisters(deltaSec);
 
     // 9b. Day 15: Update Sector Derelict Wrecks, Proximity Targeting & Tow Tether
-    this.updateWrecksAndTether(deltaSec);
+    this.combatClient.updateWrecksAndTether(deltaSec);
 
     // 9c. Day 18: Update Celestial Planet & In-Flight Orbital Guidance Banner
-    this.updatePlanetaryGuidance(deltaSec);
+    this.surveyController.updatePlanetaryGuidance(deltaSec);
 
     // 10. Render
     this.renderer.render(this.scene, this.camera);
@@ -2800,779 +2413,23 @@ class GameEngine {
   // ============================================================================
 
   public initCombatWebSocket(sectorId: number): void {
-    if (this.combatSocket) {
-      try {
-        this.combatSocket.close();
-      } catch (e) {}
-      this.combatSocket = null;
-    }
-
-    // Clean up old drone meshes and projectiles
-    for (const mesh of this.droneMeshes.values()) {
-      this.scene.remove(mesh);
-      mesh.geometry.dispose();
-    }
-    this.droneMeshes.clear();
-
-    for (const pMesh of this.projectileMeshes.values()) {
-      this.scene.remove(pMesh);
-    }
-    this.projectileMeshes.clear();
-
-    const host = window.location.hostname || 'localhost';
-    const wsUrl = `ws://${host}:3000/ws/combat?playerId=acc_sol_captain&sectorId=${sectorId}`;
-
-    try {
-      this.combatSocket = new WebSocket(wsUrl);
-
-      this.combatSocket.onopen = () => {
-        console.log(`[COMBAT-WS] Connected to Sector ${sectorId} 20Hz combat room.`);
-        if (this.elTelemetryCombat) {
-          this.elTelemetryCombat.textContent = 'ONLINE // 20Hz';
-          this.elTelemetryCombat.style.color = '#38bdf8';
-        }
-      };
-
-      this.combatSocket.onmessage = (event) => {
-        try {
-          const msg = JSON.parse(event.data);
-          if (msg.type === 'TICK_SNAPSHOT') {
-            this.handleCombatSnapshot(msg);
-          } else if (msg.type === 'KILLMAIL_NOTIFICATION') {
-            this.audio.playShipExplosionSound();
-            this.openKillmailModal(msg.killmail);
-          }
-        } catch (err) {
-          console.error('[COMBAT-WS] Parse error:', err);
-        }
-      };
-
-      this.combatSocket.onclose = () => {
-        console.warn(`[COMBAT-WS] Disconnected from Sector ${sectorId}`);
-      };
-
-      this.combatSocket.onerror = (err) => {
-        console.warn('[COMBAT-WS] Socket error:', err);
-      };
-    } catch (err) {
-      console.error('[COMBAT-WS] Failed to connect:', err);
-    }
+    this.combatClient.initCombatWebSocket(sectorId);
   }
 
   public sendCombatInputs(): void {
-    if (this.combatSocket && this.combatSocket.readyState === WebSocket.OPEN) {
-      const inputs = { ...this.combatInputs };
-      if (this.isEscapePod) {
-        inputs.firePrimary = false;
-        inputs.fireTactical = false;
-      }
-      this.combatSocket.send(
-        JSON.stringify({
-          type: 'INPUT',
-          inputs,
-        })
-      );
-    }
+    this.combatClient.sendCombatInputs();
   }
 
-  private handleCombatSnapshot(snapshot: any): void {
-    // 1. Player Telemetry & Stacked Vitals Update
-    const playerEntity = snapshot.entities.find((e: any) => e.type === 'PLAYER');
-    if (playerEntity) {
-      this.lastPlayerShields = playerEntity.shields;
-      this.lastPlayerMaxShields = playerEntity.maxShields;
-
-      if (this.elTelemetryShields) {
-        this.elTelemetryShields.textContent = `${playerEntity.shields} / ${playerEntity.maxShields}`;
-      }
-      if (this.elTelemetryHull) {
-        this.elTelemetryHull.textContent = `${playerEntity.hp} / ${playerEntity.maxHp}`;
-        this.elTelemetryHull.style.color = playerEntity.hp < 30 ? '#ef4444' : '#10b981';
-      }
-      if (this.elTelemetryEnergy) {
-        this.elTelemetryEnergy.textContent = `${Math.round(playerEntity.energy)} / ${playerEntity.maxEnergy}`;
-      }
-
-      // Update MMORPG Stacked Vitals
-      if (this.elVitalShieldBar) {
-        const sPct = Math.max(0, Math.min(100, (playerEntity.shields / playerEntity.maxShields) * 100));
-        this.elVitalShieldBar.style.width = `${sPct}%`;
-      }
-      if (this.elVitalShieldText) {
-        this.elVitalShieldText.textContent = `${playerEntity.shields} / ${playerEntity.maxShields}`;
-      }
-      if (this.elVitalHullBar) {
-        const hPct = Math.max(0, Math.min(100, (playerEntity.hp / playerEntity.maxHp) * 100));
-        this.elVitalHullBar.style.width = `${hPct}%`;
-        this.elVitalHullBar.style.background = playerEntity.hp < 30 ? '#ef4444' : 'linear-gradient(90deg, #059669, #10b981)';
-      }
-      if (this.elVitalHullText) {
-        this.elVitalHullText.textContent = `${playerEntity.hp} / ${playerEntity.maxHp}`;
-      }
-      if (this.elVitalEnergyBar) {
-        const ePct = Math.max(0, Math.min(100, (playerEntity.energy / playerEntity.maxEnergy) * 100));
-        this.elVitalEnergyBar.style.width = `${ePct}%`;
-      }
-      if (this.elVitalEnergyText) {
-        this.elVitalEnergyText.textContent = `${Math.round(playerEntity.energy)} / ${playerEntity.maxEnergy}`;
-      }
-
-      // Hotbar energy cost states
-      if (this.elSlotHigh1) {
-        if (playerEntity.energy < 8) this.elSlotHigh1.classList.add('insufficient-energy');
-        else this.elSlotHigh1.classList.remove('insufficient-energy');
-      }
-      if (this.elSlotHigh2) {
-        if (playerEntity.energy < 22) this.elSlotHigh2.classList.add('insufficient-energy');
-        else this.elSlotHigh2.classList.remove('insufficient-energy');
-      }
-      if (this.elSlotMid1) {
-        if (playerEntity.energy < 10) this.elSlotMid1.classList.add('insufficient-energy');
-        else this.elSlotMid1.classList.remove('insufficient-energy');
-      }
-      if (this.elSlotMid2) {
-        if (playerEntity.energy < 18) this.elSlotMid2.classList.add('insufficient-energy');
-        else this.elSlotMid2.classList.remove('insufficient-energy');
-      }
-
-      // Day 14: Check Escape Pod state
-      const wasEscapePod = this.isEscapePod;
-      this.isEscapePod = !!playerEntity.isEscapePod || playerEntity.hullClass === 'ESCAPE_POD';
-
-      if (this.isEscapePod) {
-        if (!wasEscapePod) {
-          this.audio.playShipExplosionSound();
-          if (this.shipMesh) this.shipMesh.visible = false;
-          if (!this.escapePodMesh) {
-            this.escapePodMesh = this.createEscapePodMesh();
-            this.scene.add(this.escapePodMesh);
-          }
-          this.escapePodMesh.visible = true;
-        }
-
-        // Keep escape pod mesh positioned at ship position
-        if (this.escapePodMesh) {
-          this.escapePodMesh.position.copy(this.flightController.position);
-          this.escapePodMesh.rotation.y = this.flightController.yaw;
-        }
-
-        // Show Escape Pod HUD & timer
-        if (this.elEscapePodHud) {
-          this.elEscapePodHud.classList.remove('hidden');
-          const sec = typeof playerEntity.lifeSupportSeconds === 'number' ? playerEntity.lifeSupportSeconds : 300;
-          const mins = Math.floor(sec / 60);
-          const remSec = Math.floor(sec % 60);
-          if (this.elPodTimerClock) {
-            this.elPodTimerClock.textContent = `${mins.toString().padStart(2, '0')}:${remSec.toString().padStart(2, '0')}`;
-          }
-
-          if (sec <= 60) {
-            this.elEscapePodHud.classList.add('critical');
-            const now = Date.now();
-            if (now - this.lastKlaxonTime > 3000) {
-              this.lastKlaxonTime = now;
-              this.audio.playKlaxonSound();
-            }
-          } else {
-            this.elEscapePodHud.classList.remove('critical');
-          }
-        }
-      } else {
-        if (wasEscapePod) {
-          if (this.escapePodMesh) this.escapePodMesh.visible = false;
-          if (this.shipMesh) this.shipMesh.visible = true;
-          if (this.elEscapePodHud) this.elEscapePodHud.classList.add('hidden');
-        }
-      }
-    }
-
-    // 2. Drone Mesh & Forcefield Shield Bubble Synchronization
-    const drones = snapshot.entities.filter((e: any) => e.type === 'DRONE' && e.state !== 'DESTROYED');
-    const droneIds = new Set(drones.map((d: any) => d.id));
-    this.availableDrones = drones;
-
-    // Remove defunct meshes & shield bubbles
-    for (const [id, mesh] of this.droneMeshes.entries()) {
-      if (!droneIds.has(id)) {
-        this.scene.remove(mesh);
-        mesh.geometry.dispose();
-        this.droneMeshes.delete(id);
-      }
-    }
-    for (const [id, sb] of this.droneShieldBubbles.entries()) {
-      if (!droneIds.has(id)) {
-        this.scene.remove(sb.mesh);
-        sb.dispose();
-        this.droneShieldBubbles.delete(id);
-      }
-    }
-
-    // Update or spawn drones
-    let nearestDrone: any = null;
-    let minDroneDist = Infinity;
-
-    for (const drone of drones) {
-      let mesh = this.droneMeshes.get(drone.id);
-      if (!mesh) {
-        const droneStyle = FACTION_STYLES.FACTION_VAELIC;
-        const res = ProceduralHullGenerator.generate({
-          seed: drone.hullSeed || 98765,
-          faction: droneStyle,
-        });
-
-        const mat = new THREE.MeshStandardMaterial({
-          color: droneStyle.palette.primary,
-          roughness: 0.35,
-          metalness: 0.85,
-          flatShading: true,
-          emissive: droneStyle.palette.engineGlow,
-          emissiveIntensity: 0.4,
-        });
-
-        mesh = new THREE.Mesh(res.geometry, mat);
-        mesh.scale.set(0.9, 0.9, 0.9);
-        this.scene.add(mesh);
-        this.droneMeshes.set(drone.id, mesh);
-      }
-
-      // Smooth position lerp
-      mesh.position.x = mesh.position.x + (drone.x - mesh.position.x) * 0.45;
-      mesh.position.z = mesh.position.z + (drone.z - mesh.position.z) * 0.45;
-      mesh.rotation.y = drone.yaw;
-
-      // Update 3D Forcefield Shield Bubble for this drone
-      let sb = this.droneShieldBubbles.get(drone.id);
-      if (!sb) {
-        sb = new ShieldBubble(4.2, true);
-        this.scene.add(sb.mesh);
-        this.droneShieldBubbles.set(drone.id, sb);
-      }
-      sb.update(0.05, mesh.position, drone.shields, drone.maxShields);
-
-      const pPos = this.flightController.position;
-      const dist = Math.sqrt((drone.x - pPos.x) ** 2 + (drone.z - pPos.z) ** 2);
-      if (dist < minDroneDist) {
-        minDroneDist = dist;
-        nearestDrone = drone;
-      }
-    }
-
-    // Set targeted drone
-    if (drones.length > 0) {
-      if (this.targetLockIndex >= drones.length) this.targetLockIndex = 0;
-      this.primaryDroneTarget = drones[this.targetLockIndex] || nearestDrone;
-    } else {
-      this.primaryDroneTarget = null;
-    }
-
-    // 2b. Scavenger Vessel Synchronization (Day 14)
-    const scavengers = snapshot.entities.filter((e: any) => e.type === 'SCAVENGER' && e.state !== 'DESTROYED');
-    const scavengerIds = new Set(scavengers.map((s: any) => s.id));
-
-    for (const [id, mesh] of this.scavengerMeshes.entries()) {
-      if (!scavengerIds.has(id)) {
-        this.scene.remove(mesh);
-        mesh.traverse((c) => {
-          if ((c as THREE.Mesh).geometry) (c as THREE.Mesh).geometry.dispose();
-        });
-        this.scavengerMeshes.delete(id);
-      }
-    }
-
-    for (const scav of scavengers) {
-      let mesh = this.scavengerMeshes.get(scav.id);
-      if (!mesh) {
-        mesh = this.createScavengerMesh();
-        this.scene.add(mesh);
-        this.scavengerMeshes.set(scav.id, mesh);
-      }
-
-      mesh.position.x = mesh.position.x + (scav.x - mesh.position.x) * 0.45;
-      mesh.position.z = mesh.position.z + (scav.z - mesh.position.z) * 0.45;
-      mesh.rotation.y = scav.yaw;
-    }
-
-    if (this.elTelemetryCombat) {
-      if (drones.length > 0) {
-        this.elTelemetryCombat.textContent = `ALERT: ${drones.length} HOSTILE`;
-        this.elTelemetryCombat.style.color = '#ef4444';
-      } else {
-        this.elTelemetryCombat.textContent = 'CLEAR // 20Hz';
-        this.elTelemetryCombat.style.color = '#38bdf8';
-      }
-    }
-
-    // 3. Projectile Mesh Synchronization with Ballistic Profiles
-    const activeProjIds = new Set(snapshot.projectiles.map((p: any) => p.id));
-    for (const [id, pMesh] of this.projectileMeshes.entries()) {
-      if (!activeProjIds.has(id)) {
-        this.scene.remove(pMesh);
-        this.projectileMeshes.delete(id);
-      }
-    }
-
-    for (const proj of snapshot.projectiles) {
-      let pMesh = this.projectileMeshes.get(proj.id);
-      if (!pMesh) {
-        if (proj.projType === 'PLASMA') {
-          pMesh = new THREE.Mesh(this.projectileSphereGeom, this.projectileMatEmerald);
-        } else if (proj.projType === 'FLAK') {
-          pMesh = new THREE.Mesh(this.projectileFlakGeom, this.projectileMatAmber);
-        } else {
-          // PULSE
-          pMesh = new THREE.Mesh(
-            this.projectileGeom,
-            proj.color === '#ff2a5f' ? this.projectileMatRed : this.projectileMatCyan
-          );
-        }
-        this.scene.add(pMesh);
-        this.projectileMeshes.set(proj.id, pMesh);
-      }
-
-      pMesh.position.set(proj.x, 0.4, proj.z);
-
-      // Orient cylinder along velocity vector
-      const angle = Math.atan2(proj.vx, proj.vz);
-      pMesh.rotation.y = angle;
-      pMesh.rotation.x = Math.PI / 2;
-    }
-
-    // 3b. Floating Loot Container Canister Synchronization (Day 13)
-    const containers = snapshot.containers || [];
-    const activeContainerIds = new Set(containers.map((c: any) => c.id));
-    this.activeLootContainers.clear();
-    for (const c of containers) {
-      this.activeLootContainers.set(c.id, c);
-    }
-
-    for (const [id, cGroup] of this.containerMeshes.entries()) {
-      if (!activeContainerIds.has(id)) {
-        this.scene.remove(cGroup);
-        cGroup.traverse((child) => {
-          if ((child as THREE.Mesh).geometry) (child as THREE.Mesh).geometry.dispose();
-        });
-        this.containerMeshes.delete(id);
-      }
-    }
-
-    for (const c of containers) {
-      let cGroup = this.containerMeshes.get(c.id);
-      if (!cGroup) {
-        cGroup = this.createCanisterMesh(c.rarity);
-        cGroup.position.set(c.x, 0.5, c.z);
-        this.scene.add(cGroup);
-        this.containerMeshes.set(c.id, cGroup);
-      }
-      cGroup.position.x = c.x;
-      cGroup.position.z = c.z;
-    }
-
-    // 3.5 Day 15: Sync Persistent 3D Sector Wrecks
-    const wrecks = snapshot.wrecks || [];
-    const activeWreckIds = new Set<string>();
-    this.activeWrecks.clear();
-
-    for (const w of wrecks) {
-      activeWreckIds.add(w.id);
-      this.activeWrecks.set(w.id, w);
-    }
-
-    for (const [id, wGroup] of this.wreckMeshes.entries()) {
-      if (!activeWreckIds.has(id)) {
-        this.scene.remove(wGroup);
-        wGroup.traverse((child) => {
-          if ((child as THREE.Mesh).geometry) (child as THREE.Mesh).geometry.dispose();
-        });
-        this.wreckMeshes.delete(id);
-      }
-    }
-
-    for (const w of wrecks) {
-      let wGroup = this.wreckMeshes.get(w.id);
-      if (!wGroup) {
-        wGroup = this.createWreckMesh(w);
-        wGroup.position.set(w.x, 0.0, w.z);
-        wGroup.rotation.y = w.rotation || 0;
-        this.scene.add(wGroup);
-        this.wreckMeshes.set(w.id, wGroup);
-      }
-      wGroup.position.x = w.x;
-      wGroup.position.z = w.z;
-      wGroup.rotation.y = w.rotation || 0;
-    }
-
-    // Tow Cable Check
-    if (playerEntity && playerEntity.towedWreckId) {
-      this.currentTowedWreckId = playerEntity.towedWreckId;
-      const towedWreck = this.activeWrecks.get(playerEntity.towedWreckId);
-      if (towedWreck) {
-        const pPos = new THREE.Vector3(playerEntity.x, 0, playerEntity.z);
-        const wPos = new THREE.Vector3(towedWreck.x, 0, towedWreck.z);
-        const dist = pPos.distanceTo(wPos);
-        this.updateTowCable(pPos, wPos, dist);
-
-        if (this.elTowCableHud) {
-          this.elTowCableHud.classList.remove('hidden');
-          if (this.elTowTargetName) this.elTowTargetName.textContent = towedWreck.shipName;
-          if (this.elTowDistMetric) this.elTowDistMetric.textContent = `${dist.toFixed(1)} u`;
-          if (this.elTowTensionBadge) {
-            const isStrain = dist > 18.0;
-            this.elTowTensionBadge.className = `tow-status-badge ${isStrain ? 'tension-strain' : 'tension-nominal'}`;
-            this.elTowTensionBadge.textContent = isStrain ? 'TENSION: HIGH STRAIN' : 'TENSION: NOMINAL';
-          }
-        }
-      }
-    } else {
-      this.currentTowedWreckId = null;
-      if (this.towCableMesh) this.towCableMesh.visible = false;
-      if (this.elTowCableHud) this.elTowCableHud.classList.add('hidden');
-    }
-
-    // Laser Salvage Beam Check
-    if (playerEntity && playerEntity.isMiningWreckId) {
-      const miningWreck = this.activeWrecks.get(playerEntity.isMiningWreckId);
-      if (miningWreck) {
-        const pPos = new THREE.Vector3(playerEntity.x, 0.4, playerEntity.z);
-        const wPos = new THREE.Vector3(miningWreck.x, 0.4, miningWreck.z);
-        this.updateSalvageBeam(pPos, wPos);
-        this.audio.playMiningLaserSound();
-      }
-    } else {
-      this.hideSalvageBeam();
-    }
-
-    // 4. Process Combat Events (VFX, Audio & Alerts)
-    if (snapshot.events && snapshot.events.length > 0) {
-      for (const ev of snapshot.events) {
-        if (ev.type === 'HIT') {
-          const impactPos = new THREE.Vector3(ev.x, 0, ev.z);
-          if (ev.hitShield) {
-            this.combatVfx.emitShieldSparks(impactPos);
-            if (playerEntity && ev.targetId === playerEntity.id) {
-              this.playerShieldBubble.triggerImpact(false);
-            } else if (this.droneShieldBubbles.has(ev.targetId)) {
-              this.droneShieldBubbles.get(ev.targetId)!.triggerImpact(true);
-            }
-            this.audio.playShieldDeflection();
-          } else {
-            this.combatVfx.emitHullBreachSparks(impactPos);
-            this.audio.playShieldDeflection();
-          }
-        } else if (ev.type === 'SHIELD_BREAK') {
-          const breakPos = new THREE.Vector3(ev.x, 0, ev.z);
-          this.combatVfx.emitShieldBreakBurst(breakPos);
-          this.audio.playShieldBreakSound();
-          if (playerEntity && ev.targetId === playerEntity.id) {
-            this.showApNotification('⚡ SHIELD COLLAPSE // VULNERABLE TO HULL DAMAGE', true);
-          }
-        } else if (ev.type === 'DESTROYED') {
-          const expPos = new THREE.Vector3(ev.x, 0, ev.z);
-          this.combatVfx.emitExplosionDebris(expPos);
-          this.audio.playExplosion();
-          this.showApNotification('💥 HOSTILE TARGET DESTROYED!', false);
-        } else if (ev.type === 'POD_EJECTED') {
-          const podPos = new THREE.Vector3(ev.x, 0, ev.z);
-          this.combatVfx.emitExplosionDebris(podPos);
-          this.audio.playExplosion();
-          this.showApNotification('🚨 CRITICAL HULL BREACH // EJECTED IN ESCAPE POD', true);
-        } else if (ev.type === 'LOOT_SPAWNED') {
-          this.showApNotification(`📦 SALVAGE CANISTER DETECTED // ${ev.data?.title || 'CARGO'}`, false);
-        } else if (ev.type === 'LOOT_COLLECTED') {
-          if (ev.data?.playerId === 'commander-1') {
-            this.showApNotification(`📦 CARGO SECURED // TRANSFERRED TO SHIP LOCKER`, false);
-          }
-        } else if (ev.type === 'CONTAINER_SCOOPED') {
-          this.showApNotification(`📦 ${ev.data?.scavengerName || 'Scavenger'} scooped ${ev.data?.title || 'Canister'}!`, false);
-        } else if (ev.type === 'LIFE_SUPPORT_EXHAUSTED') {
-          this.showApNotification('⚠️ LIFE SUPPORT EXHAUSTED: Initiating emergency clone recall!', true);
-          this.handleEmergencyRecall();
-        } else if (ev.type === 'WRECK_SPAWNED') {
-          this.showApNotification(`🛰️ DERELICT WRECK FORMED // ${ev.data?.shipName || 'WRECK'}`, false);
-        } else if (ev.type === 'TOW_ATTACHED') {
-          this.audio.playTowCableAttachSound();
-          this.showApNotification(`🪝 MAGNETIC TOW TETHER ATTACHED // ${ev.data?.wreckName || 'DERELICT'}`, false);
-        } else if (ev.type === 'TOW_RELEASED') {
-          this.audio.playTowCableReleaseSound();
-          this.showApNotification('🪝 MAGNETIC TOW TETHER RELEASED', false);
-        } else if (ev.type === 'SALVAGE_BEAM_TICK') {
-          this.showApNotification(`⚡ EXTRACTED ${ev.data?.extracted || 10}x SCRAP ALLOY`, false);
-        } else if (ev.type === 'WRECK_DISINTEGRATED') {
-          this.showApNotification('💨 DERELICT DISINTEGRATED // REPOSITORIES EXHAUSTED', false);
-        } else if (ev.type === 'TRUCE_DECLARED') {
-          this.startTruceCountdown(Math.floor((ev.data?.durationMs || 300000) / 1000));
-          this.showApNotification('🕊️ CEASEFIRE TRUCE CONFIRMED // PATROLS DISARMED', false);
-          this.refreshFactionStandings();
-        } else if (ev.type === 'TRUCE_BROKEN') {
-          if (this.truceTimerInterval) clearInterval(this.truceTimerInterval);
-          this.activeTruceExpiresAt = null;
-          if (this.elHudTruceTimerPill) this.elHudTruceTimerPill.classList.add('hidden');
-          this.showApNotification('⚠️ CEASEFIRE VIOLATED! Hostile patrols engaging!', true);
-          this.audio.playApWarningSound();
-          this.refreshFactionStandings();
-        } else if (ev.type === 'DESTROYED') {
-          this.refreshFactionStandings();
-        }
-      }
-    }
-  }
-
-
-  private updateTacticalReticle(): void {
-    if (!this.primaryDroneTarget) {
-      if (this.elTacticalReticle) this.elTacticalReticle.classList.add('hidden');
-      if (this.elTargetTelemetryHud) this.elTargetTelemetryHud.classList.add('hidden');
-      return;
-    }
-
-    const targetPos = new THREE.Vector3(this.primaryDroneTarget.x, 0, this.primaryDroneTarget.z);
-    const pPos = this.flightController.position;
-    const dist = pPos.distanceTo(targetPos);
-
-    if (dist > 180) {
-      if (this.elTacticalReticle) this.elTacticalReticle.classList.add('hidden');
-      if (this.elTargetTelemetryHud) this.elTargetTelemetryHud.classList.add('hidden');
-      return;
-    }
-
-    // 1. Update Top-Center Target Telemetry Box (MMO Style)
-    if (this.elTargetTelemetryHud) {
-      this.elTargetTelemetryHud.classList.remove('hidden');
-      if (this.elTargetName) {
-        this.elTargetName.textContent = this.primaryDroneTarget.name.toUpperCase();
-      }
-      if (this.elTargetFaction) {
-        const truceSuffix = (this.primaryDroneTarget as any).state === 'TRUCE' ? ' [🕊️ TRUCE]' : '';
-        this.elTargetFaction.textContent = (this.primaryDroneTarget.faction || 'HEGEMONY') + truceSuffix;
-      }
-
-      if (this.elTargetDistance) {
-        this.elTargetDistance.textContent = `${dist.toFixed(1)} u`;
-      }
-      const shieldPct = Math.max(0, Math.min(100, (this.primaryDroneTarget.shields / this.primaryDroneTarget.maxShields) * 100));
-      const hullPct = Math.max(0, Math.min(100, (this.primaryDroneTarget.hp / this.primaryDroneTarget.maxHp) * 100));
-
-      if (this.elTargetShieldBar) {
-        this.elTargetShieldBar.style.width = `${shieldPct}%`;
-      }
-      if (this.elTargetShieldVal) {
-        this.elTargetShieldVal.textContent = `${this.primaryDroneTarget.shields}/${this.primaryDroneTarget.maxShields}`;
-      }
-      if (this.elTargetHullBar) {
-        this.elTargetHullBar.style.width = `${hullPct}%`;
-      }
-      if (this.elTargetHullVal) {
-        this.elTargetHullVal.textContent = `${this.primaryDroneTarget.hp}/${this.primaryDroneTarget.maxHp}`;
-      }
-    }
-
-    // 2. Project 3D target coordinates to 2D screen coordinates for 3D Reticle
-    if (!this.elTacticalReticle) return;
-
-    const screenCoord = targetPos.clone().project(this.camera);
-
-    // Behind camera check
-    if (screenCoord.z > 1.0) {
-      this.elTacticalReticle.classList.add('hidden');
-      return;
-    }
-
-    const x = (screenCoord.x * 0.5 + 0.5) * window.innerWidth;
-    const y = (-(screenCoord.y * 0.5) + 0.5) * window.innerHeight;
-
-    this.elTacticalReticle.style.left = `${Math.round(x)}px`;
-    this.elTacticalReticle.style.top = `${Math.round(y)}px`;
-    this.elTacticalReticle.classList.remove('hidden');
-
-    if (this.elReticleName) {
-      const isTruce = (this.primaryDroneTarget as any).state === 'TRUCE';
-      this.elReticleName.textContent = this.primaryDroneTarget.name.toUpperCase() + (isTruce ? ' [🕊️ TRUCE]' : '');
-    }
-
-    if (this.elReticleRange) {
-      this.elReticleRange.textContent = `RANGE: ${dist.toFixed(1)}u`;
-    }
-    const shieldPct = Math.max(0, Math.min(100, (this.primaryDroneTarget.shields / this.primaryDroneTarget.maxShields) * 100));
-    const hullPct = Math.max(0, Math.min(100, (this.primaryDroneTarget.hp / this.primaryDroneTarget.maxHp) * 100));
-
-    if (this.elReticleShieldFill) {
-      this.elReticleShieldFill.style.width = `${shieldPct}%`;
-    }
-    if (this.elReticleHullFill) {
-      this.elReticleHullFill.style.width = `${hullPct}%`;
-    }
-  }
-
-  /**
-   * Day 13: Procedural 3D Hexagonal Floating Canister Mesh
-   */
-  private createCanisterMesh(rarity: string): THREE.Group {
-    const group = new THREE.Group();
-    const rarityColors: Record<string, number> = {
-      COMMON: 0x94a3b8,
-      UNCOMMON: 0x22c55e,
-      RARE: 0x38bdf8,
-      EPIC: 0xa855f7,
-      LEGENDARY: 0xf59e0b,
-    };
-    const glowColor = rarityColors[rarity] || 0x38bdf8;
-
-    // Outer hexagonal body
-    const bodyGeom = new THREE.CylinderGeometry(1.1, 1.1, 2.4, 6);
-    const bodyMat = new THREE.MeshStandardMaterial({
-      color: 0x1e293b,
-      metalness: 0.85,
-      roughness: 0.35,
-    });
-    const body = new THREE.Mesh(bodyGeom, bodyMat);
-    group.add(body);
-
-    // Glowing energy bands (top, center, bottom)
-    const ringGeom = new THREE.TorusGeometry(1.15, 0.08, 8, 16);
-    const ringMat = new THREE.MeshBasicMaterial({ color: glowColor });
-    [-0.7, 0, 0.7].forEach((y) => {
-      const ring = new THREE.Mesh(ringGeom, ringMat);
-      ring.rotation.x = Math.PI / 2;
-      ring.position.y = y;
-      group.add(ring);
-    });
-
-    // Pulsing point light
-    const light = new THREE.PointLight(glowColor, 1.2, 12);
-    group.add(light);
-    return group;
-  }
-
-  /**
-   * Day 13: Updates rotating canister animations and nearest loot canister detection
-   */
-  private updateLootCanisters(deltaSec: number): void {
-    // 1. Rotate meshes
-    for (const cGroup of this.containerMeshes.values()) {
-      cGroup.rotation.y += deltaSec * 1.2;
-    }
-
-    // 2. Find closest canister within 25u
-    const pPos = this.flightController.position;
-    let nearestContainer: any = null;
-    let minContainerDist = Infinity;
-
-    for (const c of this.activeLootContainers.values()) {
-      const dist = Math.hypot(c.x - pPos.x, c.z - pPos.z);
-      if (dist < minContainerDist) {
-        minContainerDist = dist;
-        nearestContainer = c;
-      }
-    }
-
-    if (nearestContainer && minContainerDist <= 25.0) {
-      this.targetedContainerId = nearestContainer.id;
-      if (this.elLootPromptHud && this.elLootPromptText) {
-        this.elLootPromptHud.classList.remove('hidden');
-        this.elLootPromptText.textContent = `PRESS [F] TO SECURE ${nearestContainer.rarity} CARGO (${minContainerDist.toFixed(1)}u)`;
-      }
-      if (this.elLootDistanceDisplay && this.activeLootModalContainer?.id === nearestContainer.id) {
-        this.elLootDistanceDisplay.textContent = `RANGE: ${minContainerDist.toFixed(1)}u`;
-      }
-    } else {
-      this.targetedContainerId = null;
-      if (this.elLootPromptHud) {
-        this.elLootPromptHud.classList.add('hidden');
-      }
-      if (this.modalContainerLoot && !this.modalContainerLoot.classList.contains('hidden') && minContainerDist > 30.0) {
-        this.closeContainerLootModal();
-      }
-    }
-  }
-
-  /**
-   * Day 13: Opens EVE-style container loot manifest modal
-   */
   public openContainerLootModal(containerId: string): void {
-    const container = this.activeLootContainers.get(containerId);
-    if (!container) return;
-    this.activeLootModalContainer = container;
-
-    if (this.modalLootRarity) {
-      this.modalLootRarity.textContent = `${container.rarity} RECOVERY`;
-      this.modalLootRarity.className = `dock-badge loot-rarity-badge rarity-${container.rarity.toLowerCase()}`;
-    }
-    if (this.modalLootTitle) {
-      this.modalLootTitle.textContent = container.title;
-    }
-    if (this.elLootDistanceDisplay) {
-      const pPos = this.flightController.position;
-      const dist = Math.hypot(container.x - pPos.x, container.z - pPos.z);
-      this.elLootDistanceDisplay.textContent = `RANGE: ${dist.toFixed(1)}u`;
-    }
-    if (this.elLootItemCount) {
-      this.elLootItemCount.textContent = `${container.items.length} ITEMS SECURED`;
-    }
-
-    if (this.elLootItemsList) {
-      this.elLootItemsList.innerHTML = '';
-      container.items.forEach((item: any) => {
-        const itemCard = document.createElement('div');
-        const rarity = item.rarity ? item.rarity.toLowerCase() : 'common';
-        itemCard.className = `loot-item-card rarity-${rarity}`;
-
-        const mfgHtml = item.manufacturer ? `<span class="mfg-badge">${item.manufacturer}</span>` : '';
-        const specsHtml = item.category === 'COMMODITY'
-          ? `Qty: ${item.quantity || 1} • Unit Value: ${item.unitValue || 0} Cr`
-          : `⚡ ${item.energyCost || 0} MW • 🧠 ${item.cpuCost || 0} tf`;
-
-        let affixesHtml = '';
-        if (item.affixes && item.affixes.length > 0) {
-          affixesHtml = `<div class="loot-item-stat-row">${item.affixes.map((a: any) => a.description).join(' • ')}</div>`;
-        }
-
-        itemCard.innerHTML = `
-          <div class="loot-item-info">
-            <div class="loot-item-title-row">
-              <span class="rarity-pill rarity-${rarity}">${item.rarity || 'COMMODITY'}</span>
-              <span>${item.customName || item.name}</span>
-              ${mfgHtml}
-            </div>
-            <span class="slot-item-sub">${specsHtml}</span>
-            ${affixesHtml}
-          </div>
-        `;
-        this.elLootItemsList!.appendChild(itemCard);
-      });
-    }
-
-    if (this.modalContainerLoot) {
-      this.modalContainerLoot.classList.remove('hidden');
-    }
-    this.audio.playUiBlip();
+    this.combatClient.openContainerLootModal(containerId);
   }
 
-  /**
-   * Day 13: Closes container loot modal
-   */
   public closeContainerLootModal(): void {
-    if (this.modalContainerLoot) {
-      this.modalContainerLoot.classList.add('hidden');
-    }
-    this.activeLootModalContainer = null;
+    this.combatClient.closeContainerLootModal();
   }
 
-  /**
-   * Day 13: Sends LOOT_CONTAINER request to authoritative server
-   */
   public lootAllCurrentContainer(): void {
-    if (!this.activeLootModalContainer) return;
-    const cid = this.activeLootModalContainer.id;
-
-    if (this.combatSocket && this.combatSocket.readyState === WebSocket.OPEN) {
-      this.combatSocket.send(JSON.stringify({
-        type: 'LOOT_CONTAINER',
-        containerId: cid,
-      }));
-    }
-
-    this.audio.playLootPickupSound();
-    this.showApNotification('📦 CARGO SECURED // TRANSFERRED TO SHIP LOCKER', false);
-    this.closeContainerLootModal();
+    this.combatClient.lootAllCurrentContainer();
   }
 
   /**
@@ -4111,3906 +2968,284 @@ class GameEngine {
     }
   }
 
-  /**
-   * Day 14: Opens EVE-style loss report / killmail modal
-   */
+  // ============================================================================
+  // DAY 14 & 15: KILLMAIL, SALVAGE MINING & TOW CABLE
+  // ============================================================================
+
   public openKillmailModal(km: any): void {
-    this.activeKillmailData = km;
-    if (this.elKmTimestamp) this.elKmTimestamp.textContent = `TIMESTAMP: ${new Date(km.createdAt).toLocaleTimeString()} // SECTOR 0${km.sectorId}`;
-    if (this.elKmLossValuation) this.elKmLossValuation.textContent = `LOSS: ${km.lossValuation.toLocaleString()} CR`;
-    if (this.elKmKillerName) this.elKmKillerName.textContent = km.killerName;
-    if (this.elKmSectorName) this.elKmSectorName.textContent = `Sector 0${km.sectorId} // Deep Hazard Void`;
-    if (this.elKmTotalLoss) this.elKmTotalLoss.textContent = `${km.lossValuation.toLocaleString()} Credits`;
-    if (this.elKmDroppedSummary) {
-      const dropped = km.droppedItems || [];
-      this.elKmDroppedSummary.textContent = dropped.map((d: any) => `${d.quantity || 1}x ${d.name}`).join(', ') || 'No salvage recovered';
-    }
-
-    if (this.elKmShareRow) this.elKmShareRow.classList.add('hidden');
-    if (this.modalKillmail) this.modalKillmail.classList.remove('hidden');
+    this.combatClient.openKillmailModal(km);
   }
 
-  /**
-   * Day 14: Posts a revenge bounty on the killer
-   */
   public async postRevengeBounty(): Promise<void> {
-    if (!this.activeKillmailData) return;
-    try {
-      const res = await fetch('/api/combat/contracts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          creatorAccountId: 'acc_sol_captain',
-          targetName: this.activeKillmailData.killerName,
-          targetEntityId: this.activeKillmailData.killerId,
-          rewardCredits: this.selectedBountyAmount,
-          isPublic: true,
-        }),
-      });
-
-      if (!res.ok) {
-        const err = await res.json();
-        this.showApNotification(`⚠️ Bounty failed: ${err.error}`, true);
-        this.audio.playApWarningSound();
-        return;
-      }
-
-      const data = await res.json();
-      const contract = data.contract;
-      const shareUrl = `${window.location.origin}/?contract=${contract.id}`;
-
-      if (this.elKmShareUrl) this.elKmShareUrl.value = shareUrl;
-      if (this.elKmShareRow) this.elKmShareRow.classList.remove('hidden');
-      this.showApNotification(`💀 Revenge bounty posted for ${this.selectedBountyAmount.toLocaleString()} CR!`, false);
-      this.audio.playUiBlip();
-
-      // Refresh credits
-      this.playerCredits = Math.max(0, this.playerCredits - this.selectedBountyAmount);
-      if (this.modalMarketPlayerCredits) this.modalMarketPlayerCredits.textContent = `${this.playerCredits.toLocaleString()} Cr`;
-      if (this.elTelemetryCredits) this.elTelemetryCredits.textContent = `${this.playerCredits.toLocaleString()} Cr`;
-      if (this.elContractsPlayerCredits) this.elContractsPlayerCredits.textContent = `${this.playerCredits.toLocaleString()} Cr`;
-    } catch (err: any) {
-      this.showApNotification(`⚠️ Bounty error: ${err.message}`, true);
-    }
+    await this.combatClient.postRevengeBounty();
   }
 
-  /**
-   * Day 14: Reissues standard Sol Cutter frigate upon docking escape pod at station clinic
-   */
   public async claimReplacementFrigate(): Promise<void> {
-    try {
-      const res = await fetch('/api/combat/claim-frigate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ playerId: 'acc_sol_captain', sectorId: this.currentSectorId }),
-      });
-
-      if (res.ok) {
-        this.audio.playFrigateReissueSound();
-        this.showApNotification('🚀 Sol Cutter Frigate reissued by Aegis Naval Command!', false);
-
-        // Reset escape pod state
-        this.isEscapePod = false;
-        if (this.elEscapePodHud) this.elEscapePodHud.classList.add('hidden');
-        if (this.modalClinicRescue) this.modalClinicRescue.classList.add('hidden');
-
-        // Swap 3D mesh back to frigate
-        if (this.escapePodMesh) {
-          this.scene.remove(this.escapePodMesh);
-          this.escapePodMesh = null;
-        }
-        if (this.shipMesh) {
-          this.shipMesh.visible = true;
-        }
-
-        // Reset vitals
-        this.lastPlayerShields = 100;
-        this.lastPlayerMaxShields = 100;
-
-        // Open regular station dock modal
-        this.isDocked = false;
-        this.dockShip();
-      }
-    } catch (err) {
-      console.error('[Clinic] Error claiming replacement frigate:', err);
-    }
+    await this.combatClient.claimReplacementFrigate();
   }
 
-  /**
-   * Day 14: Handles emergency clone recall when life support expires
-   */
   public async handleEmergencyRecall(): Promise<void> {
-    try {
-      const res = await fetch('/api/combat/emergency-recall', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ playerId: 'acc_sol_captain' }),
-      });
-
-      if (res.ok) {
-        this.showApNotification('🏥 Clone emergency recall complete! 500 CR deductible deducted.', true);
-        this.isEscapePod = false;
-        if (this.elEscapePodHud) this.elEscapePodHud.classList.add('hidden');
-
-        if (this.escapePodMesh) {
-          this.scene.remove(this.escapePodMesh);
-          this.escapePodMesh = null;
-        }
-        if (this.shipMesh) {
-          this.shipMesh.visible = true;
-        }
-
-        this.currentSectorId = 1;
-        this.initCombatWebSocket(1);
-        this.dockShip();
-      }
-    } catch (err) {
-      console.error('[Recall] Error handling emergency recall:', err);
-    }
-  }
-
-  // ============================================================================
-  // DAY 15: PERSISTENT SHIP WRECKS, LASER SCRAP MINING & ELASTIC TOWING
-  // ============================================================================
-
-  /**
-   * Creates 3D Charred Ship Wreckage mesh
-   */
-  public createWreckMesh(wreck: any): THREE.Group {
-    const group = new THREE.Group();
-
-    // Fractured main hull section (charred metallic)
-    const hullGeom = new THREE.DodecahedronGeometry(2.8, 1);
-    const hullMat = new THREE.MeshStandardMaterial({
-      color: 0x1c1917, // Stone/Charcoal
-      metalness: 0.85,
-      roughness: 0.6,
-      flatShading: true,
-    });
-    const hull = new THREE.Mesh(hullGeom, hullMat);
-    hull.scale.set(1.4, 0.7, 2.2);
-    group.add(hull);
-
-    // Twisted exposed structural bulkheads / ribbing
-    const ribsGeom = new THREE.TorusGeometry(2.0, 0.22, 6, 8, Math.PI * 1.3);
-    const ribsMat = new THREE.MeshStandardMaterial({
-      color: 0x44403c,
-      metalness: 0.9,
-      roughness: 0.4,
-    });
-    const ribs1 = new THREE.Mesh(ribsGeom, ribsMat);
-    ribs1.rotation.y = Math.PI / 3;
-    ribs1.position.set(-0.8, 0.4, -0.6);
-    group.add(ribs1);
-
-    const ribs2 = new THREE.Mesh(ribsGeom, ribsMat);
-    ribs2.rotation.y = -Math.PI / 4;
-    ribs2.position.set(0.6, -0.3, 0.8);
-    group.add(ribs2);
-
-    // Glowing molten magma breach seam
-    const breachGeom = new THREE.CylinderGeometry(0.3, 0.6, 2.4, 6);
-    const breachMat = new THREE.MeshStandardMaterial({
-      color: 0xea580c,
-      emissive: 0xf97316,
-      emissiveIntensity: 0.9,
-      roughness: 0.2,
-    });
-    const breach = new THREE.Mesh(breachGeom, breachMat);
-    breach.rotation.z = Math.PI / 3;
-    breach.position.set(0.2, 0.6, 0.2);
-    group.add(breach);
-
-    // Ember spark point light
-    const sparkLight = new THREE.PointLight(0xf97316, 1.5, 20);
-    sparkLight.position.set(0.2, 1.0, 0.2);
-    group.add(sparkLight);
-
-    // Drifting debris shard
-    const shardGeom = new THREE.BoxGeometry(0.8, 0.3, 1.4);
-    const shard = new THREE.Mesh(shardGeom, hullMat);
-    shard.position.set(2.4, -0.8, 1.2);
-    shard.rotation.set(0.4, 0.8, 0.2);
-    group.add(shard);
-
-    group.userData = { wreckId: wreck.id, scrapRemaining: wreck.scrapRemaining, maxScrap: wreck.maxScrap };
-    return group;
-  }
-
-  /**
-   * Updates the dynamic 3D Elastic Tow Cable tether
-   */
-  private updateTowCable(shipPos: THREE.Vector3, wreckPos: THREE.Vector3, dist: number): void {
-    const points: THREE.Vector3[] = [];
-    const segments = 12;
-
-    const sag = Math.max(0.2, (dist / 12.0) * 0.8);
-    const midPoint = new THREE.Vector3()
-      .addVectors(shipPos, wreckPos)
-      .multiplyScalar(0.5);
-    midPoint.y -= sag;
-
-    const curve = new THREE.QuadraticBezierCurve3(shipPos, midPoint, wreckPos);
-    for (let i = 0; i <= segments; i++) {
-      points.push(curve.getPoint(i / segments));
-    }
-
-    if (!this.towCableMesh) {
-      const geom = new THREE.BufferGeometry().setFromPoints(points);
-      const mat = new THREE.LineBasicMaterial({
-        color: 0x06b6d4, // Cyan magnetic glow
-        linewidth: 3,
-      });
-      this.towCableMesh = new THREE.Line(geom, mat);
-      this.scene.add(this.towCableMesh);
-    } else {
-      this.towCableMesh.geometry.setFromPoints(points);
-      const isStrain = dist > 18.0;
-      (this.towCableMesh.material as THREE.LineBasicMaterial).color.setHex(isStrain ? 0xf59e0b : 0x06b6d4);
-    }
-
-    this.towCableMesh.visible = true;
-  }
-
-  /**
-   * Updates the laser salvage beam VFX between player and target wreck
-   */
-  private updateSalvageBeam(shipPos: THREE.Vector3, wreckPos: THREE.Vector3): void {
-    if (!this.salvageBeamMesh) {
-      this.salvageBeamMesh = new THREE.Group();
-
-      const beamGeom = new THREE.CylinderGeometry(0.12, 0.12, 1, 8);
-      const beamMat = new THREE.MeshBasicMaterial({
-        color: 0xfbbf24,
-        transparent: true,
-        opacity: 0.85,
-      });
-      const beam = new THREE.Mesh(beamGeom, beamMat);
-      beam.name = 'core';
-      this.salvageBeamMesh.add(beam);
-
-      const sparkGeom = new THREE.SphereGeometry(0.4, 8, 8);
-      const sparkMat = new THREE.MeshBasicMaterial({
-        color: 0xffedd5,
-        wireframe: true,
-      });
-      const spark = new THREE.Mesh(sparkGeom, sparkMat);
-      spark.name = 'spark';
-      this.salvageBeamMesh.add(spark);
-
-      this.scene.add(this.salvageBeamMesh);
-    }
-
-    this.salvageBeamMesh.visible = true;
-
-    const dir = new THREE.Vector3().subVectors(wreckPos, shipPos);
-    const length = dir.length();
-    const midPoint = new THREE.Vector3().addVectors(shipPos, wreckPos).multiplyScalar(0.5);
-
-    const beam = this.salvageBeamMesh.getObjectByName('core') as THREE.Mesh;
-    if (beam) {
-      beam.scale.set(1, length, 1);
-      beam.position.copy(midPoint);
-      beam.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize());
-    }
-
-    const spark = this.salvageBeamMesh.getObjectByName('spark') as THREE.Mesh;
-    if (spark) {
-      spark.position.copy(wreckPos);
-      spark.rotation.y += 0.2;
-    }
-  }
-
-  private hideSalvageBeam(): void {
-    if (this.salvageBeamMesh) {
-      this.salvageBeamMesh.visible = false;
-    }
-  }
-
-  /**
-   * Evaluates proximity to nearby persistent wrecks and manages HUD tether / mining prompts
-   */
-  private updateWrecksAndTether(_deltaSec: number): void {
-    const pPos = this.flightController.position;
-    let nearestWreck: any = null;
-    let minWreckDist = Infinity;
-
-    for (const wreck of this.activeWrecks.values()) {
-      const wPos = new THREE.Vector3(wreck.x, 0, wreck.z);
-      const dist = pPos.distanceTo(wPos);
-      if (dist < minWreckDist) {
-        minWreckDist = dist;
-        nearestWreck = wreck;
-      }
-    }
-
-    if (nearestWreck && minWreckDist <= 35.0) {
-      this.targetedWreckId = nearestWreck.id;
-
-      // If no hostile drone is targeted, or wreck is very close, display wreck telemetry box
-      if (!this.primaryDroneTarget || minWreckDist <= 25.0) {
-        if (this.elTargetTelemetryHud) {
-          this.elTargetTelemetryHud.classList.remove('hidden');
-          if (this.elTargetName) this.elTargetName.textContent = nearestWreck.shipName.toUpperCase();
-          if (this.elTargetFaction) this.elTargetFaction.textContent = 'DERELICT // WRECKAGE';
-          if (this.elTargetDistance) this.elTargetDistance.textContent = `${minWreckDist.toFixed(1)} u`;
-
-          if (this.elTargetShieldBar) this.elTargetShieldBar.style.width = '0%';
-          if (this.elTargetShieldVal) this.elTargetShieldVal.textContent = '0/0';
-
-          const intactPct = Math.round(nearestWreck.hullIntactness * 100);
-          if (this.elTargetHullBar) this.elTargetHullBar.style.width = `${intactPct}%`;
-          if (this.elTargetHullVal) {
-            this.elTargetHullVal.textContent = `${nearestWreck.scrapRemaining}/${nearestWreck.maxScrap} ALLOY`;
-          }
-        }
-
-        // Show target quick actions (Salvage Beam & Tow Tether)
-        if (this.elTargetQuickActions) {
-          this.elTargetQuickActions.classList.remove('hidden');
-
-          if (this.btnHudTetherWreck) {
-            const isTowed = this.currentTowedWreckId === nearestWreck.id;
-            this.btnHudTetherWreck.textContent = isTowed ? '🪝 RELEASE TETHER [T]' : '🪝 TETHER WRECK [T]';
-          }
-
-          if (this.btnHudSalvageBeam) {
-            this.btnHudSalvageBeam.textContent = this.isMiningLaserActive ? '⚡ STOP BEAM [E]' : '⚡ SALVAGE BEAM [E]';
-          }
-        }
-      }
-    } else {
-      this.targetedWreckId = null;
-      if (!this.primaryDroneTarget && this.elTargetTelemetryHud) {
-        this.elTargetTelemetryHud.classList.add('hidden');
-      }
-      if (this.elTargetQuickActions) {
-        this.elTargetQuickActions.classList.add('hidden');
-      }
-    }
+    await this.combatClient.handleEmergencyRecall();
   }
 
   public toggleTowTether(): void {
-    if (this.currentTowedWreckId) {
-      if (this.combatSocket && this.combatSocket.readyState === WebSocket.OPEN) {
-        this.combatSocket.send(JSON.stringify({ type: 'RELEASE_TOW' }));
-      }
-      this.currentTowedWreckId = null;
-      if (this.towCableMesh) this.towCableMesh.visible = false;
-      if (this.elTowCableHud) this.elTowCableHud.classList.add('hidden');
-      this.audio.playTowCableReleaseSound();
-      this.showApNotification('🪝 MAGNETIC TOW TETHER RELEASED', false);
-    } else if (this.targetedWreckId) {
-      if (this.combatSocket && this.combatSocket.readyState === WebSocket.OPEN) {
-        this.combatSocket.send(JSON.stringify({ type: 'ATTACH_TOW', wreckId: this.targetedWreckId }));
-      }
-      this.currentTowedWreckId = this.targetedWreckId;
-      this.audio.playTowCableAttachSound();
-      this.showApNotification('🪝 ATTACHING MAGNETIC TOW TETHER...', false);
-    } else {
-      this.showApNotification('⚠️ NO WRECK TARGETED TO TETHER', true);
-    }
+    this.combatClient.toggleTowTether();
   }
 
   public toggleSalvageMining(): void {
-    if (this.isMiningLaserActive) {
-      this.stopSalvageMining();
-    } else if (this.targetedWreckId) {
-      this.startSalvageMining();
-    } else {
-      this.showApNotification('⚠️ NO WRECK TARGETED FOR SALVAGE BEAM', true);
-    }
+    this.combatClient.toggleSalvageMining();
   }
 
   public startSalvageMining(): void {
-    if (!this.targetedWreckId) return;
-    this.isMiningLaserActive = true;
-    if (this.combatSocket && this.combatSocket.readyState === WebSocket.OPEN) {
-      this.combatSocket.send(JSON.stringify({ type: 'START_SALVAGE_BEAM', wreckId: this.targetedWreckId }));
-    }
-    this.audio.playMiningLaserSound();
-    this.showApNotification('⚡ SALVAGE MINING BEAM ENGAGED', false);
+    this.combatClient.startSalvageMining();
   }
 
   public stopSalvageMining(): void {
-    this.isMiningLaserActive = false;
-    this.hideSalvageBeam();
-    if (this.combatSocket && this.combatSocket.readyState === WebSocket.OPEN) {
-      this.combatSocket.send(JSON.stringify({ type: 'STOP_SALVAGE_BEAM' }));
-    }
+    this.combatClient.stopSalvageMining();
   }
 
   public async loadSalvageData(): Promise<void> {
-    try {
-      const holdRes = await fetch('/api/player/hold?playerId=acc_sol_captain');
-      if (holdRes.ok) {
-        const holdData = await holdRes.json();
-        if (this.elSalvagePlayerCredits) {
-          this.elSalvagePlayerCredits.textContent = `${(holdData.credits || 0).toLocaleString()} Cr`;
-        }
-      }
-
-      const wreckRes = await fetch('/api/combat/wrecks?sectorId=2');
-      if (wreckRes.ok) {
-        const data = await wreckRes.json();
-        const wrecks = data.wrecks || [];
-        if (this.elSalvageSweepCount) {
-          this.elSalvageSweepCount.textContent = `${wrecks.length} DERELICTS DETECTED`;
-        }
-
-        if (this.elSalvageDerelictsList) {
-          this.elSalvageDerelictsList.innerHTML = '';
-          wrecks.forEach((w: any) => {
-            const item = document.createElement('div');
-            item.className = 'derelict-card-item';
-            item.innerHTML = `
-              <div class="derelict-card-info">
-                <span class="derelict-card-title">${w.shipName}</span>
-                <span class="derelict-card-sub">${w.shipClass} // ${w.faction} [Sector ${w.sectorId}]</span>
-              </div>
-              <div class="derelict-card-scrap">
-                ${w.scrapRemaining} / ${w.maxScrap} ALLOY (${Math.round(w.hullIntactness * 100)}%)
-              </div>
-            `;
-            this.elSalvageDerelictsList?.appendChild(item);
-          });
-        }
-
-        const towed = wrecks.find((w: any) => w.isTowed && w.towedByAccountId === 'acc_sol_captain') || 
-                      (this.currentTowedWreckId ? wrecks.find((w: any) => w.id === this.currentTowedWreckId) : null);
-
-        if (towed) {
-          if (this.elSalvageEmptyCard) this.elSalvageEmptyCard.classList.add('hidden');
-          if (this.elSalvageWreckCard) this.elSalvageWreckCard.classList.remove('hidden');
-          if (this.elSalvageTetherStatus) {
-            this.elSalvageTetherStatus.textContent = 'DERELICT SECURED IN DOCK';
-            this.elSalvageTetherStatus.style.color = '#34d399';
-          }
-          if (this.elSalvageWreckFaction) this.elSalvageWreckFaction.textContent = towed.faction.toUpperCase();
-          if (this.elSalvageWreckTitle) this.elSalvageWreckTitle.textContent = towed.shipName;
-          if (this.elSalvageWreckClass) this.elSalvageWreckClass.textContent = towed.shipClass;
-          if (this.elSalvageWreckScrap) this.elSalvageWreckScrap.textContent = `${towed.scrapRemaining} / ${towed.maxScrap} Units`;
-          if (this.elSalvageWreckIntactness) this.elSalvageWreckIntactness.textContent = `${Math.round(towed.hullIntactness * 100)}%`;
-          const estValue = Math.round(2000 + towed.scrapRemaining * 12 + towed.hullIntactness * 1500);
-          if (this.elSalvageWreckVal) this.elSalvageWreckVal.textContent = `${estValue.toLocaleString()} Cr`;
-
-          this.tetheredStationWreck = towed;
-        } else {
-          if (this.elSalvageEmptyCard) this.elSalvageEmptyCard.classList.remove('hidden');
-          if (this.elSalvageWreckCard) this.elSalvageWreckCard.classList.add('hidden');
-          if (this.elSalvageTetherStatus) {
-            this.elSalvageTetherStatus.textContent = 'NO TOW ATTACHED';
-            this.elSalvageTetherStatus.style.color = '#94a3b8';
-          }
-          this.tetheredStationWreck = null;
-        }
-      }
-    } catch (err) {
-      console.error('Failed to load salvage data:', err);
-    }
+    await this.combatClient.loadSalvageData();
   }
 
   public async dismantleTetheredWreck(): Promise<void> {
-    if (!this.tetheredStationWreck) return;
-    const wreckId = this.tetheredStationWreck.id;
-
-    try {
-      const res = await fetch('/api/combat/wrecks/dismantle', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ wreckId, accountId: 'acc_sol_captain' }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        this.audio.playSalvageDismantleSound();
-        this.showApNotification(`🔨 ${data.message}`, false);
-        this.currentTowedWreckId = null;
-        this.loadSalvageData();
-      } else {
-        this.showApNotification(`⚠️ ${data.error || 'Dismantle failed'}`, true);
-      }
-    } catch (err: any) {
-      this.showApNotification(`⚠️ Dismantle error: ${err.message}`, true);
-    }
+    await this.combatClient.dismantleTetheredWreck();
   }
 
   public async refurbishTetheredWreck(): Promise<void> {
-    if (!this.tetheredStationWreck) return;
-    const wreckId = this.tetheredStationWreck.id;
-
-    try {
-      const res = await fetch('/api/combat/wrecks/refurbish', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ wreckId, accountId: 'acc_sol_captain' }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        this.audio.playHullRefurbishSound();
-        this.showApNotification(`🛡️ ${data.message}`, false);
-        this.currentTowedWreckId = null;
-        this.loadSalvageData();
-      } else {
-        this.showApNotification(`⚠️ ${data.error || 'Refurbish failed'}`, true);
-      }
-    } catch (err: any) {
-      this.showApNotification(`⚠️ Refurbish error: ${err.message}`, true);
-    }
+    await this.combatClient.refurbishTetheredWreck();
   }
 
   // ========================================================================
-  // Day 16: Star Control II Alien Comms, Branching Dialog & Speech Synthesis
+  // Day 16 & 17: Star Control II Alien Comms, Branching Dialog & Diplomacy
   // ========================================================================
 
   public async loadDiplomacyData(): Promise<void> {
-    this.renderFactionDossier();
-    if (!this.elDiplomacyEnvoysList) return;
-    try {
-      const res = await fetch('/api/dialog/npcs');
-      if (!res.ok) return;
-      const data = await res.json();
-      const npcs = data.npcs || [];
-
-
-      if (this.elDiplomacyEnvoysCount) {
-        this.elDiplomacyEnvoysCount.textContent = `${npcs.length} CHANNELS ONLINE`;
-      }
-
-      this.elDiplomacyEnvoysList.innerHTML = npcs.map((npc: any) => {
-        let icon = '🦅';
-        let faction = 'Vaelic Hegemony';
-        let desc = 'Sovereign decree enforcement, sector tithes, and military ultimatum negotiations.';
-        if (npc.species === 'PHORID') {
-          icon = '🍄';
-          faction = 'Phorid Sporeborn';
-          desc = 'Harmonic spore consciousness, ancient planetary lore, and organic biocatalysts.';
-        } else if (npc.species === 'KRYLL') {
-          icon = '🐀';
-          faction = 'Kryll Free Cartel';
-          desc = 'Black-market scavenged surplus, raw alloy trading, and underworld convoy rumors.';
-        }
-
-        return `
-          <div class="envoy-card">
-            <div class="envoy-card-left">
-              <div class="envoy-avatar-circle">${icon}</div>
-              <div class="envoy-info">
-                <span class="envoy-name">${npc.speakerName}</span>
-                <span class="envoy-title">${npc.title} // ${faction.toUpperCase()}</span>
-                <span style="font-size: 0.7rem; color: #94a3b8; margin-top: 2px;">${desc}</span>
-              </div>
-            </div>
-            <button class="envoy-open-btn" data-npc="${npc.npcId}">OPEN SUB-SPACE LINK 📡</button>
-          </div>
-        `;
-      }).join('');
-
-      this.elDiplomacyEnvoysList.querySelectorAll('.envoy-open-btn').forEach((btn) => {
-        btn.addEventListener('click', (e) => {
-          const npcId = (e.currentTarget as HTMLElement).getAttribute('data-npc');
-          if (npcId) this.openAlienComms(npcId);
-        });
-      });
-    } catch (err) {
-      console.error('[Diplomacy] Failed to load envoys:', err);
-    }
-  }
-
-  public hailCurrentTargetOrEnvoy(): void {
-    const targetName = document.getElementById('reticle-name')?.textContent || '';
-    if (targetName.includes('INTERDICTOR') || targetName.includes('HEGEMONY') || targetName.includes('DRONE')) {
-      this.openAlienComms('npc_vorash');
-    } else if (targetName.includes('SCAVENGER') || targetName.includes('VULTURE') || targetName.includes('KRYLL')) {
-      this.openAlienComms('npc_skrit');
-    } else if (this.currentSectorId === 2) {
-      this.openAlienComms('npc_vorash');
-    } else {
-      this.openAlienComms('npc_skrit');
-    }
-  }
-
-  public async openAlienComms(npcId: string): Promise<void> {
-    this.currentAlienNpcId = npcId;
-    if (this.elAlienCommsModal) {
-      this.elAlienCommsModal.classList.remove('hidden');
-    }
-    this.audio.playCommsHailingChime();
-
-    try {
-      const res = await fetch(`/api/dialog/${npcId}?accountId=acc_sol_captain`);
-      if (!res.ok) return;
-      const data = await res.json();
-      const dialog = data.dialog;
-      if (!dialog) return;
-
-      this.renderAlienDialogNode(dialog);
-    } catch (err) {
-      console.error('[Alien Comms] Error fetching dialog node:', err);
-    }
-  }
-
-  public renderAlienDialogNode(dialog: any): void {
-    this.currentAlienSpecies = dialog.species || 'VAELIC';
-    this.currentAlienMood = dialog.mood || 'NEUTRAL';
-    this.alienCurrentOptions = dialog.options || [];
-
-    if (this.elAlienCommsSpeakerName) this.elAlienCommsSpeakerName.textContent = dialog.speakerName;
-    if (this.elAlienCommsSpeakerTitle) this.elAlienCommsSpeakerTitle.textContent = dialog.title;
-    if (this.elAlienCommsSpeciesLabel) this.elAlienCommsSpeciesLabel.textContent = dialog.species;
-    if (this.elAlienCommsDialogueSpeaker) this.elAlienCommsDialogueSpeaker.textContent = `${dialog.speakerName.toUpperCase()} SPEAKS:`;
-
-    if (this.elAlienCommsMoodBadge) {
-      this.elAlienCommsMoodBadge.textContent = `MOOD: ${dialog.mood}`;
-      this.elAlienCommsMoodBadge.className = `comms-mood-badge mood-${dialog.mood.toLowerCase()}`;
-    }
-
-    if (this.elAlienCommsCrestIcon && this.elAlienCommsCrestLabel) {
-      if (dialog.species === 'VAELIC') {
-        this.elAlienCommsCrestIcon.textContent = '🦅';
-        this.elAlienCommsCrestLabel.textContent = 'VAELIC HEGEMONY';
-      } else if (dialog.species === 'PHORID') {
-        this.elAlienCommsCrestIcon.textContent = '🍄';
-        this.elAlienCommsCrestLabel.textContent = 'PHORID SPOREBORN';
-      } else if (dialog.species === 'KRYLL') {
-        this.elAlienCommsCrestIcon.textContent = '🐀';
-        this.elAlienCommsCrestLabel.textContent = 'KRYLL FREE CARTEL';
-      } else {
-        this.elAlienCommsCrestIcon.textContent = '🚀';
-        this.elAlienCommsCrestLabel.textContent = 'SOL ALLIANCE';
-      }
-    }
-
-    // Start portrait animation loop if not running
-    if (!this.alienPortraitAnimId) {
-      this.startAlienPortraitLoop();
-    }
-    // Start waveform animation loop if not running
-    if (!this.commsWaveformAnimId) {
-      this.startCommsWaveformLoop();
-    }
-
-    // Render dialogue text with typewriter effect
-    this.startDialogueTypewriter(dialog.dialogueText, dialog.species);
-
-    // Populate response options
-    if (this.elAlienCommsOptionsList) {
-      this.elAlienCommsOptionsList.innerHTML = dialog.options.map((opt: any, idx: number) => {
-        return `
-          <button class="comms-option-btn" data-index="${idx}">
-            <span class="option-num-badge">[${idx + 1}]</span>
-            <span class="option-text">${opt.text}</span>
-          </button>
-        `;
-      }).join('');
-
-      this.elAlienCommsOptionsList.querySelectorAll('.comms-option-btn').forEach((btn) => {
-        btn.addEventListener('click', (e) => {
-          const idx = parseInt((e.currentTarget as HTMLElement).getAttribute('data-index') || '0', 10);
-          this.selectAlienDialogOption(idx);
-        });
-      });
-    }
-  }
-
-  public startDialogueTypewriter(text: string, species: string): void {
-    if (this.alienTypewriterTimer) {
-      clearInterval(this.alienTypewriterTimer);
-      this.alienTypewriterTimer = null;
-    }
-
-    if (!this.elAlienCommsDialogueText) return;
-    this.elAlienCommsDialogueText.textContent = '';
-    this.isAlienSpeaking = true;
-
-    let charIdx = 0;
-    const speed = 25; // ms per char
-
-    this.alienTypewriterTimer = setInterval(() => {
-      if (charIdx < text.length) {
-        const char = text[charIdx];
-        this.elAlienCommsDialogueText!.textContent += char;
-        this.audio.playAlienPhoneme(species, char);
-        charIdx++;
-      } else {
-        clearInterval(this.alienTypewriterTimer);
-        this.alienTypewriterTimer = null;
-        this.isAlienSpeaking = false;
-      }
-    }, speed);
-  }
-
-  public async selectAlienDialogOption(optionIndex: number): Promise<void> {
-    if (!this.currentAlienNpcId) return;
-
-    this.audio.playUiBlip();
-    try {
-      const res = await fetch('/api/dialog/respond', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          accountId: 'acc_sol_captain',
-          npcId: this.currentAlienNpcId,
-          optionIndex,
-        }),
-      });
-
-      if (!res.ok) return;
-      const data = await res.json();
-
-      if (data.actionMessage) {
-        this.showApNotification(data.actionMessage, false);
-        this.refreshPlayerHold();
-        if (data.actionMessage.includes('ceasefire') || data.actionMessage.includes('disarmed') || data.actionMessage.includes('Seal')) {
-          this.startTruceCountdown(300);
-        }
-        this.refreshFactionStandings();
-      }
-
-      if (data.nextNode) {
-        this.renderAlienDialogNode(data.nextNode);
-      }
-    } catch (err) {
-      console.error('[Alien Comms] Error selecting option:', err);
-    }
-  }
-
-  // ========================================================================
-  // Day 17: Faction Reputation Matrix & Truce Helpers
-  // ========================================================================
-
-  public async refreshFactionStandings(): Promise<void> {
-    try {
-      const res = await fetch('/api/reputation/standings?accountId=acc_sol_captain');
-      if (!res.ok) return;
-      const data = await res.json();
-      this.playerStandings = data.standings || [];
-      this.renderFactionDossier();
-      this.updateHudSectorAllegiance();
-    } catch (err) {
-      console.warn('[REPUTATION] Failed to fetch standings:', err);
-    }
+    await this.commsController.loadDiplomacyData();
   }
 
   public renderFactionDossier(): void {
-    if (!this.elFactionDossierList) return;
-    if (!this.playerStandings || this.playerStandings.length === 0) {
-      this.elFactionDossierList.innerHTML = `
-        <div class="market-loading-hint">Loading Cluster Diplomatic Standings...</div>
-      `;
-      return;
-    }
+    this.commsController.renderFactionDossier();
+  }
 
-    this.elFactionDossierList.innerHTML = this.playerStandings.map((f: any) => {
-      const score = Math.max(-100, Math.min(100, f.standing || 0));
-      const isPos = score >= 0;
-      const widthPct = Math.round(Math.abs(score) / 2); // 0 to 50%
-      const leftPos = isPos ? 50 : 50 - widthPct;
+  public async openAlienComms(npcId: string): Promise<void> {
+    await this.commsController.openAlienComms(npcId);
+  }
 
-      const tierClass = `tier-${(f.tier || 'neutral').toLowerCase()}`;
-      const sign = score > 0 ? `+${score}` : `${score}`;
+  public closeAlienComms(): void {
+    this.commsController.closeAlienComms();
+  }
 
-      let tariffText = '';
-      if (f.discountPercent > 0) {
-        tariffText = `<span style="color: #10b981;">-${f.discountPercent}% Market & Outfitting Discount</span>`;
-      } else if (f.surchargePercent > 0) {
-        tariffText = `<span style="color: #ef4444;">+${f.surchargePercent}% Hostile Tariff Surcharge</span>`;
-      } else {
-        tariffText = `<span style="color: #94a3b8;">Standard Cluster Rates</span>`;
-      }
-
-      const dockingPill = f.isDockingPermitted
-        ? `<span class="faction-docking-status permitted">✓ DOCKING PERMITTED</span>`
-        : `<span class="faction-docking-status lockdown">⚠️ SHIELDS ACTIVE (LOCKDOWN)</span>`;
-
-      return `
-        <div class="faction-card" data-faction="${f.factionId}">
-          <div class="faction-card-header">
-            <div class="faction-card-left">
-              <span class="faction-card-crest">${f.crestIcon}</span>
-              <div class="faction-card-title-group">
-                <span class="faction-card-name">${f.name}</span>
-                <span class="faction-card-score">STANDING: <strong style="color: ${f.primaryColor}">${sign} / 100</strong></span>
-              </div>
-            </div>
-            <span class="standing-tier-pill ${tierClass}">${f.tier} (${sign})</span>
-          </div>
-
-          <div class="faction-meter-wrapper">
-            <div class="faction-meter-track">
-              <div class="faction-meter-center-line"></div>
-              <div class="faction-meter-fill ${isPos ? 'positive' : 'negative'}" style="left: ${leftPos}%; width: ${widthPct}%;"></div>
-            </div>
-          </div>
-
-          <div class="faction-perks-row">
-            <span class="faction-perk-text">${tariffText}</span>
-            ${dockingPill}
-          </div>
-          <div style="font-size: 0.65rem; color: #64748b; line-height: 1.3;">${f.perkDesc}</div>
-        </div>
-      `;
-    }).join('');
+  public openDiplomacyStandingsModal(): void {
+    this.commsController.openFactionStandingsModal();
   }
 
   public updateHudSectorAllegiance(): void {
-    if (!this.elHudFactionBadge || !this.elHudFactionName || !this.elHudFactionCrest || !this.elHudFactionStandingTier) return;
+    this.commsController.updateHudSectorAllegiance();
+  }
 
-    let factionId = 'FACTION_SOL';
-    let factionName = 'SOL-PERIMETER ALLIANCE';
-    let crest = '🚀';
+  public get playerStandings(): any[] {
+    return this.commsController?.playerStandings || [];
+  }
 
-    if (this.currentSectorId === 2) {
-      factionId = 'FACTION_HEGEMONY';
-      factionName = 'VAELIC HEGEMONY (OCCUPIED)';
-      crest = '🦅';
-    } else if (this.currentSectorId === 3) {
-      factionId = 'FACTION_HEGEMONY';
-      factionName = 'LITHOS FORGE CLUSTER';
-      crest = '🦾';
-    } else if (this.currentSectorId === 4) {
-      factionId = 'FACTION_PHORID';
-      factionName = 'PHORID SPORE BIOSPHERE';
-      crest = '🍄';
-    } else if (this.currentSectorId === 5) {
-      factionId = 'FACTION_KRYLL';
-      factionName = 'KRYLL SCRAP EXCHANGE';
-      crest = '🐀';
-    }
+  public get isEscapePod(): boolean {
+    return this.combatClient?.isEscapePod || false;
+  }
 
-    const standingObj = this.playerStandings.find((s: any) => s.factionId === factionId);
-    const score = standingObj ? standingObj.standing : 0;
-    const tier = standingObj ? standingObj.tier : 'NEUTRAL';
-    const sign = score > 0 ? `+${score}` : `${score}`;
-
-    this.elHudFactionCrest.textContent = crest;
-    this.elHudFactionName.textContent = factionName;
-    this.elHudFactionStandingTier.textContent = `${tier} (${sign})`;
-    this.elHudFactionStandingTier.className = `standing-tier-pill tier-${tier.toLowerCase()}`;
+  public set isEscapePod(val: boolean) {
+    if (this.combatClient) this.combatClient.isEscapePod = val;
   }
 
   public startTruceCountdown(durationSeconds: number = 300): void {
-    this.activeTruceExpiresAt = Date.now() + durationSeconds * 1000;
-    if (this.truceTimerInterval) clearInterval(this.truceTimerInterval);
-
-    if (this.elHudTruceTimerPill) {
-      this.elHudTruceTimerPill.classList.remove('hidden');
-    }
-
-    this.truceTimerInterval = setInterval(() => {
-      if (!this.activeTruceExpiresAt || !this.elHudTruceTimerPill) return;
-      const remainingMs = this.activeTruceExpiresAt - Date.now();
-      if (remainingMs <= 0) {
-        clearInterval(this.truceTimerInterval);
-        this.truceTimerInterval = null;
-        this.activeTruceExpiresAt = null;
-        this.elHudTruceTimerPill.classList.add('hidden');
-        this.showApNotification('⚠️ DIPLOMATIC CEASEFIRE EXPIRED: Patrol drones resumed alert status.', true);
-        this.audio.playApWarningSound();
-        return;
-      }
-      const totalSec = Math.ceil(remainingMs / 1000);
-      const min = Math.floor(totalSec / 60);
-      const sec = totalSec % 60;
-      this.elHudTruceTimerPill.textContent = `🕊️ TRUCE: ${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
-    }, 500);
+    this.commsController.startTruceCountdown(durationSeconds);
   }
 
-
-  public closeAlienComms(): void {
-    if (this.elAlienCommsModal) {
-      this.elAlienCommsModal.classList.add('hidden');
-    }
-    if (this.alienTypewriterTimer) {
-      clearInterval(this.alienTypewriterTimer);
-      this.alienTypewriterTimer = null;
-    }
-    if (this.alienPortraitAnimId) {
-      cancelAnimationFrame(this.alienPortraitAnimId);
-      this.alienPortraitAnimId = null;
-    }
-    if (this.commsWaveformAnimId) {
-      cancelAnimationFrame(this.commsWaveformAnimId);
-      this.commsWaveformAnimId = null;
-    }
-    this.isAlienSpeaking = false;
-    this.currentAlienNpcId = null;
-    this.audio.playCommsCloseSound();
-
-    // Day 21: If currently in orbit, refresh airspace clearance and re-evaluate locked controls
-    if (this.isInOrbit && this.activePlanet) {
-      this.fetchPlanetAirspace(this.activePlanet.data.id).then(() => {
-        this.updateSurveyConsoleUI();
-      });
-    }
+  public async refreshFactionStandings(): Promise<void> {
+    await this.commsController.refreshFactionStandings();
   }
 
-  public startAlienPortraitLoop(): void {
-    const render = () => {
-      if (!this.elAlienCommsModal || this.elAlienCommsModal.classList.contains('hidden')) {
-        this.alienPortraitAnimId = null;
-        return;
-      }
-
-      this.alienPortraitTime += 0.035;
-      if (this.elAlienPortraitCanvas) {
-        const ctx = this.elAlienPortraitCanvas.getContext('2d');
-        if (ctx) {
-          this.drawProceduralAlienPortrait(
-            ctx,
-            this.elAlienPortraitCanvas.width,
-            this.elAlienPortraitCanvas.height,
-            this.currentAlienSpecies,
-            this.currentAlienMood,
-            this.alienPortraitTime
-          );
-        }
-      }
-
-      this.alienPortraitAnimId = requestAnimationFrame(render);
-    };
-
-    this.alienPortraitAnimId = requestAnimationFrame(render);
-  }
-
-  public drawProceduralAlienPortrait(
-    ctx: CanvasRenderingContext2D,
-    w: number,
-    h: number,
-    species: string,
-    mood: string,
-    t: number
-  ): void {
-    // 1. Clear with deep space canvas background
-    ctx.fillStyle = '#030712';
-    ctx.fillRect(0, 0, w, h);
-
-    // Starfield noise in portrait background
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
-    for (let i = 0; i < 20; i++) {
-      const sx = ((i * 37 + 13) % (w - 20)) + 10;
-      const sy = ((i * 59 + 29) % (h - 20)) + 10;
-      const flicker = 0.3 + 0.7 * Math.sin(t * 2 + i);
-      ctx.globalAlpha = flicker * 0.5;
-      ctx.fillRect(sx, sy, 1.5, 1.5);
-    }
-    ctx.globalAlpha = 1.0;
-
-    const cx = w / 2;
-    const cy = h / 2;
-
-    switch (species.toUpperCase()) {
-      case 'VAELIC': {
-        // Vaelic Hegemony: Imperial crested conqueror
-        const breathing = Math.sin(t * 2) * 3;
-        const speakingMouth = this.isAlienSpeaking ? Math.sin(t * 18) * 5 : 0;
-        const blink = Math.sin(t * 0.8) > 0.94 ? 0.1 : 1.0;
-
-        // Flared Imperial Collar
-        ctx.fillStyle = '#0f172a';
-        ctx.strokeStyle = '#eab308';
-        ctx.lineWidth = 2.5;
-        ctx.beginPath();
-        ctx.moveTo(cx - 95, cy + 90);
-        ctx.lineTo(cx - 110, cy - 30);
-        ctx.lineTo(cx - 40, cy - 70);
-        ctx.lineTo(cx + 40, cy - 70);
-        ctx.lineTo(cx + 110, cy - 30);
-        ctx.lineTo(cx + 95, cy + 90);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-
-        // Armored Shoulders
-        ctx.fillStyle = '#1e293b';
-        ctx.strokeStyle = '#38bdf8';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(cx - 120, cy + 130 + breathing);
-        ctx.lineTo(cx - 60, cy + 60 + breathing);
-        ctx.lineTo(cx + 60, cy + 60 + breathing);
-        ctx.lineTo(cx + 120, cy + 130 + breathing);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-
-        // Reptilian Skull Head
-        ctx.fillStyle = '#334155';
-        ctx.strokeStyle = '#64748b';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(cx - 45, cy + 30 + breathing);
-        ctx.lineTo(cx - 55, cy - 35 + breathing);
-        ctx.lineTo(cx - 20, cy - 65 + breathing);
-        ctx.lineTo(cx + 20, cy - 65 + breathing);
-        ctx.lineTo(cx + 55, cy - 35 + breathing);
-        ctx.lineTo(cx + 45, cy + 30 + breathing);
-        ctx.lineTo(cx, cy + 50 + speakingMouth + breathing);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-
-        // Crest spines
-        ctx.fillStyle = '#eab308';
-        ctx.beginPath();
-        ctx.moveTo(cx - 15, cy - 65 + breathing);
-        ctx.lineTo(cx, cy - 95 + breathing + Math.sin(t * 3) * 2);
-        ctx.lineTo(cx + 15, cy - 65 + breathing);
-        ctx.fill();
-
-        // Glowing Crimson Visor / Optics
-        ctx.fillStyle = mood === 'TERRIFIED' ? '#38bdf8' : '#ef4444';
-        ctx.shadowColor = mood === 'TERRIFIED' ? '#38bdf8' : '#ef4444';
-        ctx.shadowBlur = 12;
-
-        ctx.fillRect(cx - 36, cy - 18 + breathing, 24, 7 * blink);
-        ctx.fillRect(cx + 12, cy - 18 + breathing, 24, 7 * blink);
-        ctx.shadowBlur = 0;
-
-        // Snout & Mandibles
-        ctx.strokeStyle = '#94a3b8';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(cx - 15, cy + 25 + breathing);
-        ctx.lineTo(cx, cy + 35 + speakingMouth + breathing);
-        ctx.lineTo(cx + 15, cy + 25 + breathing);
-        ctx.stroke();
-        break;
-      }
-
-      case 'PHORID': {
-        // Phorid Sporeborn: Bioluminescent fungal entity
-        const pulse = 1.0 + Math.sin(t * 3) * 0.06;
-        const gillGlow = Math.abs(Math.sin(t * 2));
-        const blink = Math.sin(t * 1.2) > 0.92 ? 0.2 : 1.0;
-
-        // Floating Spore Particles
-        ctx.fillStyle = 'rgba(6, 182, 212, 0.7)';
-        ctx.shadowColor = '#06b6d4';
-        ctx.shadowBlur = 8;
-        for (let i = 0; i < 14; i++) {
-          const px = ((i * 43 + 20) % (w - 40)) + 20 + Math.sin(t + i) * 6;
-          const py = (h - ((t * 22 + i * 35) % h));
-          ctx.beginPath();
-          ctx.arc(px, py, 2.5, 0, Math.PI * 2);
-          ctx.fill();
-        }
-        ctx.shadowBlur = 0;
-
-        // Stem Body
-        ctx.fillStyle = '#1e1b4b';
-        ctx.strokeStyle = '#8b5cf6';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(cx - 35, cy + 130);
-        ctx.lineTo(cx - 20, cy + 30);
-        ctx.lineTo(cx + 20, cy + 30);
-        ctx.lineTo(cx + 35, cy + 130);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-
-        // Broad Fungal Mushroom Cap
-        ctx.save();
-        ctx.translate(cx, cy - 10);
-        ctx.scale(pulse, pulse);
-
-        ctx.fillStyle = '#311042';
-        ctx.strokeStyle = '#c084fc';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.ellipse(0, 0, 95, 55, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-
-        // Pulsing bioluminescent gills underneath cap
-        ctx.strokeStyle = `rgba(34, 211, 238, ${0.4 + gillGlow * 0.5})`;
-        ctx.lineWidth = 1.8;
-        for (let x = -80; x <= 80; x += 12) {
-          ctx.beginPath();
-          ctx.moveTo(x, 15);
-          ctx.lineTo(x * 0.6, 42);
-          ctx.stroke();
-        }
-
-        // Concentric cap rings
-        ctx.strokeStyle = 'rgba(168, 85, 247, 0.6)';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.ellipse(0, -10, 65, 30, 0, 0, Math.PI * 2);
-        ctx.stroke();
-
-        // Optical Nodes (Row of gentle glowing eyes)
-        const eyeColors = ['#fbbf24', '#34d399', '#38bdf8', '#c084fc'];
-        [-45, -15, 15, 45].forEach((ex, i) => {
-          ctx.fillStyle = eyeColors[i];
-          ctx.shadowColor = eyeColors[i];
-          ctx.shadowBlur = 10;
-          ctx.beginPath();
-          ctx.ellipse(ex, -5, 5, 4 * blink, 0, 0, Math.PI * 2);
-          ctx.fill();
-        });
-        ctx.shadowBlur = 0;
-        ctx.restore();
-        break;
-      }
-
-      case 'KRYLL': {
-        // Kryll Cartel: Rodentoid scavenger with cybernetic monocle
-        const twitchEar = Math.sin(t * 6) > 0.85 ? 4 : 0;
-        const twitchWhisker = Math.sin(t * 12) * 3;
-        const speakJaw = this.isAlienSpeaking ? Math.sin(t * 22) * 4 : 0;
-        const blink = Math.sin(t * 1.5) > 0.93 ? 0.1 : 1.0;
-
-        // Large Pointed Ears
-        ctx.fillStyle = '#78350f';
-        ctx.strokeStyle = '#d97706';
-        ctx.lineWidth = 2;
-        // Left Ear
-        ctx.beginPath();
-        ctx.moveTo(cx - 50, cy - 20);
-        ctx.lineTo(cx - 95, cy - 85 + twitchEar);
-        ctx.lineTo(cx - 30, cy - 60);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-        // Right Ear (Cybernetic Antennas)
-        ctx.fillStyle = '#334155';
-        ctx.strokeStyle = '#22d3ee';
-        ctx.beginPath();
-        ctx.moveTo(cx + 30, cy - 60);
-        ctx.lineTo(cx + 90, cy - 85 - twitchEar);
-        ctx.lineTo(cx + 50, cy - 20);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-
-        // Furry Muzzle & Skull
-        ctx.fillStyle = '#92400e';
-        ctx.strokeStyle = '#b45309';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(cx - 45, cy + 40);
-        ctx.lineTo(cx - 55, cy - 25);
-        ctx.lineTo(cx, cy - 50);
-        ctx.lineTo(cx + 55, cy - 25);
-        ctx.lineTo(cx + 45, cy + 40);
-        ctx.lineTo(cx, cy + 55 + speakJaw);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-
-        // Left Eye: Brass Steampunk / Cybernetic Monocle
-        ctx.save();
-        ctx.translate(cx - 24, cy - 10);
-        ctx.fillStyle = '#b45309';
-        ctx.strokeStyle = '#fbbf24';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.arc(0, 0, 16, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-
-        // Monocle rotating green reticle
-        ctx.rotate(t * 2.5);
-        ctx.strokeStyle = '#22c55e';
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.arc(0, 0, 10, 0, Math.PI * 2);
-        ctx.moveTo(-10, 0); ctx.lineTo(10, 0);
-        ctx.moveTo(0, -10); ctx.lineTo(0, 10);
-        ctx.stroke();
-        ctx.restore();
-
-        // Right Eye: Beady Rat Eye
-        ctx.fillStyle = '#020617';
-        ctx.strokeStyle = '#fbbf24';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.ellipse(cx + 24, cy - 10, 8, 8 * blink, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-        // Eye glint
-        if (blink > 0.5) {
-          ctx.fillStyle = '#ffffff';
-          ctx.beginPath();
-          ctx.arc(cx + 22, cy - 12, 2, 0, Math.PI * 2);
-          ctx.fill();
-        }
-
-        // Snout, Twitching Whiskers & Incisors
-        ctx.fillStyle = '#451a03';
-        ctx.beginPath();
-        ctx.ellipse(cx, cy + 30, 8, 6, 0, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Incisors
-        ctx.fillStyle = '#f8fafc';
-        ctx.fillRect(cx - 4, cy + 38 + speakJaw, 3.5, 7);
-        ctx.fillRect(cx + 0.5, cy + 38 + speakJaw, 3.5, 7);
-
-        // Whiskers
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
-        ctx.lineWidth = 1.2;
-        // Left Whiskers
-        ctx.beginPath();
-        ctx.moveTo(cx - 10, cy + 28);
-        ctx.lineTo(cx - 65, cy + 20 + twitchWhisker);
-        ctx.moveTo(cx - 10, cy + 32);
-        ctx.lineTo(cx - 68, cy + 35 - twitchWhisker);
-        // Right Whiskers
-        ctx.moveTo(cx + 10, cy + 28);
-        ctx.lineTo(cx + 65, cy + 20 - twitchWhisker);
-        ctx.moveTo(cx + 10, cy + 32);
-        ctx.lineTo(cx + 68, cy + 35 + twitchWhisker);
-        ctx.stroke();
-        break;
-      }
-
-      default: {
-        // Sol Alliance Diplomatic Avatar
-        ctx.fillStyle = '#1e293b';
-        ctx.beginPath();
-        ctx.arc(cx, cy - 15, 45, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = '#38bdf8';
-        ctx.fillRect(cx - 25, cy - 18, 50, 10);
-        break;
-      }
-    }
-
-    // CRT Scanline Sweeper
-    const scanlineY = (t * 50) % h;
-    ctx.fillStyle = 'rgba(34, 211, 238, 0.12)';
-    ctx.fillRect(0, scanlineY, w, 3);
-  }
-
-  public startCommsWaveformLoop(): void {
-    const render = () => {
-      if (!this.elAlienCommsModal || this.elAlienCommsModal.classList.contains('hidden')) {
-        this.commsWaveformAnimId = null;
-        return;
-      }
-
-      if (this.elCommsWaveformCanvas) {
-        const ctx = this.elCommsWaveformCanvas.getContext('2d');
-        if (ctx) {
-          this.drawCommsWaveform(
-            ctx,
-            this.elCommsWaveformCanvas.width,
-            this.elCommsWaveformCanvas.height,
-            this.alienPortraitTime
-          );
-        }
-      }
-
-      this.commsWaveformAnimId = requestAnimationFrame(render);
-    };
-
-    this.commsWaveformAnimId = requestAnimationFrame(render);
-  }
-
-  public drawCommsWaveform(
-    ctx: CanvasRenderingContext2D,
-    w: number,
-    h: number,
-    t: number
-  ): void {
-    ctx.fillStyle = '#020617';
-    ctx.fillRect(0, 0, w, h);
-
-    const cy = h / 2;
-    const isSpeaking = this.isAlienSpeaking;
-    const amp = isSpeaking ? 9.0 : 2.0;
-
-    ctx.strokeStyle = isSpeaking ? '#22d3ee' : 'rgba(34, 211, 238, 0.4)';
-    ctx.lineWidth = isSpeaking ? 1.8 : 1.0;
-    ctx.beginPath();
-
-    for (let x = 0; x < w; x++) {
-      const freq1 = isSpeaking ? 0.12 : 0.05;
-      const freq2 = isSpeaking ? 0.28 : 0.08;
-      const speed1 = isSpeaking ? 14 : 3;
-      const speed2 = isSpeaking ? 22 : 5;
-
-      const y = cy + Math.sin(x * freq1 + t * speed1) * amp * 0.7 +
-                     Math.cos(x * freq2 - t * speed2) * amp * 0.3;
-
-      if (x === 0) {
-        ctx.moveTo(x, y);
-      } else {
-        ctx.lineTo(x, y);
-      }
-    }
-
-    ctx.stroke();
+  public hailCurrentTargetOrEnvoy(): void {
+    this.commsController.hailCurrentTargetOrEnvoy();
   }
 
   // ============================================================================
-  // DAY 18: PLANETARY ORBITAL SURVEY, SURFACE SCANNERS & ATMOSPHERIC PROBES
+  // DAY 18, 19, 20 & 21: PLANETARY SURVEY, COLONY, LANDER & PRECURSOR DELEGATES
   // ============================================================================
 
-  /**
-   * Fetches sector planets from backend and spawns 3D ProceduralPlanet in the sector.
-   */
+  // --- Survey Controller Delegates ---
   public async loadSectorPlanet(sectorId: number): Promise<void> {
-    try {
-      const res = await fetch(`http://localhost:3000/api/planets/sector/${sectorId}`);
-      if (!res.ok) return;
-      const data = await res.json();
-      if (data.success && Array.isArray(data.planets) && data.planets.length > 0) {
-        const pData: PlanetData = data.planets[0];
-        if (this.activePlanet) {
-          this.scene.remove(this.activePlanet.group);
-          this.activePlanet = null;
-        }
-        this.activePlanet = new ProceduralPlanet(pData);
-        this.scene.add(this.activePlanet.group);
-        this.activePlanetDetail = pData;
-        console.log(`[DAY 18] Spawned 3D Planet: ${pData.name} at (${pData.posX}, ${pData.posZ})`);
-
-        // Day 19: Check for founded colonies in sector planet
-        this.fetchPlanetColonies(pData.id);
-      }
-    } catch (err) {
-      console.warn('[DAY 18] Failed to load sector planets:', err);
-    }
+    await this.surveyController.loadSectorPlanet(sectorId);
   }
 
-  /**
-   * Updates distance to sector planet and toggles HUD orbital guidance banner.
-   */
   public updatePlanetaryGuidance(deltaSec: number): void {
-    if (!this.activePlanet) {
-      if (this.elOrbitalBanner) this.elOrbitalBanner.classList.add('hidden');
-      return;
-    }
-
-    this.activePlanet.update(deltaSec);
-    const dist = this.activePlanet.getDistanceTo(this.flightController.position);
-
-    if (this.elOrbitalBanner && this.elOrbitalMsg) {
-      if (dist <= 65.0) {
-        this.elOrbitalBanner.classList.remove('hidden');
-        const col = this.activeColony;
-        const siloPct = col ? Math.min(100, Math.round((col.stockpiled_amount / col.silo_capacity) * 100)) : 0;
-        const colBadge = col ? `[🏛️ ${col.name.toUpperCase()}: ${siloPct}% SILO] ` : '';
-
-        if (dist <= this.activePlanet.orbitalRadius) {
-          this.elOrbitalMsg.textContent = `SYNCHRONOUS ORBIT READY // ${colBadge}DIST: ${dist.toFixed(1)}u [O]`;
-          this.elOrbitalBanner.style.borderColor = siloPct >= 100 ? '#f59e0b' : '#10b981';
-          this.elOrbitalBanner.style.color = siloPct >= 100 ? '#fbbf24' : '#10b981';
-        } else {
-          this.elOrbitalMsg.textContent = `APPROACHING ${this.activePlanet.data.name} // ${colBadge}DIST: ${dist.toFixed(1)}u`;
-          this.elOrbitalBanner.style.borderColor = siloPct >= 100 ? '#f59e0b' : '#38bdf8';
-          this.elOrbitalBanner.style.color = siloPct >= 100 ? '#fbbf24' : '#38bdf8';
-        }
-      } else {
-        this.elOrbitalBanner.classList.add('hidden');
-      }
-    }
+    this.surveyController.updatePlanetaryGuidance(deltaSec);
   }
 
-  /**
-   * Locks ship thrusters into synchronous orbit and launches the CRT Survey Console.
-   */
   public async enterOrbit(): Promise<void> {
-    if (!this.activePlanet) {
-      this.activePlanet = new ProceduralPlanet({
-        id: 'planet_sec1_aegis',
-        sectorId: 1,
-        name: 'Aegis Prime',
-        archetype: 'BARREN',
-        radius: 24.0,
-        posX: -140.0,
-        posY: 0.0,
-        posZ: 180.0,
-        textureSeed: 101,
-        atmosphereColor: '#38bdf8',
-        atmosphereDensity: 0.12,
-        surfaceTempK: 215,
-        hazardClass: 'LOW_RADIATION',
-        habitabilityRating: 18,
-        controllingFaction: 'FACTION_SOL',
-        description: 'Airless metallic moon rich in heavy silicate crust and structural plasteel strata.',
-      });
-    }
-    this.isInOrbit = true;
-
-    // Smooth thruster dampening
-    this.flightController.reset(this.flightController.position.clone());
-
-    // Sensory Immersion
-    this.audio.playOrbitalCaptureSound();
-    this.audio.startPlanetaryAmbience(this.activePlanet.data.archetype);
-
-    // Populate modal telemetry
-    const p = this.activePlanet.data;
-    const elName = document.getElementById('survey-planet-name');
-    const elArch = document.getElementById('survey-planet-archetype');
-    const elHab = document.getElementById('survey-hab-val');
-    const elTemp = document.getElementById('val-telemetry-temp');
-    const elDensity = document.getElementById('val-telemetry-density');
-    const elHazard = document.getElementById('val-telemetry-hazard');
-    const elFaction = document.getElementById('val-telemetry-faction');
-    const elAp = document.getElementById('survey-player-ap');
-
-    if (elName) elName.textContent = p.name.toUpperCase();
-    if (elArch) elArch.textContent = `${p.archetype} CELESTIAL WORLD // SECTOR 0${p.sectorId}`;
-    if (elHab) elHab.textContent = `${p.habitabilityRating}%`;
-    if (elTemp) elTemp.textContent = `${p.surfaceTempK} K`;
-    if (elDensity) elDensity.textContent = `${p.atmosphereDensity.toFixed(2)} Bar`;
-    if (elHazard) elHazard.textContent = p.hazardClass.replace(/_/g, ' ');
-    if (elFaction) elFaction.textContent = p.controllingFaction.replace(/_/g, ' ');
-    if (elAp) elAp.textContent = `${this.playerAP.currentAP} / ${this.playerAP.maxAP}`;
-
-    if (!this.modalPlanetarySurvey) {
-      this.modalPlanetarySurvey = document.getElementById('planetary-survey-modal');
-    }
-    if (this.modalPlanetarySurvey) {
-      this.modalPlanetarySurvey.classList.remove('hidden');
-    }
-    this.startGlobeRender();
-
-    // Fetch authoritative survey state
-    try {
-      const res = await fetch(`http://localhost:3000/api/planets/${p.id}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success && data.planet) {
-          this.activePlanetDetail = data.planet;
-        }
-      }
-    } catch (err) {
-      console.warn('[DAY 18] Failed to fetch planet survey detail:', err);
-    }
-
-    // Day 21: Fetch Hostile Airspace Clearance
-    await this.fetchPlanetAirspace(p.id);
-
-    // Day 19: Fetch Authoritative Colony State
-    await this.fetchPlanetColonies(p.id);
-
-    // Day 20: Fetch Authoritative Precursor Sites & Relics
-    await this.fetchPlanetPrecursorSites(p.id);
-
-    this.updateSurveyConsoleUI();
+    await this.surveyController.enterOrbit();
   }
 
-  /**
-   * Disengages orbital capture and returns to flight view.
-   */
   public exitOrbit(): void {
-    if (this.isLanderActive) {
-      this.closeSurfaceLander();
-    }
-    this.closePrecursorTerminal();
-    this.isInOrbit = false;
-    this.audio.stopPlanetaryAmbience();
-    this.audio.playUiBlip();
-    this.stopGlobeRender();
-
-    if (this.modalPlanetarySurvey) {
-      this.modalPlanetarySurvey.classList.add('hidden');
-    }
-
-    // Nudge ship slightly away from planet center
-    if (this.activePlanet) {
-      const awayDir = this.flightController.position.clone().sub(this.activePlanet.position).normalize();
-      this.flightController.position.addScaledVector(awayDir, 3.5);
-    }
+    this.surveyController.exitOrbit();
   }
 
-  /**
-   * Initializes mouse drag and hover listeners for the 3D canvas globe.
-   */
-  private initGlobeCanvasControls(): void {
-    if (!this.globeCanvas) return;
-
-    this.globeCanvas.addEventListener('mousedown', (e: MouseEvent) => {
-      this.globeIsDragging = true;
-      this.globeDragLastX = e.clientX;
-      this.globeDragLastY = e.clientY;
-    });
-
-    window.addEventListener('mouseup', () => {
-      this.globeIsDragging = false;
-    });
-
-    this.globeCanvas.addEventListener('mousemove', (e: MouseEvent) => {
-      const rect = this.globeCanvas!.getBoundingClientRect();
-      const mouseX = e.clientX - rect.left;
-      const mouseY = e.clientY - rect.top;
-
-      if (this.globeIsDragging) {
-        const dx = e.clientX - this.globeDragLastX;
-        const dy = e.clientY - this.globeDragLastY;
-        this.globeRotY += dx * 0.012;
-        this.globeRotX = Math.max(-1.3, Math.min(1.3, this.globeRotX + dy * 0.012));
-        this.globeDragLastX = e.clientX;
-        this.globeDragLastY = e.clientY;
-      }
-
-      // Calculate spherical coordinates under cursor
-      const cx = 170;
-      const cy = 170;
-      const R = 125;
-      const dx = mouseX - cx;
-      const dy = mouseY - cy;
-      const d = Math.sqrt(dx * dx + dy * dy);
-
-      const elLat = document.getElementById('val-cursor-lat');
-      const elLng = document.getElementById('val-cursor-lng');
-
-      if (d <= R) {
-        const z = Math.sqrt(R * R - d * d);
-        // Inverse sphere rotation
-        const cosX = Math.cos(-this.globeRotX);
-        const sinX = Math.sin(-this.globeRotX);
-        const cosY = Math.cos(-this.globeRotY);
-        const sinY = Math.sin(-this.globeRotY);
-
-        const y1 = dy * cosX - z * sinX;
-        const z1 = dy * sinX + z * cosX;
-        const x2 = dx * cosY + z1 * sinY;
-        const z2 = -dx * sinY + z1 * cosY;
-
-        const latDeg = Math.round((-y1 / R) * 90);
-        const lngDeg = Math.round(Math.atan2(x2, z2) * (180 / Math.PI));
-
-        if (elLat) elLat.textContent = `${latDeg >= 0 ? '+' : ''}${latDeg}°`;
-        if (elLng) elLng.textContent = `${lngDeg >= 0 ? '+' : ''}${lngDeg}°`;
-
-        // Check if hovering near a hotspot
-        this.hoveredHotspot = null;
-        if (this.activePlanetDetail?.survey?.discoveredHotspots) {
-          for (const h of this.activePlanetDetail.survey.discoveredHotspots) {
-            const hPos = this.getHotspotScreenPos(h.lat, h.lng, R, cx, cy);
-            if (hPos && Math.hypot(mouseX - hPos.x, mouseY - hPos.y) < 14) {
-              this.hoveredHotspot = h;
-              break;
-            }
-          }
-        }
-
-        // Check if hovering near a colony
-        this.hoveredColony = null;
-        if (this.activeColoniesList) {
-          for (const col of this.activeColoniesList) {
-            const cPos = this.getHotspotScreenPos(col.surface_lat, col.surface_lng, R, cx, cy);
-            if (cPos && Math.hypot(mouseX - cPos.x, mouseY - cPos.y) < 16) {
-              this.hoveredColony = col;
-              break;
-            }
-          }
-        }
-      } else {
-        this.hoveredHotspot = null;
-        this.hoveredColony = null;
-      }
-    });
-
-    this.globeCanvas.addEventListener('click', (e: MouseEvent) => {
-      const rect = this.globeCanvas!.getBoundingClientRect();
-      const mouseX = e.clientX - rect.left;
-      const mouseY = e.clientY - rect.top;
-      const cx = 170;
-      const cy = 170;
-      const R = 125;
-      const dx = mouseX - cx;
-      const dy = mouseY - cy;
-      const d = Math.sqrt(dx * dx + dy * dy);
-
-      if (d <= R) {
-        // If clicked on an existing colony, switch to Colony Command tab!
-        if (this.hoveredColony) {
-          this.switchSurveyTab('COLONY');
-          this.showApNotification(`🏛️ Interfacing with ${this.hoveredColony.name}...`, false);
-          return;
-        }
-
-        const z = Math.sqrt(R * R - d * d);
-        const cosX = Math.cos(-this.globeRotX);
-        const sinX = Math.sin(-this.globeRotX);
-        const cosY = Math.cos(-this.globeRotY);
-        const sinY = Math.sin(-this.globeRotY);
-
-        const y1 = dy * cosX - z * sinX;
-        const z1 = dy * sinX + z * cosX;
-        const x2 = dx * cosY + z1 * sinY;
-        const z2 = -dx * sinY + z1 * cosY;
-
-        this.targetedLat = Math.round((-y1 / R) * 90);
-        this.targetedLng = Math.round(Math.atan2(x2, z2) * (180 / Math.PI));
-        this.audio.playUiBlip();
-        this.showApNotification(`🎯 PROBE TARGET LOCKED: Lat ${this.targetedLat}°, Lng ${this.targetedLng}°`, false);
-      }
-    });
-  }
-
-  /**
-   * Helper to project (lat, lng) to 2D canvas coordinates on the rotating sphere.
-   */
-  private getHotspotScreenPos(lat: number, lng: number, R: number, cx: number, cy: number): { x: number; y: number } | null {
-    const phi = (lat * Math.PI) / 180;
-    const lambda = (lng * Math.PI) / 180;
-
-    // Local sphere coordinates
-    const x = R * Math.cos(phi) * Math.sin(lambda);
-    const y = -R * Math.sin(phi);
-    const z = R * Math.cos(phi) * Math.cos(lambda);
-
-    // Apply Y-axis rotation (spin)
-    const cosY = Math.cos(this.globeRotY);
-    const sinY = Math.sin(this.globeRotY);
-    const x1 = x * cosY - z * sinY;
-    const z1 = x * sinY + z * cosY;
-
-    // Apply X-axis rotation (tilt)
-    const cosX = Math.cos(this.globeRotX);
-    const sinX = Math.sin(this.globeRotX);
-    const y2 = y * cosX - z1 * sinX;
-    const z2 = y * sinX + z1 * cosX;
-
-    // Visible on front hemisphere only
-    if (z2 <= 0) return null;
-
-    return {
-      x: cx + x1,
-      y: cy + y2,
-    };
-  }
-
-  /**
-   * Starts the 60fps render loop for the 3D rotating canvas globe.
-   */
-  private startGlobeRender(): void {
-    this.stopGlobeRender();
-    const render = () => {
-      if (!this.isInOrbit) return;
-      this.drawGlobeCanvas();
-      this.globeAnimId = requestAnimationFrame(render);
-    };
-    this.globeAnimId = requestAnimationFrame(render);
-  }
-
-  /**
-   * Stops the canvas globe animation loop.
-   */
-  private stopGlobeRender(): void {
-    if (this.globeAnimId !== null) {
-      cancelAnimationFrame(this.globeAnimId);
-      this.globeAnimId = null;
-    }
-  }
-
-  /**
-   * Draws the Star Control II style shaded 3D globe with latitude/longitude grid and phosphor hotspots.
-   */
-  private drawGlobeCanvas(): void {
-    if (!this.globeCtx || !this.globeCanvas) return;
-    const ctx = this.globeCtx;
-    const w = this.globeCanvas.width;
-    const h = this.globeCanvas.height;
-    const cx = w / 2;
-    const cy = h / 2;
-    const R = 125;
-
-    // Continuous auto-rotation when not dragging
-    if (!this.globeIsDragging) {
-      this.globeRotY += 0.003;
-    }
-
-    // Clear background
-    ctx.fillStyle = '#020617';
-    ctx.fillRect(0, 0, w, h);
-
-    // 1. Shaded Sphere Base with Archetype Gradient
-    const archetype = this.activePlanetDetail?.archetype || 'BARREN';
-    let lightColor = '#64748b';
-    let darkColor = '#0f172a';
-    let rimColor = 'rgba(56, 189, 248, 0.4)';
-
-    if (archetype === 'VOLCANIC') {
-      lightColor = '#b91c1c';
-      darkColor = '#450a0a';
-      rimColor = 'rgba(249, 115, 22, 0.5)';
-    } else if (archetype === 'TERRESTRIAL') {
-      lightColor = '#059669';
-      darkColor = '#022c22';
-      rimColor = 'rgba(16, 185, 129, 0.5)';
-    } else if (archetype === 'GAS_GIANT') {
-      lightColor = '#0284c7';
-      darkColor = '#082f49';
-      rimColor = 'rgba(56, 189, 248, 0.6)';
-    } else if (archetype === 'PRECURSOR_RUIN') {
-      lightColor = '#7e22ce';
-      darkColor = '#3b0764';
-      rimColor = 'rgba(236, 72, 153, 0.5)';
-    }
-
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(cx, cy, R, 0, Math.PI * 2);
-    ctx.clip();
-
-    // Radial gradient simulating sun lighting from top-left
-    const grad = ctx.createRadialGradient(cx - 40, cy - 40, 10, cx, cy, R);
-    grad.addColorStop(0, lightColor);
-    grad.addColorStop(0.7, darkColor);
-    grad.addColorStop(1.0, '#020617');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, w, h);
-
-    // 2. Latitude Circles
-    const latBands = [-60, -30, 0, 30, 60];
-    ctx.strokeStyle = 'rgba(56, 189, 248, 0.22)';
-    ctx.lineWidth = 1.0;
-
-    for (const lat of latBands) {
-      ctx.beginPath();
-      let started = false;
-      for (let lng = -180; lng <= 180; lng += 10) {
-        const pt = this.getHotspotScreenPos(lat, lng, R, cx, cy);
-        if (pt) {
-          if (!started) {
-            ctx.moveTo(pt.x, pt.y);
-            started = true;
-          } else {
-            ctx.lineTo(pt.x, pt.y);
-          }
-        } else {
-          started = false;
-        }
-      }
-      ctx.stroke();
-    }
-
-    // 3. Longitude Meridians
-    for (let lng = -180; lng < 180; lng += 30) {
-      ctx.beginPath();
-      let started = false;
-      for (let lat = -80; lat <= 80; lat += 5) {
-        const pt = this.getHotspotScreenPos(lat, lng, R, cx, cy);
-        if (pt) {
-          if (!started) {
-            ctx.moveTo(pt.x, pt.y);
-            started = true;
-          } else {
-            ctx.lineTo(pt.x, pt.y);
-          }
-        } else {
-          started = false;
-        }
-      }
-      ctx.stroke();
-    }
-
-    // 4. Discovered Hotspots (Phosphor Blips)
-    if (this.activePlanetDetail?.survey?.discoveredHotspots) {
-      const now = performance.now();
-      const pulse = 0.7 + 0.3 * Math.sin(now * 0.006);
-
-      for (const h of this.activePlanetDetail.survey.discoveredHotspots) {
-        const pt = this.getHotspotScreenPos(h.lat, h.lng, R, cx, cy);
-        if (!pt) continue;
-
-        ctx.save();
-        ctx.fillStyle = h.color || '#38bdf8';
-        ctx.shadowColor = h.color || '#38bdf8';
-        ctx.shadowBlur = 8 * pulse;
-
-        // Diamond blip
-        const size = (this.hoveredHotspot?.id === h.id ? 7 : 4.5) * pulse;
-        ctx.beginPath();
-        ctx.moveTo(pt.x, pt.y - size);
-        ctx.lineTo(pt.x + size, pt.y);
-        ctx.lineTo(pt.x, pt.y + size);
-        ctx.lineTo(pt.x - size, pt.y);
-        ctx.closePath();
-        ctx.fill();
-        ctx.restore();
-      }
-    }
-
-    // 5. Active Sensor Beacons (Pulsating Rings)
-    if (this.activePlanetDetail?.beacons) {
-      const now = performance.now();
-      for (const b of this.activePlanetDetail.beacons) {
-        const pt = this.getHotspotScreenPos(b.surfaceLat, b.surfaceLng, R, cx, cy);
-        if (!pt) continue;
-
-        const ringR = 3 + ((now * 0.005) % 8);
-        ctx.save();
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 1.2;
-        ctx.shadowColor = '#38bdf8';
-        ctx.shadowBlur = 6;
-        ctx.beginPath();
-        ctx.arc(pt.x, pt.y, ringR, 0, Math.PI * 2);
-        ctx.stroke();
-
-        ctx.fillStyle = '#ffffff';
-        ctx.beginPath();
-        ctx.arc(pt.x, pt.y, 2, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-      }
-    }
-
-    // 5b. Day 19: Active Surface Colonies (Geodesic Dome & Foundation Ring)
-    if (this.activeColoniesList && this.activeColoniesList.length > 0) {
-      const now = performance.now();
-      for (const col of this.activeColoniesList) {
-        const pt = this.getHotspotScreenPos(col.surface_lat, col.surface_lng, R, cx, cy);
-        if (!pt) continue;
-
-        ctx.save();
-        // Pulsing foundation ring
-        const pulse = 0.8 + 0.2 * Math.sin(now * 0.005);
-        ctx.strokeStyle = '#38bdf8';
-        ctx.lineWidth = 1.5;
-        ctx.shadowColor = '#38bdf8';
-        ctx.shadowBlur = 10 * pulse;
-        ctx.beginPath();
-        ctx.ellipse(pt.x, pt.y + 2, 9 * pulse, 4.5 * pulse, 0, 0, Math.PI * 2);
-        ctx.stroke();
-
-        // Glowing geodesic dome (semi-circle)
-        ctx.fillStyle = 'rgba(56, 189, 248, 0.45)';
-        ctx.beginPath();
-        ctx.arc(pt.x, pt.y + 2, 7, Math.PI, 0);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-
-        // Dome facet structural lines
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 0.8;
-        ctx.beginPath();
-        ctx.moveTo(pt.x - 4, pt.y + 2);
-        ctx.lineTo(pt.x, pt.y - 5);
-        ctx.lineTo(pt.x + 4, pt.y + 2);
-        ctx.stroke();
-
-        // Communication Spire & beacon ping
-        ctx.strokeStyle = '#fbbf24';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(pt.x, pt.y - 5);
-        ctx.lineTo(pt.x, pt.y - 11);
-        ctx.stroke();
-
-        ctx.fillStyle = '#fbbf24';
-        ctx.beginPath();
-        ctx.arc(pt.x, pt.y - 11, 1.8, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Subtle colony label badge
-        const colLabel = `${col.name.toUpperCase()} [T${Math.max(col.derrick_tier, col.habitation_tier)}]`;
-        ctx.font = 'bold 8px monospace';
-        const lw = ctx.measureText(colLabel).width;
-        ctx.fillStyle = 'rgba(2, 6, 23, 0.85)';
-        ctx.fillRect(pt.x - lw / 2 - 3, pt.y - 23, lw + 6, 11);
-        ctx.strokeStyle = 'rgba(56, 189, 248, 0.6)';
-        ctx.strokeRect(pt.x - lw / 2 - 3, pt.y - 23, lw + 6, 11);
-        ctx.fillStyle = '#38bdf8';
-        ctx.fillText(colLabel, pt.x - lw / 2, pt.y - 15);
-
-        ctx.restore();
-      }
-    }
-
-    // 5c. Day 21: Precursor Megastructures & Unresolved Signal Blips
-    if (this.planetPrecursorSites && this.planetPrecursorSites.length > 0) {
-      const now = performance.now();
-      const pulse = 0.7 + 0.3 * Math.sin(now * 0.007);
-      for (const site of this.planetPrecursorSites) {
-        const pt = this.getHotspotScreenPos(site.surfaceLat, site.surfaceLng, R, cx, cy);
-        if (!pt) continue;
-        ctx.save();
-        ctx.strokeStyle = '#00f0ff';
-        ctx.fillStyle = '#00f0ff';
-        ctx.shadowColor = '#00f0ff';
-        ctx.shadowBlur = 10 * pulse;
-
-        // Monolith marker
-        ctx.beginPath();
-        ctx.rect(pt.x - 3, pt.y - 7, 6, 14);
-        ctx.fill();
-        ctx.stroke();
-
-        ctx.font = 'bold 8px monospace';
-        const label = site.name.toUpperCase();
-        const lw = ctx.measureText(label).width;
-        ctx.fillStyle = 'rgba(2, 6, 23, 0.85)';
-        ctx.fillRect(pt.x - lw / 2 - 2, pt.y - 20, lw + 4, 10);
-        ctx.fillStyle = '#00f0ff';
-        ctx.fillText(label, pt.x - lw / 2, pt.y - 12);
-        ctx.restore();
-      }
-    } else if (this.unresolvedPrecursorSignals > 0) {
-      const now = performance.now();
-      const pulse = 0.6 + 0.4 * Math.sin(now * 0.006);
-      const pt = this.getHotspotScreenPos(-15.0, 60.0, R, cx, cy);
-      if (pt) {
-        ctx.save();
-        ctx.strokeStyle = '#a855f7';
-        ctx.lineWidth = 1.5;
-        ctx.shadowColor = '#c084fc';
-        ctx.shadowBlur = 10 * pulse;
-        ctx.beginPath();
-        ctx.arc(pt.x, pt.y, 6 * pulse, 0, Math.PI * 2);
-        ctx.stroke();
-
-        ctx.fillStyle = '#e9d5ff';
-        ctx.font = 'bold 9px monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText('?', pt.x, pt.y + 3);
-        ctx.restore();
-      }
-    }
-
-    ctx.restore(); // End sphere clip
-
-    // 6. Atmospheric Rim Glow
-    ctx.save();
-    ctx.strokeStyle = rimColor;
-    ctx.lineWidth = 2.5;
-    ctx.shadowColor = rimColor;
-    ctx.shadowBlur = 12;
-    ctx.beginPath();
-    ctx.arc(cx, cy, R, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.restore();
-
-    // 7. Hovered Hotspot Tooltip
-    if (this.hoveredHotspot) {
-      const pt = this.getHotspotScreenPos(this.hoveredHotspot.lat, this.hoveredHotspot.lng, R, cx, cy);
-      if (pt) {
-        ctx.save();
-        ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
-        ctx.strokeStyle = this.hoveredHotspot.color || '#38bdf8';
-        ctx.lineWidth = 1;
-        const text = `${this.hoveredHotspot.name} [${this.hoveredHotspot.yieldEstimate}]`;
-        ctx.font = 'bold 9px monospace';
-        const tw = ctx.measureText(text).width;
-        ctx.fillRect(pt.x + 8, pt.y - 18, tw + 10, 16);
-        ctx.strokeRect(pt.x + 8, pt.y - 18, tw + 10, 16);
-
-        ctx.fillStyle = '#f8fafc';
-        ctx.fillText(text, pt.x + 13, pt.y - 6);
-        ctx.restore();
-      }
-    }
-
-    // 8. Hovered Colony Tooltip
-    if (this.hoveredColony) {
-      const pt = this.getHotspotScreenPos(this.hoveredColony.surface_lat, this.hoveredColony.surface_lng, R, cx, cy);
-      if (pt) {
-        ctx.save();
-        ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
-        ctx.strokeStyle = '#fbbf24';
-        ctx.lineWidth = 1.2;
-        const text = `🏛️ ${this.hoveredColony.name} [POP: ${this.hoveredColony.population}] (CLICK TO MANAGE)`;
-        ctx.font = 'bold 9px monospace';
-        const tw = ctx.measureText(text).width;
-        ctx.fillRect(pt.x + 8, pt.y - 18, tw + 10, 16);
-        ctx.strokeRect(pt.x + 8, pt.y - 18, tw + 10, 16);
-
-        ctx.fillStyle = '#fbbf24';
-        ctx.fillText(text, pt.x + 13, pt.y - 6);
-        ctx.restore();
-      }
-    }
-  }
-
-  /**
-   * Updates all survey modal widgets, buttons, and progress counters.
-   */
-  private updateSurveyConsoleUI(): void {
-    if (!this.activePlanetDetail) return;
-    const survey = this.activePlanetDetail.survey;
-
-    const elCompVal = document.getElementById('survey-comp-val');
-    if (elCompVal) elCompVal.textContent = `${survey.surveyCompletion}%`;
-
-    const elStatMin = document.getElementById('status-scan-minerals');
-    const elStatBio = document.getElementById('status-scan-bio');
-    const elStatAno = document.getElementById('status-scan-anomalies');
-
-    const isAirspaceLocked = Boolean(
-      this.activeAirspaceClearance &&
-      !this.activeAirspaceClearance.cleared &&
-      this.activeAirspaceClearance.truceRequired
-    );
-
-    // Day 21: Dynamic Airspace Banner & Lock-State Controls
-    const scannerSection = document.querySelector('.survey-scanner-section');
-    let banner = document.getElementById('survey-airspace-banner');
-
-    if (isAirspaceLocked) {
-      if (!banner && scannerSection) {
-        banner = document.createElement('div');
-        banner.id = 'survey-airspace-banner';
-        banner.className = 'survey-airspace-banner';
-        scannerSection.prepend(banner);
-      }
-      if (banner) {
-        const facName = this.activeAirspaceClearance.factionName || 'FACTION';
-        banner.innerHTML = `
-          <div class="airspace-banner-text">
-            <span class="airspace-banner-title">⚠️ ${facName.toUpperCase()} AIRSPACE — TRUCE REQUIRED</span>
-            <span class="airspace-banner-sub">Standing: ${this.activeAirspaceClearance.standing}. Ceasefire truce required for planetary survey and surface operations.</span>
-          </div>
-          <button class="btn-hail-airspace" id="btn-hail-airspace-patrol">HAIL PATROL [COMM]</button>
-        `;
-        const hailBtn = document.getElementById('btn-hail-airspace-patrol');
-        if (hailBtn) {
-          hailBtn.onclick = () => {
-            const fid = this.activeAirspaceClearance.factionId;
-            const npcId = fid === 'FACTION_PHORID' ? 'npc_mycelis' : fid === 'FACTION_KRYLL' ? 'npc_skrit' : 'npc_vorash';
-            this.openAlienComms(npcId);
-          };
-        }
-      }
-    } else {
-      if (banner) {
-        banner.remove();
-      }
-    }
-
-    // Buttons
-    const btnMin = document.getElementById('btn-scan-minerals') as HTMLButtonElement | null;
-    const btnBio = document.getElementById('btn-scan-bio') as HTMLButtonElement | null;
-    const btnAno = document.getElementById('btn-scan-anomalies') as HTMLButtonElement | null;
-    const btnProbe = document.getElementById('btn-launch-probe') as HTMLButtonElement | null;
-    const btnLander = document.getElementById('btn-deploy-lander') as HTMLButtonElement | null;
-    const btnFoundColony = document.getElementById('btn-found-colony') as HTMLButtonElement | null;
-
-    if (btnMin) btnMin.disabled = isAirspaceLocked;
-    if (btnBio) btnBio.disabled = isAirspaceLocked;
-    if (btnAno) btnAno.disabled = isAirspaceLocked;
-    if (btnProbe) btnProbe.disabled = isAirspaceLocked;
-    if (btnLander) btnLander.disabled = isAirspaceLocked;
-    if (btnFoundColony) btnFoundColony.disabled = isAirspaceLocked;
-
-    if (elStatMin) {
-      if (isAirspaceLocked && !survey.scannedMinerals) {
-        elStatMin.textContent = 'HEGEMONY AIRSPACE — TRUCE REQUIRED';
-        elStatMin.classList.remove('active');
-      } else if (survey.scannedMinerals) {
-        elStatMin.textContent = 'ACTIVE // SCAN COMPLETE';
-        elStatMin.classList.add('active');
-      } else {
-        elStatMin.textContent = 'UNSCANNED // 2 AP';
-        elStatMin.classList.remove('active');
-      }
-    }
-
-    if (elStatBio) {
-      if (isAirspaceLocked && !survey.scannedBio) {
-        elStatBio.textContent = 'HEGEMONY AIRSPACE — TRUCE REQUIRED';
-        elStatBio.classList.remove('active');
-      } else if (survey.scannedBio) {
-        elStatBio.textContent = 'ACTIVE // SCAN COMPLETE';
-        elStatBio.classList.add('active');
-      } else {
-        elStatBio.textContent = 'UNSCANNED // 2 AP';
-        elStatBio.classList.remove('active');
-      }
-    }
-
-    if (elStatAno) {
-      if (isAirspaceLocked && !survey.scannedAnomalies) {
-        elStatAno.textContent = 'HEGEMONY AIRSPACE — TRUCE REQUIRED';
-        elStatAno.classList.remove('active');
-      } else if (survey.scannedAnomalies) {
-        elStatAno.textContent = 'ACTIVE // SCAN COMPLETE';
-        elStatAno.classList.add('active');
-      } else {
-        elStatAno.textContent = 'UNSCANNED // 2 AP';
-        elStatAno.classList.remove('active');
-      }
-    }
-
-    const elBeaconsCount = document.getElementById('survey-beacons-count');
-    if (elBeaconsCount) {
-      elBeaconsCount.textContent = `${this.activePlanetDetail.beacons?.length || 0}`;
-    }
-
-    const elAp = document.getElementById('survey-player-ap');
-    if (elAp) elAp.textContent = `${this.playerAP.currentAP} / ${this.playerAP.maxAP}`;
-
-    this.refreshHotspotsLedger();
-  }
-
-  /**
-   * Refreshes the scrollable list of discovered hotspots and active beacons.
-   */
-  private refreshHotspotsLedger(): void {
-    const list = document.getElementById('survey-hotspots-list');
-    if (!list) return;
-
-    const hotspots = this.activePlanetDetail?.survey?.discoveredHotspots || [];
-    const beacons = this.activePlanetDetail?.beacons || [];
-
-    if (hotspots.length === 0 && beacons.length === 0 && this.unresolvedPrecursorSignals === 0) {
-      list.innerHTML = `<div class="ledger-empty">NO HOTSPOTS DETECTED. INITIATE SENSOR SWEEPS [1-3] TO IDENTIFY SURFACE DEPOSITS.</div>`;
-      return;
-    }
-
-    let html = '';
-
-    // Day 21: Unresolved Precursor Signal entry
-    if (this.unresolvedPrecursorSignals > 0 && this.planetPrecursorSites.length === 0) {
-      html += `
-        <div class="hotspot-card unresolved">
-          <div class="hotspot-card-left">
-            <span class="hotspot-dot" style="color: #a855f7; box-shadow: 0 0 10px #a855f7;"></span>
-            <div class="hotspot-card-info">
-              <span class="hotspot-name">UNRESOLVED PRECURSOR SIGNAL</span>
-              <span class="hotspot-coords">SURFACE RESONANCE DETECTED // CARRIER FREQUENCIES OBSCURED</span>
-            </div>
-          </div>
-          <span class="unresolved-pill">REQ >= ${this.precursorRequiredSurvey}% SURVEY (${this.activePlanetDetail?.survey?.surveyCompletion || 0}%)</span>
-        </div>
-      `;
-    }
-
-    for (const h of hotspots) {
-      html += `
-        <div class="hotspot-card" data-lat="${h.lat}" data-lng="${h.lng}">
-          <div class="hotspot-card-left">
-            <span class="hotspot-dot" style="color: ${h.color};"></span>
-            <div class="hotspot-card-info">
-              <span class="hotspot-name">${h.name}</span>
-              <span class="hotspot-coords">LAT: ${h.lat.toFixed(1)}° // LNG: ${h.lng.toFixed(1)}°</span>
-            </div>
-          </div>
-          <span class="hotspot-yield">${h.yieldEstimate}</span>
-        </div>
-      `;
-    }
-
-    for (const b of beacons) {
-      html += `
-        <div class="hotspot-card" style="border-color: rgba(255, 255, 255, 0.4);">
-          <div class="hotspot-card-left">
-            <span class="hotspot-dot" style="color: #ffffff; box-shadow: 0 0 10px #ffffff;"></span>
-            <div class="hotspot-card-info">
-              <span class="hotspot-name">SURFACE SENSOR BEACON</span>
-              <span class="hotspot-coords">LAT: ${b.surfaceLat.toFixed(1)}° // LNG: ${b.surfaceLng.toFixed(1)}°</span>
-            </div>
-          </div>
-          <span class="hotspot-yield" style="color: #10b981;">${b.yieldSummary}</span>
-        </div>
-      `;
-    }
-
-    list.innerHTML = html;
-  }
-
-  /**
-   * Executes a specialized sensor sweep across the chosen sensor band.
-   */
   public async performScannerSweep(band: 'MINERALS' | 'BIO' | 'ANOMALIES'): Promise<void> {
-    if (!this.activePlanet || !this.activePlanetDetail) return;
-
-    if (this.playerAP.currentAP < 2) {
-      this.showApNotification('⚠️ INSUFFICIENT ACTION POINTS: Sweep requires 2 AP.', true);
-      return;
-    }
-
-    // Play band sonar ping
-    this.audio.playScannerSonarPing(band);
-
-    try {
-      const res = await fetch(`http://localhost:3000/api/planets/${this.activePlanet.data.id}/scan`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          accountId: 'acc_sol_captain',
-          scanBand: band,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        this.showApNotification(`⚠️ ${data.error || 'Scan sweep failed'}`, true);
-        return;
-      }
-
-      this.activePlanetDetail.survey = data.survey;
-      this.fetchPlayerAP();
-      this.updateSurveyConsoleUI();
-      this.showApNotification(`📡 ${data.message}`, false);
-    } catch (err) {
-      console.error('[DAY 18] Scanner sweep failed:', err);
-    }
+    await this.surveyController.performScannerSweep(band);
   }
 
-  /**
-   * Launches an Atmospheric / Surface Probe to sample materials and establish a permanent beacon.
-   */
   public async launchAtmosphericProbe(): Promise<void> {
-    if (!this.activePlanet || !this.activePlanetDetail) return;
-
-    const checkShield = document.getElementById('check-probe-shield') as HTMLInputElement | null;
-    const shieldBoost = checkShield ? checkShield.checked : false;
-
-    if (shieldBoost && this.playerAP.currentAP < 1) {
-      this.showApNotification('⚠️ INSUFFICIENT AP: Shield reinforcement requires 1 AP.', true);
-      return;
-    }
-
-    const btn = document.getElementById('btn-launch-probe') as HTMLButtonElement | null;
-    if (btn) btn.disabled = true;
-
-    // Show descent telemetry display
-    const descentBox = document.getElementById('probe-descent-display');
-    const altMarker = document.getElementById('probe-altitude-marker');
-    const altVal = document.getElementById('probe-alt-val');
-    const velVal = document.getElementById('probe-vel-val');
-    const shieldVal = document.getElementById('probe-shield-val');
-    const statusMsg = document.getElementById('probe-status-msg');
-
-    if (descentBox) descentBox.classList.remove('hidden');
-
-    this.audio.playProbeAtmosphericBurn(shieldBoost);
-
-    // Animate descent
-    let progress = 0;
-    const interval = setInterval(() => {
-      progress += 0.08;
-      const pct = Math.min(100, Math.round(progress * 100));
-      const altKm = Math.max(0, Math.round(120 * (1 - progress)));
-      const velKms = Math.max(0.5, Number((4.2 * (1 - progress * 0.7)).toFixed(1)));
-
-      if (altMarker) altMarker.style.width = `${pct}%`;
-      if (altVal) altVal.textContent = `${altKm} km`;
-      if (velVal) velVal.textContent = `${velKms} km/s`;
-      if (shieldVal) shieldVal.textContent = shieldBoost ? '94%' : '68%';
-
-      if (progress >= 1.0) {
-        clearInterval(interval);
-      }
-    }, 80);
-
-    try {
-      const res = await fetch(`http://localhost:3000/api/planets/${this.activePlanet.data.id}/probe`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          accountId: 'acc_sol_captain',
-          targetLat: this.targetedLat,
-          targetLng: this.targetedLng,
-          shieldBoost,
-        }),
-      });
-
-      const data = await res.json();
-      if (btn) btn.disabled = false;
-
-      if (!res.ok || !data.success) {
-        this.showApNotification(`⚠️ ${data.error || 'Probe deployment failed'}`, true);
-        if (statusMsg) statusMsg.textContent = 'PROBE TELEMETRY LOST';
-        return;
-      }
-
-      if (statusMsg) statusMsg.textContent = `TOUCHDOWN CONFIRMED // BEACON ONLINE`;
-
-      // Update local state
-      this.activePlanetDetail.beacons.unshift({
-        id: data.beaconId,
-        surfaceLat: this.targetedLat,
-        surfaceLng: this.targetedLng,
-        yieldSummary: data.yieldSummary,
-        createdAt: new Date().toISOString(),
-      });
-
-      this.fetchPlayerAP();
-      this.updateSurveyConsoleUI();
-      this.showApNotification(`🚀 ${data.message}`, false);
-
-      setTimeout(() => {
-        if (descentBox) descentBox.classList.add('hidden');
-      }, 4000);
-    } catch (err) {
-      if (btn) btn.disabled = false;
-      console.error('[DAY 18] Probe launch failed:', err);
-    }
+    await this.surveyController.launchAtmosphericProbe();
   }
 
-  /**
-   * Refreshes the Station Astrometry Cartography Bureau in the diplomacy lounge.
-   */
   public async refreshAstrometryBureau(): Promise<void> {
-    const list = document.getElementById('astrometry-planets-list');
-    if (!list) return;
-
-    try {
-      const res = await fetch(`http://localhost:3000/api/planets/sector/${this.currentSectorId}`);
-      if (!res.ok) return;
-      const data = await res.json();
-      const planets = data.planets || [];
-
-      let html = '';
-      let qualifyingCount = 0;
-
-      for (const p of planets) {
-        const comp = p.survey?.surveyCompletion || 0;
-        if (comp >= 33) {
-          qualifyingCount++;
-          const isSold = p.survey.isDataSold;
-          const factionMultiplier = p.controllingFaction === 'FACTION_SOL' ? 1.4 : 1.0;
-          const creditReward = Math.round((comp / 100) * 1000 * factionMultiplier);
-
-          html += `
-            <div class="astrometry-card">
-              <div class="astrometry-card-left">
-                <div class="astrometry-planet-title">
-                  <span>${p.name}</span>
-                  <span class="astrometry-comp-badge">${comp}% SURVEYED</span>
-                </div>
-                <div class="astrometry-planet-details">
-                  ${p.archetype} WORLD // HABITABILITY: ${p.habitabilityRating}% // BEACONS: ${p.beacons?.length || 0}
-                </div>
-              </div>
-              <button class="astrometry-bounty-btn" data-planet-id="${p.id}" ${isSold ? 'disabled' : ''}>
-                ${isSold ? 'REMITTED // PAID' : `REMIT DATA (+${creditReward} CR, +5 AP, +15 Goodwill)`}
-              </button>
-            </div>
-          `;
-        }
-      }
-
-      if (qualifyingCount === 0) {
-        html = `
-          <div class="ledger-empty" style="color: #94a3b8; text-align: left; padding: 0.8rem 0;">
-            No authenticated survey logs in archive. Scan celestial planets in the sector to >=33% completion to sell astrometry logs here.
-          </div>
-        `;
-      }
-
-      list.innerHTML = html;
-
-      // Bind remit buttons
-      const btns = list.querySelectorAll('.astrometry-bounty-btn:not([disabled])');
-      btns.forEach((b) => {
-        b.addEventListener('click', async (e) => {
-          const planetId = (e.currentTarget as HTMLElement).getAttribute('data-planet-id');
-          if (!planetId) return;
-          try {
-            const sellRes = await fetch(`http://localhost:3000/api/planets/${planetId}/sell-data`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                accountId: 'acc_sol_captain',
-                portId: 'PORT_AEGIS_01',
-              }),
-            });
-            const sellData = await sellRes.json();
-            if (sellRes.ok && sellData.success) {
-              this.audio.playUiBlip();
-              this.showApNotification(`💰 ${sellData.message}`, false);
-              this.fetchPlayerAP();
-              this.refreshFactionStandings();
-              this.refreshAstrometryBureau();
-            } else {
-              this.showApNotification(`⚠️ ${sellData.error || 'Sale failed'}`, true);
-            }
-          } catch (err) {
-            console.error('[DAY 18] Failed to sell survey data:', err);
-          }
-        });
-      });
-    } catch (err) {
-      console.warn('[DAY 18] Astrometry bureau fetch failed:', err);
-    }
+    await this.surveyController.refreshAstrometryBureau();
   }
 
-  // ============================================================================
-  // DAY 19: COLONY OUTPOSTS, TERRAFORMING & MINING INFRASTRUCTURE
-  // ============================================================================
-
-  /**
-   * Toggles between Astrometry Sensor sweep array, Colony Command console, and Precursor Proto-Tech Lab.
-   */
-  public switchSurveyTab(tab: 'SENSORS' | 'COLONY' | 'PRECURSOR'): void {
-    this.activeSurveyTab = tab;
-    this.audio.playUiBlip();
-
-    const btnSensors = document.getElementById('tab-survey-sensors');
-    const btnColony = document.getElementById('tab-survey-colony');
-    const btnPrecursor = document.getElementById('tab-survey-precursor');
-    const panelSensors = document.getElementById('panel-survey-sensors');
-    const panelColony = document.getElementById('panel-survey-colony');
-    const panelPrecursor = document.getElementById('panel-survey-precursor');
-
-    btnSensors?.classList.toggle('active', tab === 'SENSORS');
-    btnColony?.classList.toggle('active', tab === 'COLONY');
-    btnPrecursor?.classList.toggle('active', tab === 'PRECURSOR');
-
-    panelSensors?.classList.toggle('hidden', tab !== 'SENSORS');
-    panelColony?.classList.toggle('hidden', tab !== 'COLONY');
-    panelPrecursor?.classList.toggle('hidden', tab !== 'PRECURSOR');
-
-    if (tab === 'COLONY') {
-      if (this.activeColony) {
-        this.refreshColonyDashboardUI();
-      } else {
-        this.populateColonyBeaconSelect();
-      }
-    } else if (tab === 'PRECURSOR') {
-      this.fetchPrecursorResearch();
-    }
-  }
-
-  /**
-   * Fetches all colonies established on the target planet.
-   */
-  public async fetchPlanetColonies(planetId: string): Promise<void> {
-    try {
-      const res = await fetch(`http://localhost:3000/api/colonies/planet/${planetId}?accountId=acc_sol_captain`);
-      if (res.ok) {
-        const data = await res.json();
-        this.activeColoniesList = data.colonies || [];
-        this.activeColony = this.activeColoniesList.length > 0 ? this.activeColoniesList[0] : null;
-
-        const pill = document.getElementById('survey-colony-pill');
-        if (pill) {
-          pill.textContent = `${this.activeColoniesList.length} ACTIVE`;
-        }
-
-        const cardUnfounded = document.getElementById('colony-unfounded-card');
-        const cardActive = document.getElementById('colony-active-dashboard');
-
-        if (this.activeColony) {
-          cardUnfounded?.classList.add('hidden');
-          cardActive?.classList.remove('hidden');
-          this.refreshColonyDashboardUI();
-
-          // Audio notification if silo reached maximum capacity
-          if (this.activeColony.stockpiled_amount >= this.activeColony.silo_capacity) {
-            this.audio.playSiloAlertChime();
-          }
-        } else {
-          cardUnfounded?.classList.remove('hidden');
-          cardActive?.classList.add('hidden');
-          this.populateColonyBeaconSelect();
-        }
-      }
-    } catch (err) {
-      console.warn('[DAY 19] Failed to fetch planet colonies:', err);
-    }
-  }
-
-  /**
-   * Populates target beacon options for establishing a new colony outpost.
-   */
-  private populateColonyBeaconSelect(): void {
-    const sel = document.getElementById('select-colony-beacon') as HTMLSelectElement | null;
-    if (!sel) return;
-
-    const beacons = this.activePlanetDetail?.beacons || [];
-    if (beacons.length === 0) {
-      sel.innerHTML = '<option value="">-- No Beacons Available (Deploy Surface Probe First) --</option>';
-      return;
-    }
-
-    sel.innerHTML = '<option value="">-- Choose Target Planted Recon Beacon --</option>' +
-      beacons.map((b: any) => `
-        <option value="${b.id}">Beacon at Lat ${b.surfaceLat.toFixed(1)}°, Lng ${b.surfaceLng.toFixed(1)}° (${b.yieldSummary})</option>
-      `).join('');
-  }
-
-  /**
-   * Updates Colony Command UI metrics, silo meter, and facility cards.
-   */
-  public refreshColonyDashboardUI(): void {
-    if (!this.activeColony) return;
-    const col = this.activeColony;
-
-    const elName = document.getElementById('colony-outpost-name');
-    const elCoords = document.getElementById('colony-outpost-coords');
-    const elPop = document.getElementById('colony-stat-pop');
-    const elRate = document.getElementById('colony-stat-rate');
-    const elTerraform = document.getElementById('colony-stat-terraform');
-    const elSiloText = document.getElementById('colony-silo-text');
-    const elSiloFill = document.getElementById('colony-silo-fill');
-
-    if (elName) elName.textContent = col.name.toUpperCase();
-    if (elCoords) elCoords.textContent = `LAT: ${col.surface_lat >= 0 ? '+' : ''}${col.surface_lat.toFixed(1)}° // LNG: ${col.surface_lng >= 0 ? '+' : ''}${col.surface_lng.toFixed(1)}°`;
-    if (elPop) elPop.textContent = `${col.population} / ${col.max_population}`;
-    if (elRate) elRate.textContent = `${(col.production_rate * 60).toFixed(1)} u/min`;
-    if (elTerraform) elTerraform.textContent = `+${(col.terraformer_tier * 0.5).toFixed(1)}% / hr (Hab: ${col.habitability_rating}%)`;
-
-    const siloPct = Math.min(100, Math.round((col.stockpiled_amount / col.silo_capacity) * 100));
-    if (elSiloText) elSiloText.textContent = `${col.stockpiled_amount} / ${col.silo_capacity} Units Stockpiled (${col.commodity_id.replace('COMM_', '')})`;
-    if (elSiloFill) {
-      elSiloFill.style.width = `${siloPct}%`;
-      if (siloPct >= 100) {
-        elSiloFill.style.background = 'linear-gradient(90deg, #f59e0b, #ef4444)';
-      } else {
-        elSiloFill.style.background = 'linear-gradient(90deg, #10b981, #34d399)';
-      }
-    }
-
-    // Facility Cards: Derrick
-    const bDerrick = document.getElementById('badge-derrick-tier');
-    const dDerrick = document.getElementById('desc-derrick-tier');
-    const btnDerrick = document.getElementById('btn-upgrade-derrick') as HTMLButtonElement | null;
-    if (bDerrick) bDerrick.textContent = col.derrick_tier >= 3 ? 'TIER 3 (MAX)' : `TIER ${col.derrick_tier}`;
-    if (bDerrick && col.derrick_tier >= 3) bDerrick.classList.add('max');
-    if (dDerrick) {
-      const mult = col.derrick_tier === 1 ? '1.0x' : col.derrick_tier === 2 ? '2.5x' : '5.0x';
-      dDerrick.textContent = `Surface mineral drills operating at ${mult} extraction multiplier.`;
-    }
-    if (btnDerrick) {
-      if (col.derrick_tier >= 3) {
-        btnDerrick.textContent = 'MAXIMUM TIER REACHED';
-        btnDerrick.disabled = true;
-      } else {
-        const cost = col.derrick_tier === 1 ? '400 CR // 3 AP // 5 ALLOY' : '900 CR // 4 AP // 10 ALLOY';
-        btnDerrick.textContent = `UPGRADE TO TIER ${col.derrick_tier + 1} (${cost})`;
-        btnDerrick.disabled = false;
-      }
-    }
-
-    // Facility Cards: Habitation
-    const bHab = document.getElementById('badge-habitation-tier');
-    const dHab = document.getElementById('desc-habitation-tier');
-    const btnHab = document.getElementById('btn-upgrade-habitation') as HTMLButtonElement | null;
-    if (bHab) bHab.textContent = col.habitation_tier >= 3 ? 'TIER 3 (MAX)' : `TIER ${col.habitation_tier}`;
-    if (bHab && col.habitation_tier >= 3) bHab.classList.add('max');
-    if (dHab) {
-      dHab.textContent = `Pressurized biospheres supporting up to ${col.max_population} workforce.`;
-    }
-    if (btnHab) {
-      if (col.habitation_tier >= 3) {
-        btnHab.textContent = 'MAXIMUM TIER REACHED';
-        btnHab.disabled = true;
-      } else {
-        const cost = col.habitation_tier === 1 ? '400 CR // 3 AP // 5 ALLOY' : '900 CR // 4 AP // 10 ALLOY';
-        btnHab.textContent = `UPGRADE TO TIER ${col.habitation_tier + 1} (${cost})`;
-        btnHab.disabled = false;
-      }
-    }
-
-    // Facility Cards: Terraformer
-    const bTer = document.getElementById('badge-terraformer-tier');
-    const dTer = document.getElementById('desc-terraformer-tier');
-    const btnTer = document.getElementById('btn-upgrade-terraformer') as HTMLButtonElement | null;
-    if (bTer) bTer.textContent = col.terraformer_tier >= 3 ? 'TIER 3 (MAX)' : `TIER ${col.terraformer_tier}`;
-    if (bTer && col.terraformer_tier >= 3) bTer.classList.add('max');
-    if (dTer) {
-      dTer.textContent = `Ion scrubbers detoxifying atmosphere (+${(col.terraformer_tier * 0.5).toFixed(1)}% Hab/hr).`;
-    }
-    if (btnTer) {
-      if (col.terraformer_tier >= 3) {
-        btnTer.textContent = 'MAXIMUM TIER REACHED';
-        btnTer.disabled = true;
-      } else {
-        const cost = col.terraformer_tier === 1 ? '500 CR // 4 AP // 5 ALLOY' : '1,200 CR // 5 AP // 10 ALLOY';
-        btnTer.textContent = `UPGRADE TO TIER ${col.terraformer_tier + 1} (${cost})`;
-        btnTer.disabled = false;
-      }
-    }
-
-    // Facility Cards: Silo
-    const bSilo = document.getElementById('badge-silo-tier');
-    const dSilo = document.getElementById('desc-silo-tier');
-    const btnSilo = document.getElementById('btn-upgrade-silo') as HTMLButtonElement | null;
-    if (bSilo) bSilo.textContent = col.silo_tier >= 3 ? 'TIER 3 (MAX)' : `TIER ${col.silo_tier}`;
-    if (bSilo && col.silo_tier >= 3) bSilo.classList.add('max');
-    if (dSilo) {
-      dSilo.textContent = `Reinforced storage vaults buffering up to ${col.silo_capacity} units.`;
-    }
-    if (btnSilo) {
-      if (col.silo_tier >= 3) {
-        btnSilo.textContent = 'MAXIMUM TIER REACHED';
-        btnSilo.disabled = true;
-      } else {
-        const cost = col.silo_tier === 1 ? '350 CR // 3 AP // 5 ALLOY' : '800 CR // 4 AP // 10 ALLOY';
-        btnSilo.textContent = `UPGRADE TO TIER ${col.silo_tier + 1} (${cost})`;
-        btnSilo.disabled = false;
-      }
-    }
-  }
-
-  /**
-   * Establishes a permanent colony outpost at the selected sensor beacon.
-   */
-  public async foundColony(): Promise<void> {
-    if (!this.activePlanet) return;
-    const selBeacon = document.getElementById('select-colony-beacon') as HTMLSelectElement | null;
-    const inputName = document.getElementById('input-colony-name') as HTMLInputElement | null;
-
-    const beaconId = selBeacon ? selBeacon.value : '';
-    const name = inputName && inputName.value.trim() ? inputName.value.trim() : `${this.activePlanet.data.name} Outpost`;
-
-    if (!beaconId) {
-      this.showApNotification('⚠️ Please select a planted surface beacon location first.', true);
-      return;
-    }
-
-    if (this.playerAP.currentAP < 5) {
-      this.showApNotification('⚠️ INSUFFICIENT ACTION POINTS: Founding an outpost requires 5 AP.', true);
-      return;
-    }
-
-    const btn = document.getElementById('btn-found-colony') as HTMLButtonElement | null;
-    if (btn) btn.disabled = true;
-
-    try {
-      const res = await fetch('http://localhost:3000/api/colonies/found', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          accountId: 'acc_sol_captain',
-          planetId: this.activePlanet.data.id,
-          beaconId,
-          name,
-        }),
-      });
-
-      const data = await res.json();
-      if (btn) btn.disabled = false;
-
-      if (!res.ok || !data.success) {
-        this.showApNotification(`⚠️ ${data.error || 'Colony founding failed'}`, true);
-        return;
-      }
-
-      this.audio.playColonyFoundingFanfare();
-      this.showApNotification(`🏛️ Outpost "${name}" successfully established!`, false);
-
-      this.fetchPlayerAP();
-      this.refreshPlayerHold();
-      await this.fetchPlanetColonies(this.activePlanet.data.id);
-    } catch (err) {
-      if (btn) btn.disabled = false;
-      console.error('[DAY 19] Failed to found colony:', err);
-    }
-  }
-
-  /**
-   * Upgrades a colony facility module to its next tier.
-   */
-  public async upgradeColonyFacility(facilityType: 'DERRICK' | 'HABITATION' | 'TERRAFORMER' | 'SILO'): Promise<void> {
-    if (!this.activeColony) return;
-
-    try {
-      const res = await fetch(`http://localhost:3000/api/colonies/${this.activeColony.id}/upgrade`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          accountId: 'acc_sol_captain',
-          facilityType,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        this.showApNotification(`⚠️ ${data.error || 'Facility upgrade failed'}`, true);
-        return;
-      }
-
-      this.audio.playFacilityUpgradeSound();
-      this.showApNotification(`⚙️ ${data.message}`, false);
-
-      this.activeColony = data.colony;
-      this.fetchPlayerAP();
-      this.refreshPlayerHold();
-      this.refreshColonyDashboardUI();
-    } catch (err) {
-      console.error('[DAY 19] Failed to upgrade colony facility:', err);
-    }
-  }
-
-  /**
-   * Transfers all stockpiled commodities from the colony silo directly into ship cargo.
-   */
-  public async harvestColonyCargo(): Promise<void> {
-    if (!this.activeColony) return;
-
-    if (this.activeColony.stockpiled_amount <= 0) {
-      this.showApNotification('⚠️ Logistics Silo is empty. Wait for automated extraction cycles.', true);
-      return;
-    }
-
-    try {
-      const res = await fetch(`http://localhost:3000/api/colonies/${this.activeColony.id}/harvest`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          accountId: 'acc_sol_captain',
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        this.showApNotification(`⚠️ ${data.error || 'Harvest failed'}`, true);
-        return;
-      }
-
-      this.audio.playCargoHarvestSound();
-      this.showApNotification(`📦 Transferred ${data.transferred} units into ship hold!`, false);
-
-      this.activeColony = data.colony;
-      this.refreshPlayerHold();
-      this.refreshColonyDashboardUI();
-    } catch (err) {
-      console.error('[DAY 19] Failed to harvest colony cargo:', err);
-    }
-  }
-
-  // ============================================================================
-  // DAY 21: AIRSPACE CLEARANCE, CEASEFIRE TRUCE GATING & PRECURSOR RESOLUTION
-  // ============================================================================
-
-  /**
-   * Day 21: Checks whether the pilot has airspace clearance (or needs a ceasefire truce) over a planet.
-   */
   public async fetchPlanetAirspace(planetId: string): Promise<void> {
-    try {
-      const res = await fetch(`http://localhost:3000/api/planets/${planetId}/airspace?accountId=acc_sol_captain`);
-      if (res.ok) {
-        const data = await res.json();
-        this.activeAirspaceClearance = data.clearance || null;
-      }
-    } catch (err) {
-      console.warn('[DAY 21] Failed to fetch airspace clearance:', err);
-    }
+    await this.surveyController.fetchPlanetAirspace(planetId);
   }
 
-  // ============================================================================
-  // DAY 20: STAR CONTROL II SURFACE LANDER, PRECURSOR MEGASTRUCTURES & RELIC TECH TREE
-  // ============================================================================
+  // --- Colony Controller Delegates ---
+  public switchSurveyTab(tab: 'SENSORS' | 'COLONY' | 'PRECURSOR'): void {
+    this.colonyController.switchSurveyTab(tab);
+  }
 
-  /**
-   * Fetches Precursor Megastructure sites on the active planet and updates UI pills.
-   */
+  public async fetchPlanetColonies(planetId: string): Promise<void> {
+    await this.colonyController.fetchPlanetColonies(planetId);
+  }
+
+  public async foundColony(): Promise<void> {
+    await this.colonyController.foundColony();
+  }
+
+  public async upgradeColonyFacility(facilityType: 'DERRICK' | 'HABITATION' | 'TERRAFORMER' | 'SILO'): Promise<void> {
+    await this.colonyController.upgradeColonyFacility(facilityType);
+  }
+
+  public async harvestColonyCargo(): Promise<void> {
+    await this.colonyController.harvestColonyCargo();
+  }
+
   public async fetchPlanetPrecursorSites(planetId: string): Promise<void> {
-    try {
-      const res = await fetch(`http://localhost:3000/api/precursor/planet/${planetId}?accountId=acc_sol_captain`);
-      if (res.ok) {
-        const data = await res.json();
-        this.planetPrecursorSites = data.sites || [];
-        this.unresolvedPrecursorSignals = data.unresolvedSignals || 0;
-        this.precursorRequiredSurvey = data.requiredSurvey || 33;
-        this.playerRelicCount = data.relics || 0;
-
-        const relicPill = document.getElementById('survey-relics-pill');
-        if (relicPill) {
-          relicPill.textContent =
-            this.planetPrecursorSites.length > 0
-              ? `${this.playerRelicCount} RELICS`
-              : this.unresolvedPrecursorSignals > 0
-              ? `${this.unresolvedPrecursorSignals} UNRESOLVED`
-              : `${this.playerRelicCount} RELICS`;
-        }
-
-        const relicCount = document.getElementById('precursor-relic-count');
-        if (relicCount) {
-          relicCount.textContent = `${this.playerRelicCount}x IN CARGO`;
-        }
-      }
-    } catch (err) {
-      console.warn('[DAY 20] Failed to fetch planet precursor sites:', err);
-    }
+    await this.colonyController.fetchPlanetPrecursorSites(planetId);
   }
 
-  /**
-   * Retrieves the prototype technology research catalog and updates the Precursor Lab grid.
-   */
   public async fetchPrecursorResearch(): Promise<void> {
-    try {
-      const res = await fetch(`http://localhost:3000/api/precursor/research?accountId=acc_sol_captain`);
-      if (!res.ok) return;
-      const data = await res.json();
-      this.precursorResearchCatalog = data.catalog || [];
-      this.playerRelicCount = data.relics ?? this.playerRelicCount;
-
-      const relicCountEl = document.getElementById('precursor-relic-count');
-      const creditsCountEl = document.getElementById('precursor-credits-count');
-      const apCountEl = document.getElementById('precursor-ap-count');
-      const relicPill = document.getElementById('survey-relics-pill');
-
-      if (relicCountEl) relicCountEl.textContent = `${this.playerRelicCount}x IN CARGO`;
-      if (creditsCountEl && data.credits !== undefined) creditsCountEl.textContent = `${Number(data.credits).toLocaleString()} Cr`;
-      if (apCountEl) apCountEl.textContent = `${data.ap?.currentAP ?? this.playerAP.currentAP} / ${this.playerAP.maxAP}`;
-      if (relicPill) relicPill.textContent = `${this.playerRelicCount} RELICS`;
-
-      this.renderPrecursorTechGrid();
-    } catch (err) {
-      console.warn('[DAY 20] Failed to fetch precursor research:', err);
-    }
+    await this.colonyController.fetchPrecursorResearch();
   }
 
-  /**
-   * Renders the 4 legendary prototype ship systems in the Proto-Tech Laboratory.
-   */
   public renderPrecursorTechGrid(): void {
-    const grid = document.getElementById('precursor-tech-grid');
-    if (!grid) return;
-
-    if (this.precursorResearchCatalog.length === 0) {
-      grid.innerHTML = '<div class="precursor-empty-state">No precursor prototypes loaded.</div>';
-      return;
-    }
-
-    grid.innerHTML = this.precursorResearchCatalog.map((tech) => {
-      const statBadges = Object.entries(tech.stats || {})
-        .map(([k, v]) => `<span class="stat-pill">${k.toUpperCase()}: <strong>${v}</strong></span>`)
-        .join('');
-
-      const actionBtn = tech.isSynthesized
-        ? `<button class="colony-action-btn synthesized-badge" disabled>✔ SYNTHESIZED // READY IN SHIP HOLD</button>`
-        : `<button class="colony-action-btn primary btn-synth-tech" data-tech-id="${tech.id}">
-             SYNTHESIZE PROTOTYPE [${tech.relicCost}x RELIC + ${tech.apCost} AP] ⚡
-           </button>`;
-
-      return `
-        <div class="precursor-tech-card ${tech.isSynthesized ? 'synthesized' : ''}">
-          <div class="tech-card-header">
-            <div class="tech-title-block">
-              <span class="slot-badge slot-${tech.slotType.toLowerCase()}">${tech.slotType} SLOT // ${tech.category}</span>
-              <h3 class="tech-title">${tech.name}</h3>
-            </div>
-            <div class="tech-cost-badge">
-              <span>💎 ${tech.relicCost}x RELIC</span>
-              <span>💰 ${tech.creditCost} CR</span>
-            </div>
-          </div>
-          <p class="tech-desc">${tech.description}</p>
-          <div class="tech-stats-row">
-            ${statBadges}
-          </div>
-          <div class="tech-action-row">
-            ${actionBtn}
-          </div>
-        </div>
-      `;
-    }).join('');
-
-    // Attach synthesis button listeners
-    grid.querySelectorAll('.btn-synth-tech').forEach((btn) => {
-      btn.addEventListener('click', (e) => {
-        const techId = (e.currentTarget as HTMLElement).getAttribute('data-tech-id');
-        if (techId) {
-          this.synthesizePrototypeTech(techId);
-        }
-      });
-    });
+    this.colonyController.renderPrecursorTechGrid();
   }
 
-  /**
-   * Synthesizes a legendary prototype ship system using an unrefined Precursor Relic Core.
-   */
   public async synthesizePrototypeTech(techId: string): Promise<void> {
-    try {
-      const res = await fetch('http://localhost:3000/api/precursor/synthesize', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accountId: 'acc_sol_captain', techId }),
-      });
-
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        this.showApNotification(`⚠️ ${data.error || 'Prototype synthesis failed'}`, true);
-        return;
-      }
-
-      this.audio.playPrecursorDecipherFanfare();
-      this.showApNotification(`⚡ Synthesized ${data.tech?.name}! Fitted module added to cargo hold!`, false);
-
-      await this.fetchPrecursorResearch();
-      this.refreshPlayerHold();
-    } catch (err) {
-      console.error('[DAY 20] Failed to synthesize prototype tech:', err);
-    }
+    await this.colonyController.synthesizePrototypeTech(techId);
   }
 
-  /**
-   * Remits a Precursor Relic Core to an alien ambassador for +600 Credits and +50 Goodwill.
-   */
   public async remitPrecursorRelic(): Promise<void> {
-    const sel = document.getElementById('select-remit-faction') as HTMLSelectElement | null;
-    const factionId = sel ? sel.value : 'FACTION_SOL';
-
-    try {
-      const res = await fetch('http://localhost:3000/api/precursor/remit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accountId: 'acc_sol_captain', factionId }),
-      });
-
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        this.showApNotification(`⚠️ ${data.error || 'Relic remittance failed'}`, true);
-        return;
-      }
-
-      this.audio.playCargoHarvestSound();
-      this.showApNotification(`💎 Remitted Precursor Relic to ${factionId.replace('FACTION_', '')}! +${data.creditsReward} Credits, +${data.goodwillReward} Goodwill!`, false);
-
-      await this.fetchPrecursorResearch();
-      this.refreshFactionStandings();
-    } catch (err) {
-      console.error('[DAY 20] Failed to remit precursor relic:', err);
-    }
+    await this.colonyController.remitPrecursorRelic();
   }
 
-  // ============================================================================
-  // STAR CONTROL II SURFACE LANDER SIMULATION
-  // ============================================================================
-
-  /**
-   * Deploys the nimble planetary lander from synchronous orbit into the 2D topography flight view.
-   */
+  // --- Lander Controller Delegates ---
   public openSurfaceLander(): void {
-    if (!this.activePlanet) {
-      this.activePlanet = new ProceduralPlanet({
-        id: 'planet_sec1_aegis',
-        sectorId: 1,
-        name: 'Aegis Prime',
-        archetype: 'BARREN',
-        radius: 24.0,
-        posX: -140.0,
-        posY: 0.0,
-        posZ: 180.0,
-        textureSeed: 101,
-        atmosphereColor: '#38bdf8',
-        atmosphereDensity: 0.12,
-        surfaceTempK: 215,
-        hazardClass: 'LOW_RADIATION',
-        habitabilityRating: 18,
-        controllingFaction: 'FACTION_SOL',
-        description: 'Airless metallic moon rich in heavy silicate crust and structural plasteel strata.',
-      });
-    }
-    this.isLanderActive = true;
-
-    if (this.modalPlanetarySurvey) {
-      this.modalPlanetarySurvey.classList.add('hidden');
-    }
-    if (!this.modalPlanetaryLander) {
-      this.modalPlanetaryLander = document.getElementById('planetary-lander-modal');
-    }
-    if (this.modalPlanetaryLander) {
-      this.modalPlanetaryLander.classList.remove('hidden');
-    }
-
-    const titleEl = document.getElementById('lander-planet-title');
-    if (titleEl) {
-      titleEl.textContent = `${this.activePlanet.data.name.toUpperCase()} // SURFACE TOPOGRAPHY`;
-    }
-
-    if (!this.landerCanvas) {
-      this.landerCanvas = document.getElementById('surface-lander-canvas') as HTMLCanvasElement;
-      if (this.landerCanvas) {
-        this.landerCtx = this.landerCanvas.getContext('2d');
-      }
-    }
-
-    // Reset lander telemetry & kinematics
-    this.landerState = {
-      x: 380,
-      y: 240,
-      vx: 0,
-      vy: 0,
-      heading: -Math.PI / 2,
-      fuel: 100,
-      maxFuel: 100,
-      hull: 100,
-      maxHull: 100,
-      cargo: 0,
-      maxCargo: 25,
-      isDocked: false,
-      dockedSite: null,
-    };
-    this.landerKeys = { up: false, down: false, left: false, right: false };
-    this.landerParticles = [];
-    this.landerSonarWaves = [];
-
-    // Initialize surface nodes: Megastructures from planet precursor sites + mineral deposits
-    this.landerNodes = [];
-
-    // Place Precursor Megastructures on surface canvas
-    if (this.planetPrecursorSites.length > 0) {
-      this.planetPrecursorSites.forEach((site, idx) => {
-        const posX = idx === 0 ? 530 : 230 + (idx * 160);
-        const posY = idx === 0 ? 170 : 330;
-        this.landerNodes.push({
-          id: site.id,
-          x: posX,
-          y: posY,
-          type: 'MEGASTRUCTURE',
-          name: site.name,
-          siteData: site,
-          discovered: false,
-          color: '#00f0ff',
-        });
-      });
-    } else {
-      // Fallback canonical megastructure
-      this.landerNodes.push({
-        id: 'site_fallback_monolith',
-        x: 520,
-        y: 170,
-        type: 'MEGASTRUCTURE',
-        name: 'Aegis Resonance Monolith',
-        siteData: {
-          id: 'site_aegis_monolith',
-          name: 'Aegis Resonance Monolith',
-          surfaceLat: 22.0,
-          surfaceLng: -40.0,
-          requiredFreq: 440,
-          requiredPhase: 180,
-          requiredDamping: 50,
-          isDeciphered: false,
-          codexTitle: 'Chronicles of the First Builders: The Hyper-Spatial Fold',
-          codexText: 'We who folded the void before the light of Sol took form left this frequency key for those who walk after us...',
-        },
-        discovered: false,
-        color: '#00f0ff',
-      });
-    }
-
-    // Populate 8 mineral resource deposits on topographical contours
-    const mineralDefs = [
-      { name: 'Plutonium Isotopes', x: 180, y: 120, amount: 8, color: '#fbbf24' },
-      { name: 'Rare Crystalline Matrix', x: 610, y: 130, amount: 10, color: '#38bdf8' },
-      { name: 'Superdense Titanium', x: 150, y: 380, amount: 15, color: '#e2e8f0' },
-      { name: 'Xenobiological Spores', x: 430, y: 380, amount: 12, color: '#4ade80' },
-      { name: 'Precursor Power Cells', x: 660, y: 340, amount: 6, color: '#c084fc' },
-      { name: 'Rare Crystalline Matrix', x: 330, y: 190, amount: 10, color: '#38bdf8' },
-      { name: 'Superdense Titanium', x: 230, y: 260, amount: 12, color: '#e2e8f0' },
-      { name: 'Plutonium Isotopes', x: 480, y: 290, amount: 8, color: '#fbbf24' },
-    ];
-
-    mineralDefs.forEach((m, idx) => {
-      this.landerNodes.push({
-        id: `node_min_${idx}`,
-        x: m.x,
-        y: m.y,
-        type: 'MINERAL',
-        name: m.name,
-        mineralType: m.name,
-        amount: m.amount,
-        collected: false,
-        discovered: false,
-        color: m.color,
-      });
-    });
-
-    const dockBanner = document.getElementById('megastructure-dock-banner');
-    if (dockBanner) dockBanner.classList.add('hidden');
-
-    const targetsList = document.getElementById('lander-targets-list');
-    if (targetsList) {
-      targetsList.innerHTML = `<div class="target-card-item">Press [SPACE] to broadcast seismic pulse and detect surface deposits.</div>`;
-    }
-
-    this.updateLanderTelemetryUI();
-    this.startLanderLoop();
+    this.landerController.openSurfaceLander();
   }
 
-  /**
-   * Ascends back into synchronous orbit and transfers collected surface minerals into ship hold.
-   */
+  public deploySurfaceLander(): void {
+    this.landerController.openSurfaceLander();
+  }
+
   public closeSurfaceLander(): void {
-    this.isLanderActive = false;
-    this.audio.stopLanderThrusterSound();
-
-    if (this.landerAnimId !== null) {
-      cancelAnimationFrame(this.landerAnimId);
-      this.landerAnimId = null;
-    }
-
-    if (this.modalPlanetaryLander) {
-      this.modalPlanetaryLander.classList.add('hidden');
-    }
-
-    if (this.isInOrbit && this.modalPlanetarySurvey) {
-      this.modalPlanetarySurvey.classList.remove('hidden');
-    }
-
-    if (this.landerState.cargo > 0) {
-      this.audio.playCargoHarvestSound();
-      this.showApNotification(`🚀 Lander docked with ship! Transferred ${this.landerState.cargo} units of surface minerals into hold!`, false);
-    }
+    this.landerController.closeSurfaceLander();
   }
 
-  /**
-   * Fires a Star Control-style seismic radar ping revealing surface deposits.
-   */
-  public fireSeismicRadarPing(): void {
-    if (!this.isLanderActive) return;
-
-    this.audio.playSeismicRadarPing();
-    this.landerSonarWaves.push({
-      x: this.landerState.x,
-      y: this.landerState.y,
-      radius: 10,
-      maxRadius: 420,
-      alpha: 1.0,
-    });
-
-    const statusBlip = document.getElementById('lander-radar-status');
-    if (statusBlip) {
-      statusBlip.textContent = 'SCANNING...';
-      statusBlip.style.color = '#38bdf8';
-      setTimeout(() => {
-        if (statusBlip) {
-          statusBlip.textContent = 'READY [SPACE]';
-          statusBlip.style.color = '#10b981';
-        }
-      }, 700);
-    }
+  public get isLanderActive(): boolean {
+    return this.landerController?.isLanderActive ?? false;
   }
 
-  /**
-   * Animation & physics loop for the 2D surface lander simulation.
-   */
-  private startLanderLoop(): void {
-    if (this.landerAnimId !== null) {
-      cancelAnimationFrame(this.landerAnimId);
-    }
-
-    const loop = () => {
-      if (!this.isLanderActive) return;
-      this.updateLanderPhysics();
-      this.renderLanderCanvas();
-      this.landerAnimId = requestAnimationFrame(loop);
-    };
-
-    this.landerAnimId = requestAnimationFrame(loop);
+  public get landerKeys(): { up: boolean; down: boolean; left: boolean; right: boolean } {
+    return this.landerController?.landerKeys ?? { up: false, down: false, left: false, right: false };
   }
 
-  /**
-   * Updates lander flight dynamics, particle emission, boundary damping, and node proximity.
-   */
-  private updateLanderPhysics(): void {
-    const s = this.landerState;
-    const k = this.landerKeys;
-
-    // Rotation
-    if (k.left) s.heading -= 0.055;
-    if (k.right) s.heading += 0.055;
-
-    // Forward Thruster
-    if (k.up && s.fuel > 0) {
-      const accel = 0.15;
-      s.vx += Math.cos(s.heading) * accel;
-      s.vy += Math.sin(s.heading) * accel;
-      s.fuel = Math.max(0, s.fuel - 0.04);
-      this.audio.startLanderThrusterSound(1.0);
-
-      // Spawn thruster exhaust particles
-      const tailX = s.x - Math.cos(s.heading) * 14;
-      const tailY = s.y - Math.sin(s.heading) * 14;
-      for (let i = 0; i < 2; i++) {
-        const spread = (Math.random() - 0.5) * 0.4;
-        this.landerParticles.push({
-          x: tailX,
-          y: tailY,
-          vx: -Math.cos(s.heading + spread) * (2 + Math.random() * 2),
-          vy: -Math.sin(s.heading + spread) * (2 + Math.random() * 2),
-          life: 1.0,
-          maxLife: 1.0,
-          color: Math.random() > 0.5 ? '#f59e0b' : '#00f0ff',
-          size: 2 + Math.random() * 3,
-        });
-      }
-    } else {
-      this.audio.stopLanderThrusterSound();
-    }
-
-    // Retro-thrusters
-    if (k.down) {
-      s.vx *= 0.94;
-      s.vy *= 0.94;
-    }
-
-    // Natural drag & inertia
-    s.vx *= 0.985;
-    s.vy *= 0.985;
-    s.x += s.vx;
-    s.y += s.vy;
-
-    // Soft boundary bounce [25, 735] x [25, 455]
-    if (s.x < 25) { s.x = 25; s.vx = -s.vx * 0.5; }
-    if (s.x > 735) { s.x = 735; s.vx = -s.vx * 0.5; }
-    if (s.y < 25) { s.y = 25; s.vy = -s.vy * 0.5; }
-    if (s.y > 455) { s.y = 455; s.vy = -s.vy * 0.5; }
-
-    // Update exhaust particles
-    for (let i = this.landerParticles.length - 1; i >= 0; i--) {
-      const p = this.landerParticles[i];
-      p.x += p.vx;
-      p.y += p.vy;
-      p.life -= 0.05;
-      if (p.life <= 0) {
-        this.landerParticles.splice(i, 1);
-      }
-    }
-
-    // Update Sonar Radar Waves
-    for (let i = this.landerSonarWaves.length - 1; i >= 0; i--) {
-      const w = this.landerSonarWaves[i];
-      w.radius += 5.5;
-      w.alpha = Math.max(0, 1 - w.radius / w.maxRadius);
-
-      // Check wave discovery intersection with surface nodes
-      this.landerNodes.forEach((node) => {
-        const d = Math.hypot(node.x - w.x, node.y - w.y);
-        if (d <= w.radius) {
-          node.discovered = true;
-        }
-      });
-
-      if (w.radius >= w.maxRadius) {
-        this.landerSonarWaves.splice(i, 1);
-        this.refreshLanderRadarList();
-      }
-    }
-
-    // Mineral Collection Check
-    this.landerNodes.forEach((node) => {
-      if (node.type === 'MINERAL' && node.discovered && !node.collected) {
-        const d = Math.hypot(node.x - s.x, node.y - s.y);
-        if (d <= 26 && s.cargo < s.maxCargo) {
-          node.collected = true;
-          const amt = node.amount || 5;
-          s.cargo = Math.min(s.maxCargo, s.cargo + amt);
-          this.audio.playMineralPickupSound();
-          this.refreshLanderRadarList();
-          this.updateLanderTelemetryUI();
-        }
-      }
-    });
-
-    // Precursor Megastructure Proximity Check
-    const megastructures = this.landerNodes.filter((n) => n.type === 'MEGASTRUCTURE');
-    let nearSite: any = null;
-
-    megastructures.forEach((m) => {
-      const d = Math.hypot(m.x - s.x, m.y - s.y);
-      if (d <= 48) {
-        nearSite = m;
-      }
-    });
-
-    const dockBanner = document.getElementById('megastructure-dock-banner');
-    const dockDesc = document.getElementById('megastructure-dock-desc');
-
-    if (nearSite) {
-      if (!s.isDocked) {
-        s.isDocked = true;
-        s.dockedSite = nearSite.siteData;
-        this.audio.playLanderTouchdownSound();
-        if (dockBanner) dockBanner.classList.remove('hidden');
-        if (dockDesc) {
-          dockDesc.textContent = `Ancient harmonic resonance detected at ${nearSite.name}. Landing clamps locked [E].`;
-        }
-      }
-    } else if (s.isDocked) {
-      // Disengage docking clamps when flying away
-      s.isDocked = false;
-      s.dockedSite = null;
-      if (dockBanner) dockBanner.classList.add('hidden');
-    }
-
-    this.updateLanderTelemetryUI();
+  public get landerState(): any {
+    return this.landerController?.landerState;
   }
 
-  /**
-   * Updates radar list on the right panel with discovered nodes and megastructures.
-   */
-  private refreshLanderRadarList(): void {
-    const listEl = document.getElementById('lander-targets-list');
-    if (!listEl) return;
-
-    const discovered = this.landerNodes.filter((n) => n.discovered);
-    if (discovered.length === 0) {
-      listEl.innerHTML = `<div class="target-card-item">Press [SPACE] to broadcast seismic pulse and detect surface deposits.</div>`;
-      return;
-    }
-
-    listEl.innerHTML = discovered.map((n) => {
-      const dist = Math.round(Math.hypot(n.x - this.landerState.x, n.y - this.landerState.y));
-      if (n.type === 'MEGASTRUCTURE') {
-        return `
-          <div class="target-card-item megastructure ${this.landerState.isDocked && this.landerState.dockedSite?.id === n.siteData?.id ? 'docked' : ''}">
-            <div class="target-title">🏛️ ${n.name}</div>
-            <div class="target-meta">PRECURSOR VAULT // DIST: ${dist}m // [E] INTERFACE</div>
-          </div>
-        `;
-      } else {
-        return `
-          <div class="target-card-item mineral ${n.collected ? 'collected' : ''}">
-            <div class="target-title">💎 ${n.name} ${n.collected ? '(SECURED)' : `(+${n.amount})`}</div>
-            <div class="target-meta">SURFACE YIELD // DIST: ${dist}m</div>
-          </div>
-        `;
-      }
-    }).join('');
-  }
-
-  /**
-   * Updates telemetry gauges on the lander CRT HUD.
-   */
-  private updateLanderTelemetryUI(): void {
-    const s = this.landerState;
-    const valHull = document.getElementById('val-lander-hull');
-    const valFuel = document.getElementById('val-lander-fuel');
-    const valCargo = document.getElementById('val-lander-cargo');
-    const fillHull = document.getElementById('lander-hull-fill');
-    const fillFuel = document.getElementById('lander-fuel-fill');
-    const fillCargo = document.getElementById('lander-cargo-fill');
-
-    if (valHull) valHull.textContent = `${Math.round(s.hull)}%`;
-    if (valFuel) valFuel.textContent = `${Math.round(s.fuel)}%`;
-    if (valCargo) valCargo.textContent = `${s.cargo} / ${s.maxCargo} Units`;
-
-    if (fillHull) fillHull.style.width = `${Math.max(0, s.hull)}%`;
-    if (fillFuel) fillFuel.style.width = `${Math.max(0, s.fuel)}%`;
-    if (fillCargo) fillCargo.style.width = `${Math.min(100, (s.cargo / s.maxCargo) * 100)}%`;
-  }
-
-  /**
-   * Renders the Star Control II planetary surface canvas with topographical contour lines,
-   * glowing Precursor ruins, crystalline mineral deposits, headlight beam, and lander.
-   */
-  private renderLanderCanvas(): void {
-    if (!this.landerCtx || !this.landerCanvas) return;
-    const ctx = this.landerCtx;
-    const w = this.landerCanvas.width;
-    const h = this.landerCanvas.height;
-
-    // 1. Dark CRT topographical background
-    const bgGrad = ctx.createRadialGradient(w / 2, h / 2, 40, w / 2, h / 2, w / 2);
-    bgGrad.addColorStop(0, '#040d1a');
-    bgGrad.addColorStop(1, '#02060e');
-    ctx.fillStyle = bgGrad;
-    ctx.fillRect(0, 0, w, h);
-
-    // 2. Coordinate Grid Lines
-    ctx.strokeStyle = 'rgba(0, 240, 255, 0.05)';
-    ctx.lineWidth = 1;
-    for (let x = 40; x < w; x += 60) {
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, h);
-      ctx.stroke();
-    }
-    for (let y = 40; y < h; y += 60) {
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(w, y);
-      ctx.stroke();
-    }
-
-    // 3. Topographical Elevation Contour Lines (Star Control II aesthetic)
-    ctx.save();
-    ctx.strokeStyle = 'rgba(0, 240, 255, 0.12)';
-    ctx.lineWidth = 1.5;
-    ctx.setLineDash([6, 4]);
-
-    // Ridge 1
-    ctx.beginPath();
-    ctx.ellipse(220, 150, 160, 90, 0.2, 0, Math.PI * 2);
-    ctx.stroke();
-
-    // Ridge 2 (Crater Basin)
-    ctx.beginPath();
-    ctx.ellipse(560, 320, 140, 80, -0.15, 0, Math.PI * 2);
-    ctx.stroke();
-
-    ctx.strokeStyle = 'rgba(251, 191, 36, 0.1)';
-    ctx.beginPath();
-    ctx.ellipse(380, 240, 260, 150, 0.05, 0, Math.PI * 2);
-    ctx.stroke();
-
-    ctx.setLineDash([]);
-    ctx.restore();
-
-    // 4. Render Sonar Radar Waves
-    this.landerSonarWaves.forEach((wave) => {
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(wave.x, wave.y, wave.radius, 0, Math.PI * 2);
-      ctx.strokeStyle = `rgba(0, 240, 255, ${wave.alpha * 0.8})`;
-      ctx.lineWidth = 2.5;
-      ctx.stroke();
-
-      ctx.beginPath();
-      ctx.arc(wave.x, wave.y, wave.radius * 0.6, 0, Math.PI * 2);
-      ctx.strokeStyle = `rgba(56, 189, 248, ${wave.alpha * 0.3})`;
-      ctx.lineWidth = 1;
-      ctx.stroke();
-      ctx.restore();
-    });
-
-    // 5. Render Surface Nodes (Megastructures and Minerals)
-    this.landerNodes.forEach((node) => {
-      if (node.type === 'MEGASTRUCTURE') {
-        if (node.discovered) {
-          // Precursor Megastructure: Glowing obelisk & pulsing glyph
-          ctx.save();
-          const pulse = Math.sin(Date.now() * 0.005) * 4;
-
-          // Outer beacon ring
-          ctx.beginPath();
-          ctx.arc(node.x, node.y, 22 + pulse, 0, Math.PI * 2);
-          ctx.strokeStyle = 'rgba(0, 240, 255, 0.4)';
-          ctx.lineWidth = 1.5;
-          ctx.stroke();
-
-          // Obelisk pyramid icon
-          ctx.fillStyle = '#00f0ff';
-          ctx.beginPath();
-          ctx.moveTo(node.x, node.y - 14);
-          ctx.lineTo(node.x - 10, node.y + 10);
-          ctx.lineTo(node.x + 10, node.y + 10);
-          ctx.closePath();
-          ctx.fill();
-
-          ctx.fillStyle = '#ffffff';
-          ctx.font = 'bold 10px monospace';
-          ctx.textAlign = 'center';
-          ctx.fillText('🏛️ PRECURSOR RUINS', node.x, node.y - 20);
-          ctx.fillText(node.name.toUpperCase(), node.x, node.y + 24);
-          ctx.restore();
-        } else {
-          // Faint radar shadow blip before scan
-          ctx.save();
-          ctx.beginPath();
-          ctx.arc(node.x, node.y, 8, 0, Math.PI * 2);
-          ctx.fillStyle = 'rgba(0, 240, 255, 0.15)';
-          ctx.fill();
-          ctx.restore();
-        }
-      } else if (node.type === 'MINERAL' && !node.collected) {
-        if (node.discovered) {
-          // Sparkling Diamond / Crystal Node
-          ctx.save();
-          ctx.fillStyle = node.color;
-          ctx.shadowColor = node.color;
-          ctx.shadowBlur = 8;
-
-          ctx.beginPath();
-          ctx.moveTo(node.x, node.y - 6);
-          ctx.lineTo(node.x + 6, node.y);
-          ctx.lineTo(node.x, node.y + 6);
-          ctx.lineTo(node.x - 6, node.y);
-          ctx.closePath();
-          ctx.fill();
-
-          ctx.shadowBlur = 0;
-          ctx.fillStyle = '#cbd5e1';
-          ctx.font = '9px monospace';
-          ctx.textAlign = 'center';
-          ctx.fillText(`💎 +${node.amount}`, node.x, node.y + 16);
-          ctx.restore();
-        }
-      }
-    });
-
-    // 6. Render Exhaust Particles
-    this.landerParticles.forEach((p) => {
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
-      ctx.fillStyle = p.color;
-      ctx.globalAlpha = p.life;
-      ctx.fill();
-      ctx.restore();
-    });
-
-    // 7. Render Star Control II Surface Lander Craft
-    const s = this.landerState;
-    ctx.save();
-    ctx.translate(s.x, s.y);
-    ctx.rotate(s.heading);
-
-    // Active Headlight Cone
-    const lightGrad = ctx.createRadialGradient(0, 0, 5, 60, 0, 95);
-    lightGrad.addColorStop(0, 'rgba(0, 240, 255, 0.35)');
-    lightGrad.addColorStop(1, 'rgba(0, 240, 255, 0.0)');
-    ctx.fillStyle = lightGrad;
-    ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.lineTo(85, -34);
-    ctx.lineTo(85, 34);
-    ctx.closePath();
-    ctx.fill();
-
-    // Lander Chassis (Triangular Star Control survey ship)
-    ctx.beginPath();
-    ctx.moveTo(14, 0);
-    ctx.lineTo(-10, -10);
-    ctx.lineTo(-6, 0);
-    ctx.lineTo(-10, 10);
-    ctx.closePath();
-    ctx.fillStyle = '#1e293b';
-    ctx.fill();
-    ctx.strokeStyle = '#00f0ff';
-    ctx.lineWidth = 1.8;
-    ctx.stroke();
-
-    // Outrigger Landing Skids
-    ctx.strokeStyle = '#94a3b8';
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(-8, -13, 4, 2);
-    ctx.strokeRect(-8, 11, 4, 2);
-
-    // Cockpit Canopy
-    ctx.beginPath();
-    ctx.arc(2, 0, 3, 0, Math.PI * 2);
-    ctx.fillStyle = '#38bdf8';
-    ctx.fill();
-
-    // Thruster Flare
-    if (this.landerKeys.up && s.fuel > 0) {
-      ctx.beginPath();
-      ctx.moveTo(-6, 0);
-      ctx.lineTo(-18 - Math.random() * 8, -4);
-      ctx.lineTo(-14, 0);
-      ctx.lineTo(-18 - Math.random() * 8, 4);
-      ctx.closePath();
-      ctx.fillStyle = '#f59e0b';
-      ctx.fill();
-    }
-    ctx.restore();
-
-    // 8. Topography Scanner HUD Coordinates
-    ctx.save();
-    ctx.fillStyle = 'rgba(0, 240, 255, 0.7)';
-    ctx.font = '10px monospace';
-    const hdgDeg = Math.round(((s.heading * 180) / Math.PI + 360) % 360);
-    ctx.fillText(`HDG: ${hdgDeg}° // VEL: ${Math.hypot(s.vx, s.vy).toFixed(1)} m/s // TOPOGRAPHY MK-IV`, 16, 22);
-    ctx.restore();
-  }
-
-  // ============================================================================
-  // PRECURSOR ARCHAEOLOGICAL DECRYPTION TERMINAL & OSCILLOSCOPE
-  // ============================================================================
-
-  /**
-   * Opens the ancient Precursor Archaeological Decryption Terminal when landing clamps engage.
-   */
+  // --- Precursor Terminal Controller Delegates ---
   public openPrecursorTerminal(site?: any): void {
-    if (!site) {
-      site = this.landerState.dockedSite || (this.planetPrecursorSites.length > 0 ? this.planetPrecursorSites[0] : null);
-    }
-    if (!site) {
-      site = {
-        id: 'site_aegis_monolith',
-        name: 'Aegis Resonance Monolith',
-        surfaceLat: 22.0,
-        surfaceLng: -40.0,
-        requiredFreq: 440,
-        requiredPhase: 180,
-        requiredDamping: 50,
-        isDeciphered: false,
-        codexTitle: 'Chronicles of the First Builders: The Hyper-Spatial Fold',
-        codexText: 'We who folded the void before the light of Sol took form left this frequency key for those who walk after us...',
-      };
-    }
-    this.activePrecursorSite = site;
-
-    if (!this.modalPrecursorTerminal) {
-      this.modalPrecursorTerminal = document.getElementById('precursor-terminal-modal');
-    }
-    if (this.modalPrecursorTerminal) {
-      this.modalPrecursorTerminal.classList.remove('hidden');
-    }
-
-    const titleEl = document.getElementById('precursor-terminal-title');
-    const coordsEl = document.getElementById('precursor-terminal-coords');
-    const btnDecipher = document.getElementById('btn-precursor-decipher') as HTMLButtonElement | null;
-    const codexCard = document.getElementById('precursor-codex-card');
-    const sliderFreq = document.getElementById('slider-carrier-freq') as HTMLInputElement | null;
-    const sliderPhase = document.getElementById('slider-harmonic-phase') as HTMLInputElement | null;
-    const sliderDamping = document.getElementById('slider-damping') as HTMLInputElement | null;
-
-    if (titleEl) titleEl.textContent = site.name.toUpperCase();
-    if (coordsEl) {
-      coordsEl.textContent = `LAT: ${Number(site.surfaceLat).toFixed(1)}° // LNG: ${Number(site.surfaceLng).toFixed(1)}° // ${site.isDeciphered ? 'ARCHIVE DECIPHERED' : 'CARRIER ACTIVE'}`;
-    }
-
-    if (!this.waveformCanvas) {
-      this.waveformCanvas = document.getElementById('precursor-waveform-canvas') as HTMLCanvasElement;
-      if (this.waveformCanvas) {
-        this.waveformCtx = this.waveformCanvas.getContext('2d');
-      }
-    }
-
-    if (site.isDeciphered) {
-      // Already deciphered: lock tuning dials and show unlocked codex
-      this.precursorTuning = {
-        freq: site.requiredFreq,
-        phase: site.requiredPhase,
-        damping: site.requiredDamping,
-      };
-      if (sliderFreq) { sliderFreq.value = String(site.requiredFreq); sliderFreq.disabled = true; }
-      if (sliderPhase) { sliderPhase.value = String(site.requiredPhase); sliderPhase.disabled = true; }
-      if (sliderDamping) { sliderDamping.value = String(site.requiredDamping); sliderDamping.disabled = true; }
-
-      const valF = document.getElementById('val-carrier-freq');
-      const valP = document.getElementById('val-harmonic-phase');
-      const valD = document.getElementById('val-damping');
-      if (valF) valF.textContent = `${site.requiredFreq} Hz`;
-      if (valP) valP.textContent = `${site.requiredPhase}°`;
-      if (valD) valD.textContent = `${site.requiredDamping}%`;
-
-      if (btnDecipher) {
-        btnDecipher.disabled = true;
-        btnDecipher.textContent = 'CODEX ARCHIVE SECURED 🔒';
-      }
-
-      if (codexCard) {
-        codexCard.classList.remove('hidden');
-        const cTitle = document.getElementById('precursor-codex-title');
-        const cText = document.getElementById('precursor-codex-text');
-        if (cTitle) cTitle.textContent = site.codexTitle || 'Chronicles of the First Builders';
-        if (cText) cText.textContent = site.codexText || 'Decrypted archaeological archive secured.';
-      }
-
-      this.checkPrecursorAlignment();
-    } else {
-      // Interactive Decryption Puzzle: Initialize tuner dials
-      this.precursorTuning = { freq: 220, phase: 0, damping: 10 };
-      if (sliderFreq) { sliderFreq.value = '220'; sliderFreq.disabled = false; }
-      if (sliderPhase) { sliderPhase.value = '0'; sliderPhase.disabled = false; }
-      if (sliderDamping) { sliderDamping.value = '10'; sliderDamping.disabled = false; }
-
-      const valF = document.getElementById('val-carrier-freq');
-      const valP = document.getElementById('val-harmonic-phase');
-      const valD = document.getElementById('val-damping');
-      if (valF) valF.textContent = '220 Hz';
-      if (valP) valP.textContent = '0°';
-      if (valD) valD.textContent = '10%';
-
-      if (btnDecipher) {
-        btnDecipher.disabled = false;
-        btnDecipher.textContent = 'TRANSMIT HARMONIC FREQUENCY KEY 🔓 (REWARD: CODEX + RELIC CORE)';
-      }
-
-      if (codexCard) codexCard.classList.add('hidden');
-
-      this.audio.startResonanceCarrierDrone(220, 0, 10);
-      this.checkPrecursorAlignment();
-    }
-
-    this.startWaveformAnimation();
+    this.precursorTerminalController.openPrecursorTerminal(site);
   }
 
-  /**
-   * Closes the archaeological terminal and halts Web Audio carrier drone.
-   */
   public closePrecursorTerminal(): void {
-    if (this.waveformAnimId !== null) {
-      cancelAnimationFrame(this.waveformAnimId);
-      this.waveformAnimId = null;
-    }
-    this.audio.stopResonanceCarrierDrone();
-
-    if (this.modalPrecursorTerminal) {
-      this.modalPrecursorTerminal.classList.add('hidden');
-    }
-    this.activePrecursorSite = null;
+    this.precursorTerminalController.closePrecursorTerminal();
   }
 
-  /**
-   * Validates multi-frequency resonance alignment against Precursor Megastructure tolerances.
-   */
-  public checkPrecursorAlignment(): boolean {
-    const statusEl = document.getElementById('precursor-alignment-status');
-    if (!this.activePrecursorSite) return false;
-
-    if (this.activePrecursorSite.isDeciphered) {
-      if (statusEl) {
-        statusEl.textContent = 'ARCHAEOLOGICAL DATA EXTRACTED (LOCKED)';
-        statusEl.className = 'alignment-pill locked';
-      }
-      return true;
-    }
-
-    const dFreq = Math.abs(this.precursorTuning.freq - this.activePrecursorSite.requiredFreq);
-    const dPhase = Math.abs(this.precursorTuning.phase - this.activePrecursorSite.requiredPhase);
-    const dDamp = Math.abs(this.precursorTuning.damping - this.activePrecursorSite.requiredDamping);
-
-    const isAligned = dFreq <= 35 && dPhase <= 35 && dDamp <= 25;
-
-    if (statusEl) {
-      if (isAligned) {
-        statusEl.textContent = 'HARMONIC LOCK ENGAGED ⚡';
-        statusEl.className = 'alignment-pill locked';
-      } else {
-        statusEl.textContent = `DESYNCHRONIZED (ΔF: ${dFreq}Hz, ΔP: ${dPhase}°, ΔD: ${dDamp}%)`;
-        statusEl.className = 'alignment-pill desync';
-      }
-    }
-
-    return isAligned;
-  }
-
-  /**
-   * Starts the CRT oscilloscope waveform animation loop.
-   */
-  private startWaveformAnimation(): void {
-    if (this.waveformAnimId !== null) {
-      cancelAnimationFrame(this.waveformAnimId);
-    }
-
-    const loop = () => {
-      if (!this.activePrecursorSite || !this.modalPrecursorTerminal || this.modalPrecursorTerminal.classList.contains('hidden')) {
-        return;
-      }
-      this.waveformTime += 0.05;
-      this.renderWaveformCanvas();
-      this.waveformAnimId = requestAnimationFrame(loop);
-    };
-
-    this.waveformAnimId = requestAnimationFrame(loop);
-  }
-
-  /**
-   * Renders the alien carrier wave vs player tuner wave on the CRT oscilloscope.
-   */
-  private renderWaveformCanvas(): void {
-    if (!this.waveformCtx || !this.waveformCanvas) return;
-    const ctx = this.waveformCtx;
-    const w = this.waveformCanvas.width;
-    const h = this.waveformCanvas.height;
-    const cy = h / 2;
-
-    // Dark phosphor CRT background
-    ctx.fillStyle = '#021208';
-    ctx.fillRect(0, 0, w, h);
-
-    // Phosphor Grid Lines
-    ctx.strokeStyle = 'rgba(16, 185, 129, 0.15)';
-    ctx.lineWidth = 1;
-    for (let x = 0; x < w; x += 25) {
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, h);
-      ctx.stroke();
-    }
-    for (let y = 0; y < h; y += 20) {
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(w, y);
-      ctx.stroke();
-    }
-
-    // Center Crosshairs
-    ctx.strokeStyle = 'rgba(16, 185, 129, 0.35)';
-    ctx.setLineDash([4, 4]);
-    ctx.beginPath();
-    ctx.moveTo(0, cy);
-    ctx.lineTo(w, cy);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    const site = this.activePrecursorSite;
-    const targetFreq = site ? site.requiredFreq : 440;
-    const targetPhase = site ? (site.requiredPhase * Math.PI) / 180 : Math.PI;
-    const targetDamp = site ? site.requiredDamping : 50;
-
-    const pilotFreq = this.precursorTuning.freq;
-    const pilotPhase = (this.precursorTuning.phase * Math.PI) / 180;
-    const pilotDamp = this.precursorTuning.damping;
-
-    const t = this.waveformTime;
-    const isAligned = this.checkPrecursorAlignment();
-
-    // 1. Alien Carrier Wave (Magenta / Purple)
-    ctx.save();
-    ctx.strokeStyle = '#ec4899';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    for (let x = 0; x < w; x++) {
-      const amp = 36 * (1 - targetDamp / 160);
-      const y = cy + Math.sin(t * (targetFreq / 60) + targetPhase + x * 0.04) * amp;
-      if (x === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    }
-    ctx.stroke();
-    ctx.restore();
-
-    // 2. Pilot Harmonic Wave (Luminous Cyan)
-    ctx.save();
-    ctx.strokeStyle = '#00f0ff';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    for (let x = 0; x < w; x++) {
-      const amp = 36 * (1 - pilotDamp / 160);
-      const y = cy + Math.sin(t * (pilotFreq / 60) + pilotPhase + x * 0.04) * amp;
-      if (x === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    }
-    ctx.stroke();
-    ctx.restore();
-
-    // 3. Superposition Harmonic Wave (Radiant Gold when aligned)
-    if (isAligned) {
-      ctx.save();
-      ctx.strokeStyle = '#fbbf24';
-      ctx.shadowColor = '#fbbf24';
-      ctx.shadowBlur = 10;
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      for (let x = 0; x < w; x++) {
-        const amp = 40 * (1 - pilotDamp / 160);
-        const y = cy + Math.sin(t * (pilotFreq / 60) + pilotPhase + x * 0.04) * amp;
-        if (x === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      }
-      ctx.stroke();
-      ctx.restore();
-    }
-  }
-
-  /**
-   * Transmits harmonic resonance key to backend, decrypts the codex, and awards a Precursor Relic Core.
-   */
   public async decipherActivePrecursorSite(): Promise<void> {
-    if (!this.activePrecursorSite) return;
-    const site = this.activePrecursorSite;
-
-    try {
-      const res = await fetch(`http://localhost:3000/api/precursor/${site.id}/decipher`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          accountId: 'acc_sol_captain',
-          solution: this.precursorTuning,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        this.showApNotification(`⚠️ ${data.error || 'Harmonic desynchronization'}`, true);
-        return;
-      }
-
-      this.audio.playPrecursorDecipherFanfare();
-      site.isDeciphered = true;
-
-      // Update terminal UI
-      const codexCard = document.getElementById('precursor-codex-card');
-      const cTitle = document.getElementById('precursor-codex-title');
-      const cText = document.getElementById('precursor-codex-text');
-      const btnDecipher = document.getElementById('btn-precursor-decipher') as HTMLButtonElement | null;
-
-      if (cTitle) cTitle.textContent = data.codexTitle;
-      if (cText) cText.textContent = data.codexText;
-      if (codexCard) codexCard.classList.remove('hidden');
-      if (btnDecipher) {
-        btnDecipher.disabled = true;
-        btnDecipher.textContent = 'CODEX ARCHIVE SECURED 🔒';
-      }
-
-      this.checkPrecursorAlignment();
-      this.showApNotification(`🏛️ Decrypted "${data.codexTitle}"! Extracted +${data.relicReward}x Precursor Relic Core! (+5 AP)`, false);
-
-      // Refresh planet precursor sites and research catalog
-      if (this.activePlanet) {
-        await this.fetchPlanetPrecursorSites(this.activePlanet.data.id);
-      }
-      await this.fetchPrecursorResearch();
-    } catch (err) {
-      console.error('[DAY 20] Failed to decipher precursor site:', err);
-    }
+    await this.precursorTerminalController.decipherActivePrecursorSite();
   }
 
-  public getActiveSurveyTab(): 'SENSORS' | 'COLONY' | 'PRECURSOR' {
+  public checkPrecursorAlignment(): boolean {
+    return this.precursorTerminalController.checkPrecursorAlignment();
+  }
+
+  public get precursorTuning() {
+    return this.precursorTerminalController.precursorTuning;
+  }
+
+  // --- State Getters & Setters ---
+  public get activeSurveyTab(): 'SENSORS' | 'COLONY' | 'PRECURSOR' {
+    return this.colonyController?.activeSurveyTab ?? 'SENSORS';
+  }
+
+  public get activeColony(): any {
+    return this.colonyController?.activeColony || null;
+  }
+
+  public get activeColoniesList(): any[] {
+    return this.colonyController?.activeColoniesList || [];
+  }
+
+  public get planetPrecursorSites(): any[] {
+    return this.colonyController?.planetPrecursorSites || [];
+  }
+
+  public get unresolvedPrecursorSignals(): number {
+    return this.colonyController?.unresolvedPrecursorSignals ?? 0;
+  }
+
+  public get precursorRequiredSurvey(): number {
+    return this.colonyController?.precursorRequiredSurvey ?? 33;
+  }
+
+  public get playerRelicCount(): number {
+    return this.colonyController?.playerRelicCount ?? 0;
+  }
+
+  public get activePlanet(): ProceduralPlanet | null {
+    return this.surveyController?.activePlanet || null;
+  }
+
+  public set activePlanet(p: ProceduralPlanet | null) {
+    if (this.surveyController) this.surveyController.activePlanet = p;
+  }
+
+  public get activePlanetDetail(): any {
+    return this.surveyController?.activePlanetDetail || null;
+  }
+
+  public set activePlanetDetail(d: any) {
+    if (this.surveyController) this.surveyController.activePlanetDetail = d;
+  }
+
+  public get isInOrbit(): boolean {
+    return this.surveyController?.isInOrbit ?? false;
+  }
+
+  public set isInOrbit(v: boolean) {
+    if (this.surveyController) this.surveyController.isInOrbit = v;
+  }
+
+    public getActiveSurveyTab(): 'SENSORS' | 'COLONY' | 'PRECURSOR' {
     return this.activeSurveyTab;
   }
 
