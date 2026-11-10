@@ -361,6 +361,7 @@
       <footer class="hud-footer">
         <div class="hud-actions">
           <button id="btn-open-nav" class="hud-btn primary" title="Open Hyperspace Nav Console (J)">🚀 Warp Nav (J)</button>
+          <button id="btn-hud-orbit" class="hud-btn primary" title="Enter Planetary Orbit & Surface Survey (O)">🪐 Orbit Survey (O)</button>
           <button id="btn-toggle-cam" class="hud-btn" title="Toggle Camera (C)">Camera: Chase</button>
           <button id="btn-toggle-damp" class="hud-btn" title="Toggle Dampeners (Z)">Dampeners: ON</button>
           <button id="btn-reset-pos" class="hud-btn" title="Reset Ship to Dock">Reset Position</button>
@@ -830,7 +831,7 @@
           </div>
         </header>
 
-        <!-- CRT Console Tabs (Day 19) -->
+        <!-- CRT Console Tabs (Day 19 & 20) -->
         <div class="survey-console-tabs">
           <button id="tab-survey-sensors" class="survey-tab-btn active">
             <span class="tab-icon">📡</span>
@@ -840,6 +841,11 @@
             <span class="tab-icon">🏛️</span>
             <span class="tab-label">COLONY COMMAND</span>
             <span class="colony-count-pill" id="survey-colony-pill">0 ACTIVE</span>
+          </button>
+          <button id="tab-survey-precursor" class="survey-tab-btn">
+            <span class="tab-icon">⚡</span>
+            <span class="tab-label">PRECURSOR TECH LAB</span>
+            <span class="colony-count-pill highlight" id="survey-relics-pill">0 RELICS</span>
           </button>
         </div>
 
@@ -879,7 +885,7 @@
 
           <!-- Right: Console Panel -->
           <div class="survey-console-panel">
-            <!-- Mode 1: Astrometry Sensors & Probes (Day 18) -->
+            <!-- Mode 1: Astrometry Sensors & Probes (Day 18 & 20) -->
             <div id="panel-survey-sensors" class="survey-panel-view">
               <!-- Sensor Sweep Controls -->
               <div class="survey-scanner-section">
@@ -909,15 +915,18 @@
                 </div>
               </div>
 
-              <!-- Atmospheric & Surface Probe Launcher -->
+              <!-- Atmospheric & Surface Exploration (Probes & Landers) -->
               <div class="survey-probe-section">
-                <div class="section-title">DEPLOYABLE ATMOSPHERIC & SURFACE PROBES</div>
+                <div class="section-title">ATMOSPHERIC DESCENT & SURFACE EXPLORATION</div>
                 <div class="probe-controls-row">
+                  <button id="btn-deploy-lander" class="lander-deploy-btn">
+                    DEPLOY SURFACE LANDER 🛬 [L] (2 AP)
+                  </button>
+                  <button id="btn-launch-probe" class="probe-launch-btn">LAUNCH PROBE 🚀 (1 AP)</button>
                   <label class="probe-shield-toggle">
                     <input type="checkbox" id="check-probe-shield" checked />
-                    <span>REINFORCE RE-ENTRY HEAT SHIELD (+1 AP // MITIGATES ATMOSPHERIC DAMAGE)</span>
+                    <span>HEAT SHIELD (+1 AP)</span>
                   </label>
-                  <button id="btn-launch-probe" class="probe-launch-btn">LAUNCH SURFACE PROBE 🚀</button>
                 </div>
 
                 <!-- Animated Descent Telemetry Readout -->
@@ -1070,14 +1079,220 @@
                 </div>
               </div>
             </div>
+
+            <!-- Mode 3: Precursor Prototype Tech Lab & Relic Synthesizer (Day 20) -->
+            <div id="panel-survey-precursor" class="survey-panel-view hidden">
+              <div class="colony-card-box">
+                <div class="section-title">PRECURSOR PROTO-TECH LABORATORY & ALIEN RELIC SYNTHESIZER</div>
+                <div class="precursor-telemetry-banner">
+                  <div class="precursor-balance-badge">
+                    <span class="badge-label">PRECURSOR RELIC CORES:</span>
+                    <strong class="highlight-cyan" id="precursor-relic-count">0x IN CARGO</strong>
+                  </div>
+                  <div class="precursor-balance-badge">
+                    <span class="badge-label">SHIP CREDITS:</span>
+                    <strong id="precursor-credits-count">0 Cr</strong>
+                  </div>
+                  <div class="precursor-balance-badge">
+                    <span class="badge-label">ACTION POINTS:</span>
+                    <strong id="precursor-ap-count">600 / 600</strong>
+                  </div>
+                </div>
+
+                <div class="precursor-tech-grid" id="precursor-tech-grid">
+                  <!-- Dynamically rendered prototype cards: Phase Lance, Tachyon Drive, Crystal Shield, Biosphere -->
+                </div>
+
+                <!-- Diplomatic Ambassador Relic Remittance -->
+                <div class="relic-remit-box">
+                  <div class="remit-header">
+                    <span class="remit-title">ALIEN DIPLOMATIC EMBASSY REMITTANCE</span>
+                    <span class="remit-hint">Present an unrefined Precursor Relic Core to an alien ambassador for +2,500 Credits and +50 Goodwill</span>
+                  </div>
+                  <div class="remit-controls-row">
+                    <select id="select-remit-faction" class="colony-select">
+                      <option value="FACTION_SOL">Sol-Perimeter Alliance (🚀)</option>
+                      <option value="FACTION_HEGEMONY">Vaelic Hegemony (🦅)</option>
+                      <option value="FACTION_PHORID">Phorid Sporeborn (🍄)</option>
+                      <option value="FACTION_KRYLL">Kryll Free Cartel (🐀)</option>
+                    </select>
+                    <button id="btn-remit-relic" class="colony-action-btn primary">
+                      PRESENT RELIC CORE (+2,500 CR // +50 GOODWILL) 💎
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
         <footer class="survey-footer">
           <div class="survey-telemetry-item">STATION AP: <span id="survey-player-ap">600 / 600</span></div>
           <div class="survey-telemetry-item">ACTIVE BEACONS: <span id="survey-beacons-count">0</span></div>
-          <div class="survey-telemetry-item survey-hint">PRESS [1-3] SENSOR SWEEP // [P] LAUNCH PROBE // [O / ESC] BREAK ORBIT</div>
+          <div class="survey-telemetry-item survey-hint">PRESS [1-3] SENSOR SWEEP // [L] SURFACE LANDER // [P] PROBE // [O / ESC] BREAK ORBIT</div>
         </footer>
+      </div>
+    </div>
+
+    <!-- Star Control II Planetary Surface Lander Exploration Modal (Day 20) -->
+    <div id="planetary-lander-modal" class="fullscreen-crt-modal hidden">
+      <div class="lander-crt-frame">
+        <header class="lander-crt-header">
+          <div class="lander-title-block">
+            <span class="crt-tag">STAR CONTROL II EXPLORATION LANDER</span>
+            <h2 id="lander-planet-title">AEGIS PRIME // SURFACE TOPOGRAPHY</h2>
+            <span class="lander-subtext">ORBITAL SYNCHRONIZATION LOCKED // SURFACE FLIGHT ENGAGED</span>
+          </div>
+          <div class="lander-header-controls">
+            <button id="btn-lander-ascend" class="lander-ascend-btn">
+              ASCEND TO ORBIT 🚀 [X / ESC]
+            </button>
+          </div>
+        </header>
+
+        <div class="lander-viewport-container">
+          <!-- 2D Canvas Surface Viewport -->
+          <div class="lander-canvas-wrapper">
+            <canvas id="surface-lander-canvas" width="760" height="480"></canvas>
+            <div class="lander-canvas-overlay">
+              <span>CONTROLS: [W][A][S][D] / ARROWS THRUSTERS // [SPACE] SEISMIC RADAR PING</span>
+            </div>
+          </div>
+
+          <!-- Tactical Telemetry & Radar Panel -->
+          <div class="lander-telemetry-panel">
+            <div class="lander-metric-card">
+              <div class="metric-label-row">
+                <span>HULL INTEGRITY</span>
+                <strong id="val-lander-hull">100%</strong>
+              </div>
+              <div class="lander-bar-track">
+                <div class="lander-bar-fill green" id="lander-hull-fill" style="width: 100%;"></div>
+              </div>
+            </div>
+
+            <div class="lander-metric-card">
+              <div class="metric-label-row">
+                <span>THRUSTER FUEL</span>
+                <strong id="val-lander-fuel">100%</strong>
+              </div>
+              <div class="lander-bar-track">
+                <div class="lander-bar-fill cyan" id="lander-fuel-fill" style="width: 100%;"></div>
+              </div>
+            </div>
+
+            <div class="lander-metric-card">
+              <div class="metric-label-row">
+                <span>LANDER CARGO HOLD</span>
+                <strong id="val-lander-cargo">0 / 25 Units</strong>
+              </div>
+              <div class="lander-bar-track">
+                <div class="lander-bar-fill amber" id="lander-cargo-fill" style="width: 0%;"></div>
+              </div>
+            </div>
+
+            <div class="lander-radar-section">
+              <div class="radar-header">
+                <span>SEISMIC RADAR TELEMETRY</span>
+                <span class="radar-status-blip" id="lander-radar-status">READY [SPACE]</span>
+              </div>
+              <div class="lander-targets-list" id="lander-targets-list">
+                <div class="target-card-item">Press [SPACE] to broadcast seismic pulse and detect surface deposits.</div>
+              </div>
+            </div>
+
+            <!-- Megastructure Proximity Docking Banner -->
+            <div class="megastructure-dock-banner hidden" id="megastructure-dock-banner">
+              <div class="dock-banner-title">🏛️ PRECURSOR MEGASTRUCTURE LOCATED</div>
+              <p class="dock-banner-desc" id="megastructure-dock-desc">Ancient resonance frequencies detected. Land clamps deployed.</p>
+              <button id="btn-open-precursor-terminal" class="colony-action-btn primary large-btn">
+                INTERFACE WITH ARCHAEOLOGICAL TERMINAL ⚡
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Star Control II Precursor Archaeological Decryption Terminal (Day 20) -->
+    <div id="precursor-terminal-modal" class="dock-modal-overlay hidden">
+      <div class="dock-modal-card precursor-terminal-card">
+        <header class="dock-modal-header precursor-header">
+          <div class="dock-title-block">
+            <span class="dock-badge precursor-badge">PRECURSOR ARCHAEOLOGY TERMINAL</span>
+            <h2 class="dock-station-name" id="precursor-terminal-title">AEGIS RESONANCE MONOLITH</h2>
+            <span class="dock-subtext" id="precursor-terminal-coords">LAT: +22.0° // LNG: -40.0° // CARRIER ACTIVE</span>
+          </div>
+          <button id="btn-close-precursor-terminal" class="survey-close-btn">✕</button>
+        </header>
+
+        <div class="precursor-terminal-body">
+          <!-- Animated Alien Glyph Marquee -->
+          <div class="precursor-glyph-banner">
+            <span class="alien-glyph">⍎</span>
+            <span class="alien-glyph">⍕</span>
+            <span class="alien-glyph">⍝</span>
+            <span class="alien-glyph">⌬</span>
+            <span class="alien-glyph">⏣</span>
+            <span class="alien-glyph">⎔</span>
+            <span class="alien-glyph">⏢</span>
+            <span class="alien-glyph">⏚</span>
+            <span class="alien-glyph">⏛</span>
+            <span class="alien-glyph">⏞</span>
+          </div>
+
+          <!-- Oscilloscope Waveform Display -->
+          <div class="precursor-waveform-container">
+            <div class="waveform-header">
+              <span>HARMONIC CARRIER WAVEFORM // ALIEN RESONANCE vs PILOT TUNER</span>
+              <span class="alignment-pill" id="precursor-alignment-status">DESYNCHRONIZED</span>
+            </div>
+            <canvas id="precursor-waveform-canvas" width="620" height="120"></canvas>
+          </div>
+
+          <!-- 3 Interactive Harmonic Tuning Controls -->
+          <div class="precursor-tuning-matrix">
+            <div class="tuning-slider-group">
+              <div class="slider-label-row">
+                <label>CARRIER FREQUENCY</label>
+                <span class="tuning-val" id="val-carrier-freq">220 Hz</span>
+              </div>
+              <input type="range" id="slider-carrier-freq" min="100" max="1000" step="5" value="220" class="tuning-slider" />
+            </div>
+
+            <div class="tuning-slider-group">
+              <div class="slider-label-row">
+                <label>HARMONIC PHASE</label>
+                <span class="tuning-val" id="val-harmonic-phase">0°</span>
+              </div>
+              <input type="range" id="slider-harmonic-phase" min="0" max="360" step="5" value="0" class="tuning-slider" />
+            </div>
+
+            <div class="tuning-slider-group">
+              <div class="slider-label-row">
+                <label>RESONATOR DAMPING</label>
+                <span class="tuning-val" id="val-damping">10%</span>
+              </div>
+              <input type="range" id="slider-damping" min="0" max="100" step="1" value="10" class="tuning-slider" />
+            </div>
+          </div>
+
+          <!-- Decipher Action Button -->
+          <button id="btn-precursor-decipher" class="colony-action-btn primary large-btn">
+            TRANSMIT HARMONIC FREQUENCY KEY 🔓 (REWARD: CODEX + RELIC CORE)
+          </button>
+
+          <!-- Unlocked Lore Codex Display -->
+          <div class="precursor-codex-card hidden" id="precursor-codex-card">
+            <div class="codex-header-row">
+              <h3 id="precursor-codex-title">Chronicles of the First Builders</h3>
+              <span class="codex-relic-badge" id="precursor-relic-pill">+1x PRECURSOR RELIC EXTRACTED</span>
+            </div>
+            <p class="codex-body-text" id="precursor-codex-text">
+              Transmission decrypted...
+            </p>
+          </div>
+        </div>
       </div>
     </div>
 

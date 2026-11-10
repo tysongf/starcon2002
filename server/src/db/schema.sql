@@ -428,3 +428,87 @@ CREATE TABLE IF NOT EXISTS colonies (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- ============================================================================
+-- DAY 20: PRECURSOR MEGASTRUCTURES, ANCIENT LORE VAULTS & RELIC TECH TREE
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS precursor_sites (
+    id VARCHAR(64) PRIMARY KEY,
+    planet_id VARCHAR(64) NOT NULL,
+    name VARCHAR(128) NOT NULL,
+    site_type VARCHAR(64) NOT NULL DEFAULT 'MONOLITH', -- 'MONOLITH', 'ENERGY_VAULT', 'CONDUIT_RUIN', 'STAR_MAP'
+    surface_lat FLOAT NOT NULL,
+    surface_lng FLOAT NOT NULL,
+    required_freq INT NOT NULL,     -- 100 - 1000 Hz
+    required_phase INT NOT NULL,    -- 0 - 360 deg
+    required_damping INT NOT NULL,  -- 0 - 100 %
+    is_deciphered BOOLEAN NOT NULL DEFAULT FALSE,
+    codex_title VARCHAR(128) NOT NULL,
+    codex_text TEXT NOT NULL,
+    relic_reward INT NOT NULL DEFAULT 1,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    CONSTRAINT fk_precursor_planet FOREIGN KEY (planet_id) REFERENCES planets(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS precursor_research (
+    id VARCHAR(64) PRIMARY KEY,
+    account_id VARCHAR(64) NOT NULL,
+    tech_id VARCHAR(64) NOT NULL, -- 'TECH_PHASE_LANCE', 'TECH_TACHYON_DRIVE', 'TECH_CRYSTAL_SHIELD', 'TECH_BIOSPHERE'
+    is_synthesized BOOLEAN NOT NULL DEFAULT FALSE,
+    unlocked_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    CONSTRAINT uq_account_tech UNIQUE (account_id, tech_id)
+);
+
+-- Seed Canonical Precursor Megastructure Sites on Sectors 1, 3, and 4 Planets
+INSERT INTO precursor_sites (id, planet_id, name, site_type, surface_lat, surface_lng, required_freq, required_phase, required_damping, codex_title, codex_text, relic_reward)
+VALUES
+    ('site_aegis_monolith', 'planet_sec1_aegis', 'Aegis Resonance Monolith', 'MONOLITH', 22.0, -40.0, 440, 180, 50,
+     'Chronicles of the First Builders: The Hyper-Spatial Fold',
+     'Transmission Archive #001: Before the Great Silence, the Precursor builders spanned ten thousand star systems. They did not conquer the void through sheer velocity; rather, they folded subspace using harmonic tachyon field resonators. Their celestial monoliths served as interstellar guidance beacons, anchored to planetary crusts to stabilize jump gates against cosmic shear.',
+     1),
+    ('site_charybdis_forge', 'planet_sec2_charybdis', 'Charybdis Geothermal Crucible', 'ENERGY_VAULT', -15.0, 60.0, 520, 240, 60,
+     'Chronicles of the First Builders: Sub-Crustal Synthesis',
+     'Transmission Archive #004: In the volcanic mantle of Charybdis, thermal energy was harnessed to temper crystalline phase matrices. The extreme tectonic pressures permitted the stabilization of superdense relativistic alloys.',
+     1),
+    ('site_ignis_vault', 'planet_sec3_ignis', 'Ignis Subterranean Energy Vault', 'ENERGY_VAULT', -35.0, 85.0, 720, 90, 75,
+     'The Dark Void Resonance: The Unbroken Defense',
+     'Transmission Archive #002: Beneath the permafrost of Ignis Tartarus lies an automated defensive battery constructed during the First Interstellar War. The phase lances were engineered to project high-energy coherent beams capable of bypassing polarized shields. The builders sealed the vault when the cosmic void entities breached the outer rim.',
+     2),
+    ('site_mycelia_conduit', 'planet_sec4_mycelia', 'Mycelia Biomorphic Matrix', 'CONDUIT_RUIN', 12.0, 145.0, 330, 270, 40,
+     'Biosphere Genesis Protocols: The Living Matrix',
+     'Transmission Archive #003: Planetary ecosystems across the Orion-Perimeter were not natural accidents. The builders cultivated biomorphic matrices to nurse emerging species and scrub toxic atmospheres. These harmonic bio-generators can elevate hostile worlds into thriving gardens within a single orbital generation.',
+     1)
+ON CONFLICT (id) DO UPDATE SET
+    name = EXCLUDED.name,
+    required_freq = EXCLUDED.required_freq,
+    required_phase = EXCLUDED.required_phase,
+    required_damping = EXCLUDED.required_damping,
+    codex_title = EXCLUDED.codex_title,
+    codex_text = EXCLUDED.codex_text,
+    relic_reward = EXCLUDED.relic_reward;
+
+-- Seed Prototype Blueprints in equipment_blueprints
+INSERT INTO equipment_blueprints (id, name, slot_type, category, manufacturer, base_rarity, power_grid_cost, cpu_cost, base_price, base_stats, description)
+VALUES
+    ('BP_PRECURSOR_PHASE_LANCE', 'Precursor Phase Lance', 'HIGH', 'WEAPON', 'Precursor Builders', 'LEGENDARY', 18.0, 24.0, 5000,
+     '{"damage": 145, "fireCooldown": 1.2, "energyCost": 28, "shieldPierce": 0.75, "range": 450}',
+     'Ancient Precursor beam projector that discharges coherent harmonic phase energy, bypassing 75% of conventional deflector shielding.'),
+    ('BP_PRECURSOR_TACHYON_DRIVE', 'Tachyon Warp Accelerator', 'LOW', 'PROPULSION', 'Precursor Builders', 'LEGENDARY', 14.0, 18.0, 4500,
+     '{"warpApDiscount": 3, "topSpeedBonus": 35, "fuelEfficiency": 0.5}',
+     'Subspace tachyon folding engine that compresses jump lane transit, reducing sector warp AP expenditure by 3 AP and halving fuel burn.'),
+    ('BP_PRECURSOR_CRYSTAL_SHIELD', 'Crystalline Matrix Shield', 'MID', 'SHIELD', 'Precursor Builders', 'LEGENDARY', 16.0, 22.0, 4800,
+     '{"maxShield": 350, "rechargeRate": 45, "harmonicDamping": 0.4}',
+     'Resonant crystalline shield array that rapidly restores deflector integrity under sustained kinetic or thermal bombardment.'),
+    ('BP_PRECURSOR_BIOSPHERE_GEN', 'Living Biosphere Matrix', 'LOW', 'HULL', 'Precursor Builders', 'LEGENDARY', 10.0, 15.0, 4000,
+     '{"colonyHabitationBonus": 25, "populationGrowthMultiplier": 1.5}',
+     'Compact biome synthesis core that enhances planetary environmental stabilization, providing +25% colony habitability rating.')
+ON CONFLICT (id) DO UPDATE SET
+    name = EXCLUDED.name,
+    slot_type = EXCLUDED.slot_type,
+    category = EXCLUDED.category,
+    manufacturer = EXCLUDED.manufacturer,
+    base_rarity = EXCLUDED.base_rarity,
+    base_stats = EXCLUDED.base_stats,
+    description = EXCLUDED.description;
+
+

@@ -9,6 +9,17 @@ export class AudioEngine {
   private thrusterFilter: BiquadFilterNode | null = null;
   private isThrusterPlaying: boolean = false;
 
+  // Day 20: Star Control II Lander Thrusters & Precursor Resonance Drone
+  private landerThrusterOsc: OscillatorNode | null = null;
+  private landerThrusterGain: GainNode | null = null;
+  private isLanderThrusterPlaying: boolean = false;
+
+  private carrierDroneOsc1: OscillatorNode | null = null;
+  private carrierDroneOsc2: OscillatorNode | null = null;
+  private carrierDroneGain: GainNode | null = null;
+  private carrierDroneFilter: BiquadFilterNode | null = null;
+  private isCarrierDronePlaying: boolean = false;
+
   private initContext(): void {
     if (!this.ctx) {
       const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
@@ -1274,6 +1285,292 @@ export class AudioEngine {
 
     osc.start(now);
     osc.stop(now + 0.45);
+  }
+
+  /**
+   * Day 20: Star Control II Planetary Lander Thrusters (continuous low-rumble thruster roar)
+   */
+  public startLanderThrusterSound(throttle: number = 1.0): void {
+    this.initContext();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+
+    if (!this.isLanderThrusterPlaying) {
+      this.landerThrusterOsc = this.ctx.createOscillator();
+      const filter = this.ctx.createBiquadFilter();
+      this.landerThrusterGain = this.ctx.createGain();
+
+      this.landerThrusterOsc.type = 'sawtooth';
+      this.landerThrusterOsc.frequency.setValueAtTime(45, now);
+      this.landerThrusterOsc.frequency.linearRampToValueAtTime(75 * throttle, now + 0.2);
+
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(140, now);
+
+      this.landerThrusterGain.gain.setValueAtTime(0.001, now);
+      this.landerThrusterGain.gain.linearRampToValueAtTime(0.12 * throttle, now + 0.08);
+
+      this.landerThrusterOsc.connect(filter);
+      filter.connect(this.landerThrusterGain);
+      this.landerThrusterGain.connect(this.ctx.destination);
+
+      this.landerThrusterOsc.start(now);
+      this.isLanderThrusterPlaying = true;
+    } else if (this.landerThrusterGain && this.landerThrusterOsc) {
+      this.landerThrusterGain.gain.linearRampToValueAtTime(0.12 * throttle, now + 0.05);
+      this.landerThrusterOsc.frequency.linearRampToValueAtTime(50 + 30 * throttle, now + 0.05);
+    }
+  }
+
+  public stopLanderThrusterSound(): void {
+    if (!this.ctx || !this.isLanderThrusterPlaying) return;
+    const now = this.ctx.currentTime;
+    if (this.landerThrusterGain) {
+      this.landerThrusterGain.gain.linearRampToValueAtTime(0.001, now + 0.15);
+    }
+    setTimeout(() => {
+      try {
+        if (this.landerThrusterOsc) {
+          this.landerThrusterOsc.stop();
+          this.landerThrusterOsc.disconnect();
+          this.landerThrusterOsc = null;
+        }
+      } catch {
+        // ignore if already stopped
+      }
+      this.isLanderThrusterPlaying = false;
+    }, 160);
+  }
+
+  /**
+   * Day 20: Seismic Radar Sonar Ping (deep echoing multi-frequency pulse)
+   */
+  public playSeismicRadarPing(): void {
+    this.initContext();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+
+    const osc1 = this.ctx.createOscillator();
+    const osc2 = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    const filter = this.ctx.createBiquadFilter();
+
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(880, now);
+    osc1.frequency.exponentialRampToValueAtTime(220, now + 0.45);
+
+    osc2.type = 'triangle';
+    osc2.frequency.setValueAtTime(1760, now);
+    osc2.frequency.exponentialRampToValueAtTime(440, now + 0.35);
+
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(600, now);
+    filter.Q.setValueAtTime(3.0, now);
+
+    gain.gain.setValueAtTime(0.01, now);
+    gain.gain.linearRampToValueAtTime(0.2, now + 0.04);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.7);
+
+    osc1.connect(filter);
+    osc2.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc1.start(now);
+    osc2.start(now);
+    osc1.stop(now + 0.75);
+    osc2.stop(now + 0.75);
+  }
+
+  /**
+   * Day 20: Precursor Resonance Carrier Drone (continuous interactive audio for waveform tuning)
+   */
+  public startResonanceCarrierDrone(freq: number = 440, phaseDegrees: number = 180, damping: number = 50): void {
+    this.initContext();
+    if (!this.ctx) return;
+
+    if (!this.isCarrierDronePlaying) {
+      const now = this.ctx.currentTime;
+      this.carrierDroneOsc1 = this.ctx.createOscillator();
+      this.carrierDroneOsc2 = this.ctx.createOscillator();
+      this.carrierDroneFilter = this.ctx.createBiquadFilter();
+      this.carrierDroneGain = this.ctx.createGain();
+
+      this.carrierDroneOsc1.type = 'sine';
+      this.carrierDroneOsc1.frequency.setValueAtTime(freq, now);
+
+      this.carrierDroneOsc2.type = 'triangle';
+      // Harmonic detune / phase simulation via subtle sub-harmonic offset
+      this.carrierDroneOsc2.frequency.setValueAtTime(freq * 0.5 + (phaseDegrees / 360) * 4, now);
+
+      this.carrierDroneFilter.type = 'lowpass';
+      this.carrierDroneFilter.frequency.setValueAtTime(400 + (100 - damping) * 20, now);
+      this.carrierDroneFilter.Q.setValueAtTime(5.0, now);
+
+      this.carrierDroneGain.gain.setValueAtTime(0.001, now);
+      this.carrierDroneGain.gain.linearRampToValueAtTime(0.09, now + 0.2);
+
+      this.carrierDroneOsc1.connect(this.carrierDroneFilter);
+      this.carrierDroneOsc2.connect(this.carrierDroneFilter);
+      this.carrierDroneFilter.connect(this.carrierDroneGain);
+      this.carrierDroneGain.connect(this.ctx.destination);
+
+      this.carrierDroneOsc1.start(now);
+      this.carrierDroneOsc2.start(now);
+      this.isCarrierDronePlaying = true;
+    } else {
+      this.updateResonanceCarrierDrone(freq, phaseDegrees, damping);
+    }
+  }
+
+  public updateResonanceCarrierDrone(freq: number, phaseDegrees: number, damping: number): void {
+    if (!this.ctx || !this.isCarrierDronePlaying) return;
+    const now = this.ctx.currentTime;
+    if (this.carrierDroneOsc1) {
+      this.carrierDroneOsc1.frequency.linearRampToValueAtTime(Math.max(50, freq), now + 0.05);
+    }
+    if (this.carrierDroneOsc2) {
+      this.carrierDroneOsc2.frequency.linearRampToValueAtTime(Math.max(25, freq * 0.5 + (phaseDegrees / 360) * 4), now + 0.05);
+    }
+    if (this.carrierDroneFilter) {
+      this.carrierDroneFilter.frequency.linearRampToValueAtTime(300 + (100 - damping) * 25, now + 0.05);
+    }
+  }
+
+  public stopResonanceCarrierDrone(): void {
+    if (!this.ctx || !this.isCarrierDronePlaying) return;
+    const now = this.ctx.currentTime;
+    if (this.carrierDroneGain) {
+      this.carrierDroneGain.gain.linearRampToValueAtTime(0.001, now + 0.2);
+    }
+    setTimeout(() => {
+      try {
+        if (this.carrierDroneOsc1) {
+          this.carrierDroneOsc1.stop();
+          this.carrierDroneOsc1.disconnect();
+          this.carrierDroneOsc1 = null;
+        }
+        if (this.carrierDroneOsc2) {
+          this.carrierDroneOsc2.stop();
+          this.carrierDroneOsc2.disconnect();
+          this.carrierDroneOsc2 = null;
+        }
+      } catch {
+        // ignore
+      }
+      this.isCarrierDronePlaying = false;
+    }, 220);
+  }
+
+  /**
+   * Day 20: Precursor Decipher Fanfare (eerie ancient harmonic chord)
+   */
+  public playPrecursorDecipherFanfare(): void {
+    this.initContext();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+
+    // Harmonic overtone chord: 432, 540, 648, 864 Hz
+    const tones = [432, 540, 648, 864, 1296];
+    tones.forEach((freq, i) => {
+      if (!this.ctx) return;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = i % 2 === 0 ? 'sine' : 'triangle';
+      osc.frequency.setValueAtTime(freq, now + i * 0.09);
+
+      gain.gain.setValueAtTime(0.001, now + i * 0.09);
+      gain.gain.linearRampToValueAtTime(0.12, now + i * 0.09 + 0.06);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.09 + 1.2);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      osc.start(now + i * 0.09);
+      osc.stop(now + i * 0.09 + 1.3);
+    });
+  }
+
+  /**
+   * Day 20: Precursor Phase Lance Discharge (sharp crystalline energy pulse)
+   */
+  public playPhaseLanceFireSound(): void {
+    this.initContext();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    const filter = this.ctx.createBiquadFilter();
+
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(1200, now);
+    osc.frequency.exponentialRampToValueAtTime(240, now + 0.35);
+
+    filter.type = 'highpass';
+    filter.frequency.setValueAtTime(800, now);
+
+    gain.gain.setValueAtTime(0.2, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.45);
+  }
+
+  /**
+   * Day 20: Mineral Deposit Harvest Pickup (crisp crystal clink)
+   */
+  public playMineralPickupSound(): void {
+    this.initContext();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(1046.5, now); // C6
+    osc.frequency.setValueAtTime(1318.5, now + 0.06); // E6
+    osc.frequency.setValueAtTime(1567.98, now + 0.12); // G6
+
+    gain.gain.setValueAtTime(0.15, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.38);
+  }
+
+  /**
+   * Day 20: Lander Touchdown Clamp Lock (hydraulic clunk and magnetic lock)
+   */
+  public playLanderTouchdownSound(): void {
+    this.initContext();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+
+    const osc1 = this.ctx.createOscillator();
+    const gain1 = this.ctx.createGain();
+
+    osc1.type = 'triangle';
+    osc1.frequency.setValueAtTime(110, now);
+    osc1.frequency.exponentialRampToValueAtTime(40, now + 0.25);
+
+    gain1.gain.setValueAtTime(0.25, now);
+    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+
+    osc1.connect(gain1);
+    gain1.connect(this.ctx.destination);
+
+    osc1.start(now);
+    osc1.stop(now + 0.35);
   }
 }
 

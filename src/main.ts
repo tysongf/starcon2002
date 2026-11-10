@@ -50,7 +50,66 @@ class GameEngine {
   private activeColony: any | null = null;
   private activeColoniesList: any[] = [];
   private hoveredColony: any | null = null;
-  private activeSurveyTab: 'SENSORS' | 'COLONY' = 'SENSORS';
+  private activeSurveyTab: 'SENSORS' | 'COLONY' | 'PRECURSOR' = 'SENSORS';
+
+  // Day 20: Precursor Megastructures, Surface Lander & Relic Tech Tree
+  private planetPrecursorSites: any[] = [];
+  private activePrecursorSite: any | null = null;
+  private precursorResearchCatalog: any[] = [];
+  private playerRelicCount: number = 0;
+
+  private modalPlanetaryLander: HTMLElement | null = null;
+  private landerCanvas: HTMLCanvasElement | null = null;
+  private landerCtx: CanvasRenderingContext2D | null = null;
+  private landerAnimId: number | null = null;
+  private isLanderActive: boolean = false;
+  private landerState = {
+    x: 380,
+    y: 240,
+    vx: 0,
+    vy: 0,
+    heading: -Math.PI / 2,
+    fuel: 100,
+    maxFuel: 100,
+    hull: 100,
+    maxHull: 100,
+    cargo: 0,
+    maxCargo: 25,
+    isDocked: false,
+    dockedSite: null as any,
+  };
+  private landerKeys = {
+    up: false,
+    down: false,
+    left: false,
+    right: false,
+  };
+  private landerParticles: Array<{ x: number; y: number; vx: number; vy: number; life: number; maxLife: number; color: string; size: number }> = [];
+  private landerSonarWaves: Array<{ x: number; y: number; radius: number; maxRadius: number; alpha: number }> = [];
+  private landerNodes: Array<{
+    id: string;
+    x: number;
+    y: number;
+    type: 'MINERAL' | 'MEGASTRUCTURE';
+    name: string;
+    mineralType?: string;
+    amount?: number;
+    collected?: boolean;
+    siteData?: any;
+    discovered: boolean;
+    color: string;
+  }> = [];
+
+  private modalPrecursorTerminal: HTMLElement | null = null;
+  private waveformCanvas: HTMLCanvasElement | null = null;
+  private waveformCtx: CanvasRenderingContext2D | null = null;
+  private waveformAnimId: number | null = null;
+  private waveformTime: number = 0;
+  private precursorTuning = {
+    freq: 220,
+    phase: 0,
+    damping: 10,
+  };
 
   // Navigation & Sector Jump System (Day 8)
   private currentSectorId: number = 1;
@@ -1030,11 +1089,13 @@ class GameEngine {
     this.modalPlanetarySurvey = document.getElementById('planetary-survey-modal');
     this.elOrbitalBanner = document.getElementById('hud-orbital-banner');
     this.elOrbitalMsg = document.getElementById('orbital-msg');
+    this.elOrbitalBanner?.addEventListener('click', () => this.enterOrbit());
     this.globeCanvas = document.getElementById('orbital-globe-canvas') as HTMLCanvasElement;
     if (this.globeCanvas) {
       this.globeCtx = this.globeCanvas.getContext('2d');
     }
 
+    document.getElementById('btn-hud-orbit')?.addEventListener('click', () => this.enterOrbit());
     document.getElementById('btn-exit-orbit')?.addEventListener('click', () => this.exitOrbit());
     document.getElementById('btn-scan-minerals')?.addEventListener('click', () => this.performScannerSweep('MINERALS'));
     document.getElementById('btn-scan-bio')?.addEventListener('click', () => this.performScannerSweep('BIO'));
@@ -1044,6 +1105,7 @@ class GameEngine {
     // Day 19: CRT Console Tabs
     document.getElementById('tab-survey-sensors')?.addEventListener('click', () => this.switchSurveyTab('SENSORS'));
     document.getElementById('tab-survey-colony')?.addEventListener('click', () => this.switchSurveyTab('COLONY'));
+    document.getElementById('tab-survey-precursor')?.addEventListener('click', () => this.switchSurveyTab('PRECURSOR'));
 
     // Day 19: Colony Actions & Upgrades
     document.getElementById('btn-found-colony')?.addEventListener('click', () => this.foundColony());
@@ -1052,6 +1114,82 @@ class GameEngine {
     document.getElementById('btn-upgrade-habitation')?.addEventListener('click', () => this.upgradeColonyFacility('HABITATION'));
     document.getElementById('btn-upgrade-terraformer')?.addEventListener('click', () => this.upgradeColonyFacility('TERRAFORMER'));
     document.getElementById('btn-upgrade-silo')?.addEventListener('click', () => this.upgradeColonyFacility('SILO'));
+
+    // Day 20: Precursor Megastructures, Surface Lander & Decryption Matrix
+    this.modalPlanetaryLander = document.getElementById('planetary-lander-modal');
+    this.landerCanvas = document.getElementById('surface-lander-canvas') as HTMLCanvasElement;
+    if (this.landerCanvas) {
+      this.landerCtx = this.landerCanvas.getContext('2d');
+    }
+
+    this.modalPrecursorTerminal = document.getElementById('precursor-terminal-modal');
+    this.waveformCanvas = document.getElementById('precursor-waveform-canvas') as HTMLCanvasElement;
+    if (this.waveformCanvas) {
+      this.waveformCtx = this.waveformCanvas.getContext('2d');
+    }
+
+    document.getElementById('btn-deploy-lander')?.addEventListener('click', () => this.openSurfaceLander());
+    document.getElementById('btn-lander-ascend')?.addEventListener('click', () => this.closeSurfaceLander());
+    document.getElementById('btn-open-precursor-terminal')?.addEventListener('click', () => {
+      if (this.landerState.dockedSite) {
+        this.openPrecursorTerminal(this.landerState.dockedSite);
+      }
+    });
+    document.getElementById('btn-close-precursor-terminal')?.addEventListener('click', () => this.closePrecursorTerminal());
+    document.getElementById('btn-precursor-decipher')?.addEventListener('click', () => this.decipherActivePrecursorSite());
+    document.getElementById('btn-remit-relic')?.addEventListener('click', () => this.remitPrecursorRelic());
+
+    // Tuning Sliders
+    const sliderFreq = document.getElementById('slider-carrier-freq') as HTMLInputElement | null;
+    const sliderPhase = document.getElementById('slider-harmonic-phase') as HTMLInputElement | null;
+    const sliderDamping = document.getElementById('slider-damping') as HTMLInputElement | null;
+
+    sliderFreq?.addEventListener('input', (e) => {
+      const val = parseInt((e.target as HTMLInputElement).value, 10);
+      this.precursorTuning.freq = val;
+      const el = document.getElementById('val-carrier-freq');
+      if (el) el.textContent = `${val} Hz`;
+      this.audio.updateResonanceCarrierDrone(this.precursorTuning.freq, this.precursorTuning.phase, this.precursorTuning.damping);
+      this.checkPrecursorAlignment();
+    });
+
+    sliderPhase?.addEventListener('input', (e) => {
+      const val = parseInt((e.target as HTMLInputElement).value, 10);
+      this.precursorTuning.phase = val;
+      const el = document.getElementById('val-harmonic-phase');
+      if (el) el.textContent = `${val}°`;
+      this.audio.updateResonanceCarrierDrone(this.precursorTuning.freq, this.precursorTuning.phase, this.precursorTuning.damping);
+      this.checkPrecursorAlignment();
+    });
+
+    sliderDamping?.addEventListener('input', (e) => {
+      const val = parseInt((e.target as HTMLInputElement).value, 10);
+      this.precursorTuning.damping = val;
+      const el = document.getElementById('val-damping');
+      if (el) el.textContent = `${val}%`;
+      this.audio.updateResonanceCarrierDrone(this.precursorTuning.freq, this.precursorTuning.phase, this.precursorTuning.damping);
+      this.checkPrecursorAlignment();
+    });
+
+    // Hash routing for direct modal access / deep linking (#survey, #lander, #precursor, #terminal)
+    const handleHash = () => {
+      const hash = window.location.hash;
+      if (hash === '#survey') {
+        this.enterOrbit();
+      } else if (hash === '#lander') {
+        this.enterOrbit();
+        this.openSurfaceLander();
+      } else if (hash === '#precursor') {
+        this.enterOrbit();
+        this.switchSurveyTab('PRECURSOR');
+      } else if (hash === '#terminal' || hash === '#precursor-terminal') {
+        this.enterOrbit();
+        this.openPrecursorTerminal();
+      }
+    };
+    window.addEventListener('hashchange', handleHash);
+    handleHash();
+    setTimeout(handleHash, 300);
 
     this.initGlobeCanvasControls();
 
@@ -2028,10 +2166,59 @@ class GameEngine {
         return; // Suppress other flight/game keys while in alien comms
       }
 
-      // Day 18: Star Control II Planetary Orbital Survey Key Handling
+      // Day 20: Star Control II Precursor Archaeological Terminal Key Handling
+      if (this.modalPrecursorTerminal && !this.modalPrecursorTerminal.classList.contains('hidden')) {
+        if (e.code === 'Escape') {
+          this.closePrecursorTerminal();
+          return;
+        }
+        return;
+      }
+
+      // Day 20: Star Control II Planetary Surface Lander Key Handling
+      if (this.isLanderActive) {
+        if (e.code === 'KeyW' || e.code === 'ArrowUp') {
+          this.landerKeys.up = true;
+          return;
+        }
+        if (e.code === 'KeyS' || e.code === 'ArrowDown') {
+          this.landerKeys.down = true;
+          return;
+        }
+        if (e.code === 'KeyA' || e.code === 'ArrowLeft') {
+          this.landerKeys.left = true;
+          return;
+        }
+        if (e.code === 'KeyD' || e.code === 'ArrowRight') {
+          this.landerKeys.right = true;
+          return;
+        }
+        if (e.code === 'Space') {
+          e.preventDefault();
+          this.fireSeismicRadarPing();
+          return;
+        }
+        if (e.code === 'KeyE') {
+          if (this.landerState.isDocked && this.landerState.dockedSite) {
+            this.openPrecursorTerminal(this.landerState.dockedSite);
+            return;
+          }
+        }
+        if (e.code === 'KeyX' || e.code === 'Escape') {
+          this.closeSurfaceLander();
+          return;
+        }
+        return; // Suppress flight keys while piloting surface lander
+      }
+
+      // Day 18 & 20: Star Control II Planetary Orbital Survey Key Handling
       if (this.modalPlanetarySurvey && !this.modalPlanetarySurvey.classList.contains('hidden')) {
         if (e.code === 'Escape' || e.code === 'KeyO') {
           this.exitOrbit();
+          return;
+        }
+        if (e.code === 'KeyL') {
+          this.openSurfaceLander();
           return;
         }
         if (e.code === 'Digit1' || e.code === 'Numpad1') {
@@ -2054,7 +2241,7 @@ class GameEngine {
       }
 
       if (e.code === 'KeyO') {
-        if (this.activePlanet && this.activePlanet.isOrbitalProximity(this.flightController.position)) {
+        if (this.activePlanet) {
           this.enterOrbit();
           return;
         }
@@ -2213,6 +2400,23 @@ class GameEngine {
 
     // Keyup Controls
     window.addEventListener('keyup', (e: KeyboardEvent) => {
+      if (this.isLanderActive) {
+        if (e.code === 'KeyW' || e.code === 'ArrowUp') {
+          this.landerKeys.up = false;
+          this.audio.stopLanderThrusterSound();
+        }
+        if (e.code === 'KeyS' || e.code === 'ArrowDown') {
+          this.landerKeys.down = false;
+        }
+        if (e.code === 'KeyA' || e.code === 'ArrowLeft') {
+          this.landerKeys.left = false;
+        }
+        if (e.code === 'KeyD' || e.code === 'ArrowRight') {
+          this.landerKeys.right = false;
+        }
+        return;
+      }
+
       switch (e.code) {
         case 'KeyW':
         case 'ArrowUp':
@@ -5278,7 +5482,26 @@ class GameEngine {
    * Locks ship thrusters into synchronous orbit and launches the CRT Survey Console.
    */
   public async enterOrbit(): Promise<void> {
-    if (!this.activePlanet) return;
+    if (!this.activePlanet) {
+      this.activePlanet = new ProceduralPlanet({
+        id: 'planet_sec1_aegis',
+        sectorId: 1,
+        name: 'Aegis Prime',
+        archetype: 'BARREN',
+        radius: 24.0,
+        posX: -140.0,
+        posY: 0.0,
+        posZ: 180.0,
+        textureSeed: 101,
+        atmosphereColor: '#38bdf8',
+        atmosphereDensity: 0.12,
+        surfaceTempK: 215,
+        hazardClass: 'LOW_RADIATION',
+        habitabilityRating: 18,
+        controllingFaction: 'FACTION_SOL',
+        description: 'Airless metallic moon rich in heavy silicate crust and structural plasteel strata.',
+      });
+    }
     this.isInOrbit = true;
 
     // Smooth thruster dampening
@@ -5308,6 +5531,14 @@ class GameEngine {
     if (elFaction) elFaction.textContent = p.controllingFaction.replace(/_/g, ' ');
     if (elAp) elAp.textContent = `${this.playerAP.currentAP} / ${this.playerAP.maxAP}`;
 
+    if (!this.modalPlanetarySurvey) {
+      this.modalPlanetarySurvey = document.getElementById('planetary-survey-modal');
+    }
+    if (this.modalPlanetarySurvey) {
+      this.modalPlanetarySurvey.classList.remove('hidden');
+    }
+    this.startGlobeRender();
+
     // Fetch authoritative survey state
     try {
       const res = await fetch(`http://localhost:3000/api/planets/${p.id}`);
@@ -5324,18 +5555,20 @@ class GameEngine {
     // Day 19: Fetch Authoritative Colony State
     await this.fetchPlanetColonies(p.id);
 
-    this.updateSurveyConsoleUI();
-    this.startGlobeRender();
+    // Day 20: Fetch Authoritative Precursor Sites & Relics
+    await this.fetchPlanetPrecursorSites(p.id);
 
-    if (this.modalPlanetarySurvey) {
-      this.modalPlanetarySurvey.classList.remove('hidden');
-    }
+    this.updateSurveyConsoleUI();
   }
 
   /**
    * Disengages orbital capture and returns to flight view.
    */
   public exitOrbit(): void {
+    if (this.isLanderActive) {
+      this.closeSurfaceLander();
+    }
+    this.closePrecursorTerminal();
     this.isInOrbit = false;
     this.audio.stopPlanetaryAmbience();
     this.audio.playUiBlip();
@@ -6134,33 +6367,35 @@ class GameEngine {
   // ============================================================================
 
   /**
-   * Toggles between Astrometry Sensor sweep array and Colony Command console.
+   * Toggles between Astrometry Sensor sweep array, Colony Command console, and Precursor Proto-Tech Lab.
    */
-  public switchSurveyTab(tab: 'SENSORS' | 'COLONY'): void {
+  public switchSurveyTab(tab: 'SENSORS' | 'COLONY' | 'PRECURSOR'): void {
     this.activeSurveyTab = tab;
     this.audio.playUiBlip();
 
     const btnSensors = document.getElementById('tab-survey-sensors');
     const btnColony = document.getElementById('tab-survey-colony');
+    const btnPrecursor = document.getElementById('tab-survey-precursor');
     const panelSensors = document.getElementById('panel-survey-sensors');
     const panelColony = document.getElementById('panel-survey-colony');
+    const panelPrecursor = document.getElementById('panel-survey-precursor');
 
-    if (tab === 'SENSORS') {
-      btnSensors?.classList.add('active');
-      btnColony?.classList.remove('active');
-      panelSensors?.classList.remove('hidden');
-      panelColony?.classList.add('hidden');
-    } else {
-      btnSensors?.classList.remove('active');
-      btnColony?.classList.add('active');
-      panelSensors?.classList.add('hidden');
-      panelColony?.classList.remove('hidden');
+    btnSensors?.classList.toggle('active', tab === 'SENSORS');
+    btnColony?.classList.toggle('active', tab === 'COLONY');
+    btnPrecursor?.classList.toggle('active', tab === 'PRECURSOR');
 
+    panelSensors?.classList.toggle('hidden', tab !== 'SENSORS');
+    panelColony?.classList.toggle('hidden', tab !== 'COLONY');
+    panelPrecursor?.classList.toggle('hidden', tab !== 'PRECURSOR');
+
+    if (tab === 'COLONY') {
       if (this.activeColony) {
         this.refreshColonyDashboardUI();
       } else {
         this.populateColonyBeaconSelect();
       }
+    } else if (tab === 'PRECURSOR') {
+      this.fetchPrecursorResearch();
     }
   }
 
@@ -6463,7 +6698,1146 @@ class GameEngine {
     }
   }
 
-  public getActiveSurveyTab(): 'SENSORS' | 'COLONY' {
+  // ============================================================================
+  // DAY 20: STAR CONTROL II SURFACE LANDER, PRECURSOR MEGASTRUCTURES & RELIC TECH TREE
+  // ============================================================================
+
+  /**
+   * Fetches Precursor Megastructure sites on the active planet and updates UI pills.
+   */
+  public async fetchPlanetPrecursorSites(planetId: string): Promise<void> {
+    try {
+      const res = await fetch(`http://localhost:3000/api/precursor/planet/${planetId}?accountId=acc_sol_captain`);
+      if (res.ok) {
+        const data = await res.json();
+        this.planetPrecursorSites = data.sites || [];
+        this.playerRelicCount = data.relics || 0;
+
+        const relicPill = document.getElementById('survey-relics-pill');
+        if (relicPill) {
+          relicPill.textContent = `${this.playerRelicCount} RELICS`;
+        }
+
+        const relicCount = document.getElementById('precursor-relic-count');
+        if (relicCount) {
+          relicCount.textContent = `${this.playerRelicCount}x IN CARGO`;
+        }
+      }
+    } catch (err) {
+      console.warn('[DAY 20] Failed to fetch planet precursor sites:', err);
+    }
+  }
+
+  /**
+   * Retrieves the prototype technology research catalog and updates the Precursor Lab grid.
+   */
+  public async fetchPrecursorResearch(): Promise<void> {
+    try {
+      const res = await fetch(`http://localhost:3000/api/precursor/research?accountId=acc_sol_captain`);
+      if (!res.ok) return;
+      const data = await res.json();
+      this.precursorResearchCatalog = data.catalog || [];
+      this.playerRelicCount = data.relics ?? this.playerRelicCount;
+
+      const relicCountEl = document.getElementById('precursor-relic-count');
+      const creditsCountEl = document.getElementById('precursor-credits-count');
+      const apCountEl = document.getElementById('precursor-ap-count');
+      const relicPill = document.getElementById('survey-relics-pill');
+
+      if (relicCountEl) relicCountEl.textContent = `${this.playerRelicCount}x IN CARGO`;
+      if (creditsCountEl && data.credits !== undefined) creditsCountEl.textContent = `${Number(data.credits).toLocaleString()} Cr`;
+      if (apCountEl) apCountEl.textContent = `${data.ap?.currentAP ?? this.playerAP.currentAP} / ${this.playerAP.maxAP}`;
+      if (relicPill) relicPill.textContent = `${this.playerRelicCount} RELICS`;
+
+      this.renderPrecursorTechGrid();
+    } catch (err) {
+      console.warn('[DAY 20] Failed to fetch precursor research:', err);
+    }
+  }
+
+  /**
+   * Renders the 4 legendary prototype ship systems in the Proto-Tech Laboratory.
+   */
+  public renderPrecursorTechGrid(): void {
+    const grid = document.getElementById('precursor-tech-grid');
+    if (!grid) return;
+
+    if (this.precursorResearchCatalog.length === 0) {
+      grid.innerHTML = '<div class="precursor-empty-state">No precursor prototypes loaded.</div>';
+      return;
+    }
+
+    grid.innerHTML = this.precursorResearchCatalog.map((tech) => {
+      const statBadges = Object.entries(tech.stats || {})
+        .map(([k, v]) => `<span class="stat-pill">${k.toUpperCase()}: <strong>${v}</strong></span>`)
+        .join('');
+
+      const actionBtn = tech.isSynthesized
+        ? `<button class="colony-action-btn synthesized-badge" disabled>✔ SYNTHESIZED // READY IN SHIP HOLD</button>`
+        : `<button class="colony-action-btn primary btn-synth-tech" data-tech-id="${tech.id}">
+             SYNTHESIZE PROTOTYPE [${tech.relicCost}x RELIC + ${tech.apCost} AP] ⚡
+           </button>`;
+
+      return `
+        <div class="precursor-tech-card ${tech.isSynthesized ? 'synthesized' : ''}">
+          <div class="tech-card-header">
+            <div class="tech-title-block">
+              <span class="slot-badge slot-${tech.slotType.toLowerCase()}">${tech.slotType} SLOT // ${tech.category}</span>
+              <h3 class="tech-title">${tech.name}</h3>
+            </div>
+            <div class="tech-cost-badge">
+              <span>💎 ${tech.relicCost}x RELIC</span>
+              <span>💰 ${tech.creditCost} CR</span>
+            </div>
+          </div>
+          <p class="tech-desc">${tech.description}</p>
+          <div class="tech-stats-row">
+            ${statBadges}
+          </div>
+          <div class="tech-action-row">
+            ${actionBtn}
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    // Attach synthesis button listeners
+    grid.querySelectorAll('.btn-synth-tech').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        const techId = (e.currentTarget as HTMLElement).getAttribute('data-tech-id');
+        if (techId) {
+          this.synthesizePrototypeTech(techId);
+        }
+      });
+    });
+  }
+
+  /**
+   * Synthesizes a legendary prototype ship system using an unrefined Precursor Relic Core.
+   */
+  public async synthesizePrototypeTech(techId: string): Promise<void> {
+    try {
+      const res = await fetch('http://localhost:3000/api/precursor/synthesize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId: 'acc_sol_captain', techId }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        this.showApNotification(`⚠️ ${data.error || 'Prototype synthesis failed'}`, true);
+        return;
+      }
+
+      this.audio.playPrecursorDecipherFanfare();
+      this.showApNotification(`⚡ Synthesized ${data.tech?.name}! Fitted module added to cargo hold!`, false);
+
+      await this.fetchPrecursorResearch();
+      this.refreshPlayerHold();
+    } catch (err) {
+      console.error('[DAY 20] Failed to synthesize prototype tech:', err);
+    }
+  }
+
+  /**
+   * Remits a Precursor Relic Core to an alien ambassador for +2,500 Credits and +50 Goodwill.
+   */
+  public async remitPrecursorRelic(): Promise<void> {
+    const sel = document.getElementById('select-remit-faction') as HTMLSelectElement | null;
+    const factionId = sel ? sel.value : 'FACTION_SOL';
+
+    try {
+      const res = await fetch('http://localhost:3000/api/precursor/remit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId: 'acc_sol_captain', factionId }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        this.showApNotification(`⚠️ ${data.error || 'Relic remittance failed'}`, true);
+        return;
+      }
+
+      this.audio.playCargoHarvestSound();
+      this.showApNotification(`💎 Remitted Precursor Relic to ${factionId.replace('FACTION_', '')}! +${data.creditsReward} Credits, +${data.goodwillReward} Goodwill!`, false);
+
+      await this.fetchPrecursorResearch();
+      this.refreshFactionStandings();
+    } catch (err) {
+      console.error('[DAY 20] Failed to remit precursor relic:', err);
+    }
+  }
+
+  // ============================================================================
+  // STAR CONTROL II SURFACE LANDER SIMULATION
+  // ============================================================================
+
+  /**
+   * Deploys the nimble planetary lander from synchronous orbit into the 2D topography flight view.
+   */
+  public openSurfaceLander(): void {
+    if (!this.activePlanet) {
+      this.activePlanet = new ProceduralPlanet({
+        id: 'planet_sec1_aegis',
+        sectorId: 1,
+        name: 'Aegis Prime',
+        archetype: 'BARREN',
+        radius: 24.0,
+        posX: -140.0,
+        posY: 0.0,
+        posZ: 180.0,
+        textureSeed: 101,
+        atmosphereColor: '#38bdf8',
+        atmosphereDensity: 0.12,
+        surfaceTempK: 215,
+        hazardClass: 'LOW_RADIATION',
+        habitabilityRating: 18,
+        controllingFaction: 'FACTION_SOL',
+        description: 'Airless metallic moon rich in heavy silicate crust and structural plasteel strata.',
+      });
+    }
+    this.isLanderActive = true;
+
+    if (this.modalPlanetarySurvey) {
+      this.modalPlanetarySurvey.classList.add('hidden');
+    }
+    if (!this.modalPlanetaryLander) {
+      this.modalPlanetaryLander = document.getElementById('planetary-lander-modal');
+    }
+    if (this.modalPlanetaryLander) {
+      this.modalPlanetaryLander.classList.remove('hidden');
+    }
+
+    const titleEl = document.getElementById('lander-planet-title');
+    if (titleEl) {
+      titleEl.textContent = `${this.activePlanet.data.name.toUpperCase()} // SURFACE TOPOGRAPHY`;
+    }
+
+    if (!this.landerCanvas) {
+      this.landerCanvas = document.getElementById('surface-lander-canvas') as HTMLCanvasElement;
+      if (this.landerCanvas) {
+        this.landerCtx = this.landerCanvas.getContext('2d');
+      }
+    }
+
+    // Reset lander telemetry & kinematics
+    this.landerState = {
+      x: 380,
+      y: 240,
+      vx: 0,
+      vy: 0,
+      heading: -Math.PI / 2,
+      fuel: 100,
+      maxFuel: 100,
+      hull: 100,
+      maxHull: 100,
+      cargo: 0,
+      maxCargo: 25,
+      isDocked: false,
+      dockedSite: null,
+    };
+    this.landerKeys = { up: false, down: false, left: false, right: false };
+    this.landerParticles = [];
+    this.landerSonarWaves = [];
+
+    // Initialize surface nodes: Megastructures from planet precursor sites + mineral deposits
+    this.landerNodes = [];
+
+    // Place Precursor Megastructures on surface canvas
+    if (this.planetPrecursorSites.length > 0) {
+      this.planetPrecursorSites.forEach((site, idx) => {
+        const posX = idx === 0 ? 530 : 230 + (idx * 160);
+        const posY = idx === 0 ? 170 : 330;
+        this.landerNodes.push({
+          id: site.id,
+          x: posX,
+          y: posY,
+          type: 'MEGASTRUCTURE',
+          name: site.name,
+          siteData: site,
+          discovered: false,
+          color: '#00f0ff',
+        });
+      });
+    } else {
+      // Fallback canonical megastructure
+      this.landerNodes.push({
+        id: 'site_fallback_monolith',
+        x: 520,
+        y: 170,
+        type: 'MEGASTRUCTURE',
+        name: 'Aegis Resonance Monolith',
+        siteData: {
+          id: 'site_aegis_monolith',
+          name: 'Aegis Resonance Monolith',
+          surfaceLat: 22.0,
+          surfaceLng: -40.0,
+          requiredFreq: 440,
+          requiredPhase: 180,
+          requiredDamping: 50,
+          isDeciphered: false,
+          codexTitle: 'Chronicles of the First Builders: The Hyper-Spatial Fold',
+          codexText: 'We who folded the void before the light of Sol took form left this frequency key for those who walk after us...',
+        },
+        discovered: false,
+        color: '#00f0ff',
+      });
+    }
+
+    // Populate 8 mineral resource deposits on topographical contours
+    const mineralDefs = [
+      { name: 'Plutonium Isotopes', x: 180, y: 120, amount: 8, color: '#fbbf24' },
+      { name: 'Rare Crystalline Matrix', x: 610, y: 130, amount: 10, color: '#38bdf8' },
+      { name: 'Superdense Titanium', x: 150, y: 380, amount: 15, color: '#e2e8f0' },
+      { name: 'Xenobiological Spores', x: 430, y: 380, amount: 12, color: '#4ade80' },
+      { name: 'Precursor Power Cells', x: 660, y: 340, amount: 6, color: '#c084fc' },
+      { name: 'Rare Crystalline Matrix', x: 330, y: 190, amount: 10, color: '#38bdf8' },
+      { name: 'Superdense Titanium', x: 230, y: 260, amount: 12, color: '#e2e8f0' },
+      { name: 'Plutonium Isotopes', x: 480, y: 290, amount: 8, color: '#fbbf24' },
+    ];
+
+    mineralDefs.forEach((m, idx) => {
+      this.landerNodes.push({
+        id: `node_min_${idx}`,
+        x: m.x,
+        y: m.y,
+        type: 'MINERAL',
+        name: m.name,
+        mineralType: m.name,
+        amount: m.amount,
+        collected: false,
+        discovered: false,
+        color: m.color,
+      });
+    });
+
+    const dockBanner = document.getElementById('megastructure-dock-banner');
+    if (dockBanner) dockBanner.classList.add('hidden');
+
+    const targetsList = document.getElementById('lander-targets-list');
+    if (targetsList) {
+      targetsList.innerHTML = `<div class="target-card-item">Press [SPACE] to broadcast seismic pulse and detect surface deposits.</div>`;
+    }
+
+    this.updateLanderTelemetryUI();
+    this.startLanderLoop();
+  }
+
+  /**
+   * Ascends back into synchronous orbit and transfers collected surface minerals into ship hold.
+   */
+  public closeSurfaceLander(): void {
+    this.isLanderActive = false;
+    this.audio.stopLanderThrusterSound();
+
+    if (this.landerAnimId !== null) {
+      cancelAnimationFrame(this.landerAnimId);
+      this.landerAnimId = null;
+    }
+
+    if (this.modalPlanetaryLander) {
+      this.modalPlanetaryLander.classList.add('hidden');
+    }
+
+    if (this.isInOrbit && this.modalPlanetarySurvey) {
+      this.modalPlanetarySurvey.classList.remove('hidden');
+    }
+
+    if (this.landerState.cargo > 0) {
+      this.audio.playCargoHarvestSound();
+      this.showApNotification(`🚀 Lander docked with ship! Transferred ${this.landerState.cargo} units of surface minerals into hold!`, false);
+    }
+  }
+
+  /**
+   * Fires a Star Control-style seismic radar ping revealing surface deposits.
+   */
+  public fireSeismicRadarPing(): void {
+    if (!this.isLanderActive) return;
+
+    this.audio.playSeismicRadarPing();
+    this.landerSonarWaves.push({
+      x: this.landerState.x,
+      y: this.landerState.y,
+      radius: 10,
+      maxRadius: 420,
+      alpha: 1.0,
+    });
+
+    const statusBlip = document.getElementById('lander-radar-status');
+    if (statusBlip) {
+      statusBlip.textContent = 'SCANNING...';
+      statusBlip.style.color = '#38bdf8';
+      setTimeout(() => {
+        if (statusBlip) {
+          statusBlip.textContent = 'READY [SPACE]';
+          statusBlip.style.color = '#10b981';
+        }
+      }, 700);
+    }
+  }
+
+  /**
+   * Animation & physics loop for the 2D surface lander simulation.
+   */
+  private startLanderLoop(): void {
+    if (this.landerAnimId !== null) {
+      cancelAnimationFrame(this.landerAnimId);
+    }
+
+    const loop = () => {
+      if (!this.isLanderActive) return;
+      this.updateLanderPhysics();
+      this.renderLanderCanvas();
+      this.landerAnimId = requestAnimationFrame(loop);
+    };
+
+    this.landerAnimId = requestAnimationFrame(loop);
+  }
+
+  /**
+   * Updates lander flight dynamics, particle emission, boundary damping, and node proximity.
+   */
+  private updateLanderPhysics(): void {
+    const s = this.landerState;
+    const k = this.landerKeys;
+
+    // Rotation
+    if (k.left) s.heading -= 0.055;
+    if (k.right) s.heading += 0.055;
+
+    // Forward Thruster
+    if (k.up && s.fuel > 0) {
+      const accel = 0.15;
+      s.vx += Math.cos(s.heading) * accel;
+      s.vy += Math.sin(s.heading) * accel;
+      s.fuel = Math.max(0, s.fuel - 0.04);
+      this.audio.startLanderThrusterSound(1.0);
+
+      // Spawn thruster exhaust particles
+      const tailX = s.x - Math.cos(s.heading) * 14;
+      const tailY = s.y - Math.sin(s.heading) * 14;
+      for (let i = 0; i < 2; i++) {
+        const spread = (Math.random() - 0.5) * 0.4;
+        this.landerParticles.push({
+          x: tailX,
+          y: tailY,
+          vx: -Math.cos(s.heading + spread) * (2 + Math.random() * 2),
+          vy: -Math.sin(s.heading + spread) * (2 + Math.random() * 2),
+          life: 1.0,
+          maxLife: 1.0,
+          color: Math.random() > 0.5 ? '#f59e0b' : '#00f0ff',
+          size: 2 + Math.random() * 3,
+        });
+      }
+    } else {
+      this.audio.stopLanderThrusterSound();
+    }
+
+    // Retro-thrusters
+    if (k.down) {
+      s.vx *= 0.94;
+      s.vy *= 0.94;
+    }
+
+    // Natural drag & inertia
+    s.vx *= 0.985;
+    s.vy *= 0.985;
+    s.x += s.vx;
+    s.y += s.vy;
+
+    // Soft boundary bounce [25, 735] x [25, 455]
+    if (s.x < 25) { s.x = 25; s.vx = -s.vx * 0.5; }
+    if (s.x > 735) { s.x = 735; s.vx = -s.vx * 0.5; }
+    if (s.y < 25) { s.y = 25; s.vy = -s.vy * 0.5; }
+    if (s.y > 455) { s.y = 455; s.vy = -s.vy * 0.5; }
+
+    // Update exhaust particles
+    for (let i = this.landerParticles.length - 1; i >= 0; i--) {
+      const p = this.landerParticles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.life -= 0.05;
+      if (p.life <= 0) {
+        this.landerParticles.splice(i, 1);
+      }
+    }
+
+    // Update Sonar Radar Waves
+    for (let i = this.landerSonarWaves.length - 1; i >= 0; i--) {
+      const w = this.landerSonarWaves[i];
+      w.radius += 5.5;
+      w.alpha = Math.max(0, 1 - w.radius / w.maxRadius);
+
+      // Check wave discovery intersection with surface nodes
+      this.landerNodes.forEach((node) => {
+        const d = Math.hypot(node.x - w.x, node.y - w.y);
+        if (d <= w.radius) {
+          node.discovered = true;
+        }
+      });
+
+      if (w.radius >= w.maxRadius) {
+        this.landerSonarWaves.splice(i, 1);
+        this.refreshLanderRadarList();
+      }
+    }
+
+    // Mineral Collection Check
+    this.landerNodes.forEach((node) => {
+      if (node.type === 'MINERAL' && node.discovered && !node.collected) {
+        const d = Math.hypot(node.x - s.x, node.y - s.y);
+        if (d <= 26 && s.cargo < s.maxCargo) {
+          node.collected = true;
+          const amt = node.amount || 5;
+          s.cargo = Math.min(s.maxCargo, s.cargo + amt);
+          this.audio.playMineralPickupSound();
+          this.refreshLanderRadarList();
+          this.updateLanderTelemetryUI();
+        }
+      }
+    });
+
+    // Precursor Megastructure Proximity Check
+    const megastructures = this.landerNodes.filter((n) => n.type === 'MEGASTRUCTURE');
+    let nearSite: any = null;
+
+    megastructures.forEach((m) => {
+      const d = Math.hypot(m.x - s.x, m.y - s.y);
+      if (d <= 48) {
+        nearSite = m;
+      }
+    });
+
+    const dockBanner = document.getElementById('megastructure-dock-banner');
+    const dockDesc = document.getElementById('megastructure-dock-desc');
+
+    if (nearSite) {
+      if (!s.isDocked) {
+        s.isDocked = true;
+        s.dockedSite = nearSite.siteData;
+        this.audio.playLanderTouchdownSound();
+        if (dockBanner) dockBanner.classList.remove('hidden');
+        if (dockDesc) {
+          dockDesc.textContent = `Ancient harmonic resonance detected at ${nearSite.name}. Landing clamps locked [E].`;
+        }
+      }
+    } else if (s.isDocked) {
+      // Disengage docking clamps when flying away
+      s.isDocked = false;
+      s.dockedSite = null;
+      if (dockBanner) dockBanner.classList.add('hidden');
+    }
+
+    this.updateLanderTelemetryUI();
+  }
+
+  /**
+   * Updates radar list on the right panel with discovered nodes and megastructures.
+   */
+  private refreshLanderRadarList(): void {
+    const listEl = document.getElementById('lander-targets-list');
+    if (!listEl) return;
+
+    const discovered = this.landerNodes.filter((n) => n.discovered);
+    if (discovered.length === 0) {
+      listEl.innerHTML = `<div class="target-card-item">Press [SPACE] to broadcast seismic pulse and detect surface deposits.</div>`;
+      return;
+    }
+
+    listEl.innerHTML = discovered.map((n) => {
+      const dist = Math.round(Math.hypot(n.x - this.landerState.x, n.y - this.landerState.y));
+      if (n.type === 'MEGASTRUCTURE') {
+        return `
+          <div class="target-card-item megastructure ${this.landerState.isDocked && this.landerState.dockedSite?.id === n.siteData?.id ? 'docked' : ''}">
+            <div class="target-title">🏛️ ${n.name}</div>
+            <div class="target-meta">PRECURSOR VAULT // DIST: ${dist}m // [E] INTERFACE</div>
+          </div>
+        `;
+      } else {
+        return `
+          <div class="target-card-item mineral ${n.collected ? 'collected' : ''}">
+            <div class="target-title">💎 ${n.name} ${n.collected ? '(SECURED)' : `(+${n.amount})`}</div>
+            <div class="target-meta">SURFACE YIELD // DIST: ${dist}m</div>
+          </div>
+        `;
+      }
+    }).join('');
+  }
+
+  /**
+   * Updates telemetry gauges on the lander CRT HUD.
+   */
+  private updateLanderTelemetryUI(): void {
+    const s = this.landerState;
+    const valHull = document.getElementById('val-lander-hull');
+    const valFuel = document.getElementById('val-lander-fuel');
+    const valCargo = document.getElementById('val-lander-cargo');
+    const fillHull = document.getElementById('lander-hull-fill');
+    const fillFuel = document.getElementById('lander-fuel-fill');
+    const fillCargo = document.getElementById('lander-cargo-fill');
+
+    if (valHull) valHull.textContent = `${Math.round(s.hull)}%`;
+    if (valFuel) valFuel.textContent = `${Math.round(s.fuel)}%`;
+    if (valCargo) valCargo.textContent = `${s.cargo} / ${s.maxCargo} Units`;
+
+    if (fillHull) fillHull.style.width = `${Math.max(0, s.hull)}%`;
+    if (fillFuel) fillFuel.style.width = `${Math.max(0, s.fuel)}%`;
+    if (fillCargo) fillCargo.style.width = `${Math.min(100, (s.cargo / s.maxCargo) * 100)}%`;
+  }
+
+  /**
+   * Renders the Star Control II planetary surface canvas with topographical contour lines,
+   * glowing Precursor ruins, crystalline mineral deposits, headlight beam, and lander.
+   */
+  private renderLanderCanvas(): void {
+    if (!this.landerCtx || !this.landerCanvas) return;
+    const ctx = this.landerCtx;
+    const w = this.landerCanvas.width;
+    const h = this.landerCanvas.height;
+
+    // 1. Dark CRT topographical background
+    const bgGrad = ctx.createRadialGradient(w / 2, h / 2, 40, w / 2, h / 2, w / 2);
+    bgGrad.addColorStop(0, '#040d1a');
+    bgGrad.addColorStop(1, '#02060e');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, w, h);
+
+    // 2. Coordinate Grid Lines
+    ctx.strokeStyle = 'rgba(0, 240, 255, 0.05)';
+    ctx.lineWidth = 1;
+    for (let x = 40; x < w; x += 60) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, h);
+      ctx.stroke();
+    }
+    for (let y = 40; y < h; y += 60) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(w, y);
+      ctx.stroke();
+    }
+
+    // 3. Topographical Elevation Contour Lines (Star Control II aesthetic)
+    ctx.save();
+    ctx.strokeStyle = 'rgba(0, 240, 255, 0.12)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([6, 4]);
+
+    // Ridge 1
+    ctx.beginPath();
+    ctx.ellipse(220, 150, 160, 90, 0.2, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Ridge 2 (Crater Basin)
+    ctx.beginPath();
+    ctx.ellipse(560, 320, 140, 80, -0.15, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.strokeStyle = 'rgba(251, 191, 36, 0.1)';
+    ctx.beginPath();
+    ctx.ellipse(380, 240, 260, 150, 0.05, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.setLineDash([]);
+    ctx.restore();
+
+    // 4. Render Sonar Radar Waves
+    this.landerSonarWaves.forEach((wave) => {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(wave.x, wave.y, wave.radius, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(0, 240, 255, ${wave.alpha * 0.8})`;
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(wave.x, wave.y, wave.radius * 0.6, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(56, 189, 248, ${wave.alpha * 0.3})`;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.restore();
+    });
+
+    // 5. Render Surface Nodes (Megastructures and Minerals)
+    this.landerNodes.forEach((node) => {
+      if (node.type === 'MEGASTRUCTURE') {
+        if (node.discovered) {
+          // Precursor Megastructure: Glowing obelisk & pulsing glyph
+          ctx.save();
+          const pulse = Math.sin(Date.now() * 0.005) * 4;
+
+          // Outer beacon ring
+          ctx.beginPath();
+          ctx.arc(node.x, node.y, 22 + pulse, 0, Math.PI * 2);
+          ctx.strokeStyle = 'rgba(0, 240, 255, 0.4)';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+
+          // Obelisk pyramid icon
+          ctx.fillStyle = '#00f0ff';
+          ctx.beginPath();
+          ctx.moveTo(node.x, node.y - 14);
+          ctx.lineTo(node.x - 10, node.y + 10);
+          ctx.lineTo(node.x + 10, node.y + 10);
+          ctx.closePath();
+          ctx.fill();
+
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold 10px monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText('🏛️ PRECURSOR RUINS', node.x, node.y - 20);
+          ctx.fillText(node.name.toUpperCase(), node.x, node.y + 24);
+          ctx.restore();
+        } else {
+          // Faint radar shadow blip before scan
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(node.x, node.y, 8, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(0, 240, 255, 0.15)';
+          ctx.fill();
+          ctx.restore();
+        }
+      } else if (node.type === 'MINERAL' && !node.collected) {
+        if (node.discovered) {
+          // Sparkling Diamond / Crystal Node
+          ctx.save();
+          ctx.fillStyle = node.color;
+          ctx.shadowColor = node.color;
+          ctx.shadowBlur = 8;
+
+          ctx.beginPath();
+          ctx.moveTo(node.x, node.y - 6);
+          ctx.lineTo(node.x + 6, node.y);
+          ctx.lineTo(node.x, node.y + 6);
+          ctx.lineTo(node.x - 6, node.y);
+          ctx.closePath();
+          ctx.fill();
+
+          ctx.shadowBlur = 0;
+          ctx.fillStyle = '#cbd5e1';
+          ctx.font = '9px monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(`💎 +${node.amount}`, node.x, node.y + 16);
+          ctx.restore();
+        }
+      }
+    });
+
+    // 6. Render Exhaust Particles
+    this.landerParticles.forEach((p) => {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+      ctx.fillStyle = p.color;
+      ctx.globalAlpha = p.life;
+      ctx.fill();
+      ctx.restore();
+    });
+
+    // 7. Render Star Control II Surface Lander Craft
+    const s = this.landerState;
+    ctx.save();
+    ctx.translate(s.x, s.y);
+    ctx.rotate(s.heading);
+
+    // Active Headlight Cone
+    const lightGrad = ctx.createRadialGradient(0, 0, 5, 60, 0, 95);
+    lightGrad.addColorStop(0, 'rgba(0, 240, 255, 0.35)');
+    lightGrad.addColorStop(1, 'rgba(0, 240, 255, 0.0)');
+    ctx.fillStyle = lightGrad;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(85, -34);
+    ctx.lineTo(85, 34);
+    ctx.closePath();
+    ctx.fill();
+
+    // Lander Chassis (Triangular Star Control survey ship)
+    ctx.beginPath();
+    ctx.moveTo(14, 0);
+    ctx.lineTo(-10, -10);
+    ctx.lineTo(-6, 0);
+    ctx.lineTo(-10, 10);
+    ctx.closePath();
+    ctx.fillStyle = '#1e293b';
+    ctx.fill();
+    ctx.strokeStyle = '#00f0ff';
+    ctx.lineWidth = 1.8;
+    ctx.stroke();
+
+    // Outrigger Landing Skids
+    ctx.strokeStyle = '#94a3b8';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(-8, -13, 4, 2);
+    ctx.strokeRect(-8, 11, 4, 2);
+
+    // Cockpit Canopy
+    ctx.beginPath();
+    ctx.arc(2, 0, 3, 0, Math.PI * 2);
+    ctx.fillStyle = '#38bdf8';
+    ctx.fill();
+
+    // Thruster Flare
+    if (this.landerKeys.up && s.fuel > 0) {
+      ctx.beginPath();
+      ctx.moveTo(-6, 0);
+      ctx.lineTo(-18 - Math.random() * 8, -4);
+      ctx.lineTo(-14, 0);
+      ctx.lineTo(-18 - Math.random() * 8, 4);
+      ctx.closePath();
+      ctx.fillStyle = '#f59e0b';
+      ctx.fill();
+    }
+    ctx.restore();
+
+    // 8. Topography Scanner HUD Coordinates
+    ctx.save();
+    ctx.fillStyle = 'rgba(0, 240, 255, 0.7)';
+    ctx.font = '10px monospace';
+    const hdgDeg = Math.round(((s.heading * 180) / Math.PI + 360) % 360);
+    ctx.fillText(`HDG: ${hdgDeg}° // VEL: ${Math.hypot(s.vx, s.vy).toFixed(1)} m/s // TOPOGRAPHY MK-IV`, 16, 22);
+    ctx.restore();
+  }
+
+  // ============================================================================
+  // PRECURSOR ARCHAEOLOGICAL DECRYPTION TERMINAL & OSCILLOSCOPE
+  // ============================================================================
+
+  /**
+   * Opens the ancient Precursor Archaeological Decryption Terminal when landing clamps engage.
+   */
+  public openPrecursorTerminal(site?: any): void {
+    if (!site) {
+      site = this.landerState.dockedSite || (this.planetPrecursorSites.length > 0 ? this.planetPrecursorSites[0] : null);
+    }
+    if (!site) {
+      site = {
+        id: 'site_aegis_monolith',
+        name: 'Aegis Resonance Monolith',
+        surfaceLat: 22.0,
+        surfaceLng: -40.0,
+        requiredFreq: 440,
+        requiredPhase: 180,
+        requiredDamping: 50,
+        isDeciphered: false,
+        codexTitle: 'Chronicles of the First Builders: The Hyper-Spatial Fold',
+        codexText: 'We who folded the void before the light of Sol took form left this frequency key for those who walk after us...',
+      };
+    }
+    this.activePrecursorSite = site;
+
+    if (!this.modalPrecursorTerminal) {
+      this.modalPrecursorTerminal = document.getElementById('precursor-terminal-modal');
+    }
+    if (this.modalPrecursorTerminal) {
+      this.modalPrecursorTerminal.classList.remove('hidden');
+    }
+
+    const titleEl = document.getElementById('precursor-terminal-title');
+    const coordsEl = document.getElementById('precursor-terminal-coords');
+    const btnDecipher = document.getElementById('btn-precursor-decipher') as HTMLButtonElement | null;
+    const codexCard = document.getElementById('precursor-codex-card');
+    const sliderFreq = document.getElementById('slider-carrier-freq') as HTMLInputElement | null;
+    const sliderPhase = document.getElementById('slider-harmonic-phase') as HTMLInputElement | null;
+    const sliderDamping = document.getElementById('slider-damping') as HTMLInputElement | null;
+
+    if (titleEl) titleEl.textContent = site.name.toUpperCase();
+    if (coordsEl) {
+      coordsEl.textContent = `LAT: ${Number(site.surfaceLat).toFixed(1)}° // LNG: ${Number(site.surfaceLng).toFixed(1)}° // ${site.isDeciphered ? 'ARCHIVE DECIPHERED' : 'CARRIER ACTIVE'}`;
+    }
+
+    if (!this.waveformCanvas) {
+      this.waveformCanvas = document.getElementById('precursor-waveform-canvas') as HTMLCanvasElement;
+      if (this.waveformCanvas) {
+        this.waveformCtx = this.waveformCanvas.getContext('2d');
+      }
+    }
+
+    if (site.isDeciphered) {
+      // Already deciphered: lock tuning dials and show unlocked codex
+      this.precursorTuning = {
+        freq: site.requiredFreq,
+        phase: site.requiredPhase,
+        damping: site.requiredDamping,
+      };
+      if (sliderFreq) { sliderFreq.value = String(site.requiredFreq); sliderFreq.disabled = true; }
+      if (sliderPhase) { sliderPhase.value = String(site.requiredPhase); sliderPhase.disabled = true; }
+      if (sliderDamping) { sliderDamping.value = String(site.requiredDamping); sliderDamping.disabled = true; }
+
+      const valF = document.getElementById('val-carrier-freq');
+      const valP = document.getElementById('val-harmonic-phase');
+      const valD = document.getElementById('val-damping');
+      if (valF) valF.textContent = `${site.requiredFreq} Hz`;
+      if (valP) valP.textContent = `${site.requiredPhase}°`;
+      if (valD) valD.textContent = `${site.requiredDamping}%`;
+
+      if (btnDecipher) {
+        btnDecipher.disabled = true;
+        btnDecipher.textContent = 'CODEX ARCHIVE SECURED 🔒';
+      }
+
+      if (codexCard) {
+        codexCard.classList.remove('hidden');
+        const cTitle = document.getElementById('precursor-codex-title');
+        const cText = document.getElementById('precursor-codex-text');
+        if (cTitle) cTitle.textContent = site.codexTitle || 'Chronicles of the First Builders';
+        if (cText) cText.textContent = site.codexText || 'Decrypted archaeological archive secured.';
+      }
+
+      this.checkPrecursorAlignment();
+    } else {
+      // Interactive Decryption Puzzle: Initialize tuner dials
+      this.precursorTuning = { freq: 220, phase: 0, damping: 10 };
+      if (sliderFreq) { sliderFreq.value = '220'; sliderFreq.disabled = false; }
+      if (sliderPhase) { sliderPhase.value = '0'; sliderPhase.disabled = false; }
+      if (sliderDamping) { sliderDamping.value = '10'; sliderDamping.disabled = false; }
+
+      const valF = document.getElementById('val-carrier-freq');
+      const valP = document.getElementById('val-harmonic-phase');
+      const valD = document.getElementById('val-damping');
+      if (valF) valF.textContent = '220 Hz';
+      if (valP) valP.textContent = '0°';
+      if (valD) valD.textContent = '10%';
+
+      if (btnDecipher) {
+        btnDecipher.disabled = false;
+        btnDecipher.textContent = 'TRANSMIT HARMONIC FREQUENCY KEY 🔓 (REWARD: CODEX + RELIC CORE)';
+      }
+
+      if (codexCard) codexCard.classList.add('hidden');
+
+      this.audio.startResonanceCarrierDrone(220, 0, 10);
+      this.checkPrecursorAlignment();
+    }
+
+    this.startWaveformAnimation();
+  }
+
+  /**
+   * Closes the archaeological terminal and halts Web Audio carrier drone.
+   */
+  public closePrecursorTerminal(): void {
+    if (this.waveformAnimId !== null) {
+      cancelAnimationFrame(this.waveformAnimId);
+      this.waveformAnimId = null;
+    }
+    this.audio.stopResonanceCarrierDrone();
+
+    if (this.modalPrecursorTerminal) {
+      this.modalPrecursorTerminal.classList.add('hidden');
+    }
+    this.activePrecursorSite = null;
+  }
+
+  /**
+   * Validates multi-frequency resonance alignment against Precursor Megastructure tolerances.
+   */
+  public checkPrecursorAlignment(): boolean {
+    const statusEl = document.getElementById('precursor-alignment-status');
+    if (!this.activePrecursorSite) return false;
+
+    if (this.activePrecursorSite.isDeciphered) {
+      if (statusEl) {
+        statusEl.textContent = 'ARCHAEOLOGICAL DATA EXTRACTED (LOCKED)';
+        statusEl.className = 'alignment-pill locked';
+      }
+      return true;
+    }
+
+    const dFreq = Math.abs(this.precursorTuning.freq - this.activePrecursorSite.requiredFreq);
+    const dPhase = Math.abs(this.precursorTuning.phase - this.activePrecursorSite.requiredPhase);
+    const dDamp = Math.abs(this.precursorTuning.damping - this.activePrecursorSite.requiredDamping);
+
+    const isAligned = dFreq <= 35 && dPhase <= 35 && dDamp <= 25;
+
+    if (statusEl) {
+      if (isAligned) {
+        statusEl.textContent = 'HARMONIC LOCK ENGAGED ⚡';
+        statusEl.className = 'alignment-pill locked';
+      } else {
+        statusEl.textContent = `DESYNCHRONIZED (ΔF: ${dFreq}Hz, ΔP: ${dPhase}°, ΔD: ${dDamp}%)`;
+        statusEl.className = 'alignment-pill desync';
+      }
+    }
+
+    return isAligned;
+  }
+
+  /**
+   * Starts the CRT oscilloscope waveform animation loop.
+   */
+  private startWaveformAnimation(): void {
+    if (this.waveformAnimId !== null) {
+      cancelAnimationFrame(this.waveformAnimId);
+    }
+
+    const loop = () => {
+      if (!this.activePrecursorSite || !this.modalPrecursorTerminal || this.modalPrecursorTerminal.classList.contains('hidden')) {
+        return;
+      }
+      this.waveformTime += 0.05;
+      this.renderWaveformCanvas();
+      this.waveformAnimId = requestAnimationFrame(loop);
+    };
+
+    this.waveformAnimId = requestAnimationFrame(loop);
+  }
+
+  /**
+   * Renders the alien carrier wave vs player tuner wave on the CRT oscilloscope.
+   */
+  private renderWaveformCanvas(): void {
+    if (!this.waveformCtx || !this.waveformCanvas) return;
+    const ctx = this.waveformCtx;
+    const w = this.waveformCanvas.width;
+    const h = this.waveformCanvas.height;
+    const cy = h / 2;
+
+    // Dark phosphor CRT background
+    ctx.fillStyle = '#021208';
+    ctx.fillRect(0, 0, w, h);
+
+    // Phosphor Grid Lines
+    ctx.strokeStyle = 'rgba(16, 185, 129, 0.15)';
+    ctx.lineWidth = 1;
+    for (let x = 0; x < w; x += 25) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, h);
+      ctx.stroke();
+    }
+    for (let y = 0; y < h; y += 20) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(w, y);
+      ctx.stroke();
+    }
+
+    // Center Crosshairs
+    ctx.strokeStyle = 'rgba(16, 185, 129, 0.35)';
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(0, cy);
+    ctx.lineTo(w, cy);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    const site = this.activePrecursorSite;
+    const targetFreq = site ? site.requiredFreq : 440;
+    const targetPhase = site ? (site.requiredPhase * Math.PI) / 180 : Math.PI;
+    const targetDamp = site ? site.requiredDamping : 50;
+
+    const pilotFreq = this.precursorTuning.freq;
+    const pilotPhase = (this.precursorTuning.phase * Math.PI) / 180;
+    const pilotDamp = this.precursorTuning.damping;
+
+    const t = this.waveformTime;
+    const isAligned = this.checkPrecursorAlignment();
+
+    // 1. Alien Carrier Wave (Magenta / Purple)
+    ctx.save();
+    ctx.strokeStyle = '#ec4899';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let x = 0; x < w; x++) {
+      const amp = 36 * (1 - targetDamp / 160);
+      const y = cy + Math.sin(t * (targetFreq / 60) + targetPhase + x * 0.04) * amp;
+      if (x === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.restore();
+
+    // 2. Pilot Harmonic Wave (Luminous Cyan)
+    ctx.save();
+    ctx.strokeStyle = '#00f0ff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let x = 0; x < w; x++) {
+      const amp = 36 * (1 - pilotDamp / 160);
+      const y = cy + Math.sin(t * (pilotFreq / 60) + pilotPhase + x * 0.04) * amp;
+      if (x === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.restore();
+
+    // 3. Superposition Harmonic Wave (Radiant Gold when aligned)
+    if (isAligned) {
+      ctx.save();
+      ctx.strokeStyle = '#fbbf24';
+      ctx.shadowColor = '#fbbf24';
+      ctx.shadowBlur = 10;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      for (let x = 0; x < w; x++) {
+        const amp = 40 * (1 - pilotDamp / 160);
+        const y = cy + Math.sin(t * (pilotFreq / 60) + pilotPhase + x * 0.04) * amp;
+        if (x === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  /**
+   * Transmits harmonic resonance key to backend, decrypts the codex, and awards a Precursor Relic Core.
+   */
+  public async decipherActivePrecursorSite(): Promise<void> {
+    if (!this.activePrecursorSite) return;
+    const site = this.activePrecursorSite;
+
+    try {
+      const res = await fetch(`http://localhost:3000/api/precursor/${site.id}/decipher`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accountId: 'acc_sol_captain',
+          solution: this.precursorTuning,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        this.showApNotification(`⚠️ ${data.error || 'Harmonic desynchronization'}`, true);
+        return;
+      }
+
+      this.audio.playPrecursorDecipherFanfare();
+      site.isDeciphered = true;
+
+      // Update terminal UI
+      const codexCard = document.getElementById('precursor-codex-card');
+      const cTitle = document.getElementById('precursor-codex-title');
+      const cText = document.getElementById('precursor-codex-text');
+      const btnDecipher = document.getElementById('btn-precursor-decipher') as HTMLButtonElement | null;
+
+      if (cTitle) cTitle.textContent = data.codexTitle;
+      if (cText) cText.textContent = data.codexText;
+      if (codexCard) codexCard.classList.remove('hidden');
+      if (btnDecipher) {
+        btnDecipher.disabled = true;
+        btnDecipher.textContent = 'CODEX ARCHIVE SECURED 🔒';
+      }
+
+      this.checkPrecursorAlignment();
+      this.showApNotification(`🏛️ Decrypted "${data.codexTitle}"! Extracted +${data.relicReward}x Precursor Relic Core! (+5 AP)`, false);
+
+      // Refresh planet precursor sites and research catalog
+      if (this.activePlanet) {
+        await this.fetchPlanetPrecursorSites(this.activePlanet.data.id);
+      }
+      await this.fetchPrecursorResearch();
+    } catch (err) {
+      console.error('[DAY 20] Failed to decipher precursor site:', err);
+    }
+  }
+
+  public getActiveSurveyTab(): 'SENSORS' | 'COLONY' | 'PRECURSOR' {
     return this.activeSurveyTab;
   }
 

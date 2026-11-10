@@ -4237,6 +4237,8 @@ kbd {
   font-weight: 700;
   letter-spacing: 0.08em;
   color: #38bdf8;
+  cursor: pointer;
+  pointer-events: auto;
   animation: orbital-pulse 2s infinite ease-in-out;
 }
 
@@ -5286,6 +5288,631 @@ kbd {
   border-color: #ef4444;
   animation: pulse-border 1.5s infinite;
 }
+
+/* ============================================================================
+   DAY 20: STAR CONTROL II SURFACE LANDER & PRECURSOR ARCHAEOLOGY STYLING
+   ============================================================================ */
+
+/* Lander Deploy Button in Survey Console */
+.lander-deploy-btn {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  background: rgba(16, 185, 129, 0.25);
+  border: 1px solid #10b981;
+  color: #10b981;
+  padding: 0.6rem 1.1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.lander-deploy-btn:hover {
+  background: rgba(16, 185, 129, 0.45);
+  box-shadow: 0 0 16px rgba(16, 185, 129, 0.5);
+  color: #f8fafc;
+}
+
+/* Fullscreen Retro Star Control CRT Modal */
+.fullscreen-crt-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(2, 6, 23, 0.94);
+  backdrop-filter: blur(12px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+
+.lander-crt-frame {
+  width: 100%;
+  max-width: 1140px;
+  background: #020617;
+  border: 2px solid rgba(56, 189, 248, 0.5);
+  border-radius: 12px;
+  box-shadow: 0 0 40px rgba(56, 189, 248, 0.2), inset 0 0 60px rgba(0, 0, 0, 0.9);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+.lander-crt-frame::after {
+  content: " ";
+  position: absolute;
+  top: 0; left: 0; bottom: 0; right: 0;
+  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+  background-size: 100% 3px, 6px 100%;
+  pointer-events: none;
+  z-index: 20;
+}
+
+.lander-crt-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.4rem;
+  background: rgba(15, 23, 42, 0.9);
+  border-bottom: 1px solid rgba(56, 189, 248, 0.3);
+  position: relative;
+  z-index: 25;
+}
+
+.lander-title-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.lander-title-block h2 {
+  font-size: 1.25rem;
+  font-weight: 900;
+  color: #f8fafc;
+  letter-spacing: 0.06em;
+  margin: 0;
+  text-shadow: 0 0 10px rgba(56, 189, 248, 0.5);
+}
+
+.lander-subtext {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: #38bdf8;
+  letter-spacing: 0.05em;
+}
+
+.lander-ascend-btn {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  background: rgba(239, 68, 68, 0.25);
+  border: 1px solid #ef4444;
+  color: #f87171;
+  padding: 0.55rem 1.2rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.lander-ascend-btn:hover {
+  background: rgba(239, 68, 68, 0.45);
+  box-shadow: 0 0 16px rgba(239, 68, 68, 0.5);
+  color: #ffffff;
+}
+
+/* Lander Viewport Layout */
+.lander-viewport-container {
+  display: grid;
+  grid-template-columns: 760px 1fr;
+  background: #020617;
+  position: relative;
+  z-index: 10;
+}
+
+.lander-canvas-wrapper {
+  position: relative;
+  border-right: 1px solid rgba(56, 189, 248, 0.3);
+  background: #050814;
+}
+
+#surface-lander-canvas {
+  width: 760px;
+  height: 480px;
+  display: block;
+}
+
+.lander-canvas-overlay {
+  position: absolute;
+  bottom: 8px;
+  left: 12px;
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  color: #64748b;
+  letter-spacing: 0.05em;
+  pointer-events: none;
+}
+
+/* Lander Telemetry Panel */
+.lander-telemetry-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 1.2rem;
+  background: rgba(15, 23, 42, 0.7);
+  overflow-y: auto;
+  max-height: 480px;
+}
+
+.lander-metric-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  background: rgba(2, 6, 23, 0.6);
+  border: 1px solid rgba(51, 65, 85, 0.6);
+  border-radius: 6px;
+  padding: 0.55rem 0.8rem;
+}
+
+.metric-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: #94a3b8;
+  font-weight: 700;
+}
+
+.metric-label-row strong {
+  color: #f8fafc;
+}
+
+.lander-bar-track {
+  width: 100%;
+  height: 8px;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(51, 65, 85, 0.5);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.lander-bar-fill {
+  height: 100%;
+  transition: width 0.15s ease;
+}
+
+.lander-bar-fill.green {
+  background: linear-gradient(90deg, #10b981, #34d399);
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
+}
+
+.lander-bar-fill.cyan {
+  background: linear-gradient(90deg, #0284c7, #38bdf8);
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.6);
+}
+
+.lander-bar-fill.amber {
+  background: linear-gradient(90deg, #d97706, #fbbf24);
+  box-shadow: 0 0 8px rgba(251, 191, 36, 0.6);
+}
+
+/* Lander Radar Targets */
+.lander-radar-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  background: rgba(2, 6, 23, 0.6);
+  border: 1px solid rgba(51, 65, 85, 0.6);
+  border-radius: 6px;
+  padding: 0.6rem 0.8rem;
+}
+
+.radar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 800;
+  color: #38bdf8;
+  letter-spacing: 0.05em;
+}
+
+.radar-status-blip {
+  color: #10b981;
+}
+
+.lander-targets-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  color: #94a3b8;
+  max-height: 130px;
+  overflow-y: auto;
+}
+
+.target-card-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.25rem 0.4rem;
+  background: rgba(15, 23, 42, 0.8);
+  border-radius: 4px;
+  border-left: 3px solid #38bdf8;
+}
+
+.target-card-item.megastructure {
+  border-left-color: #fbbf24;
+  color: #fbbf24;
+  font-weight: 700;
+}
+
+/* Megastructure Docking Banner */
+.megastructure-dock-banner {
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px solid #fbbf24;
+  border-radius: 8px;
+  padding: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  animation: pulse-border 1.5s infinite;
+}
+
+.dock-banner-title {
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  font-weight: 800;
+  color: #fbbf24;
+  letter-spacing: 0.05em;
+}
+
+.dock-banner-desc {
+  font-size: 0.72rem;
+  color: #f8fafc;
+  line-height: 1.4;
+  margin: 0;
+}
+
+/* ============================================================================
+   PRECURSOR ARCHAEOLOGICAL TERMINAL STYLING
+   ============================================================================ */
+
+.precursor-terminal-card {
+  max-width: 720px;
+  border: 1px solid rgba(251, 191, 36, 0.45);
+  box-shadow: 0 0 45px rgba(251, 191, 36, 0.2), 0 25px 50px -12px rgba(0, 0, 0, 0.95);
+}
+
+.precursor-badge {
+  background: rgba(251, 191, 36, 0.18);
+  border-color: rgba(251, 191, 36, 0.5);
+  color: #fbbf24;
+}
+
+.precursor-terminal-body {
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+}
+
+/* Alien Glyph Marquee */
+.precursor-glyph-banner {
+  display: flex;
+  justify-content: space-around;
+  padding: 0.6rem;
+  background: rgba(2, 6, 23, 0.7);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  border-radius: 6px;
+}
+
+.alien-glyph {
+  font-size: 1.4rem;
+  color: #fbbf24;
+  text-shadow: 0 0 10px rgba(251, 191, 36, 0.6);
+  animation: glyph-pulse 2s infinite alternate;
+}
+
+@keyframes glyph-pulse {
+  from { opacity: 0.5; transform: scale(0.95); }
+  to { opacity: 1.0; transform: scale(1.05); }
+}
+
+/* Oscilloscope Waveform */
+.precursor-waveform-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  background: #020617;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: 8px;
+  padding: 0.8rem;
+}
+
+.waveform-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #94a3b8;
+}
+
+.alignment-pill {
+  font-size: 0.62rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 4px;
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.45);
+}
+
+.alignment-pill.locked {
+  background: rgba(16, 185, 129, 0.2);
+  color: #10b981;
+  border-color: #10b981;
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.4);
+}
+
+#precursor-waveform-canvas {
+  width: 620px;
+  height: 120px;
+  display: block;
+  background: #010409;
+  border-radius: 4px;
+}
+
+/* Tuning Matrix Sliders */
+.precursor-tuning-matrix {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.85rem;
+}
+
+.tuning-slider-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(51, 65, 85, 0.5);
+  border-radius: 6px;
+  padding: 0.65rem 0.8rem;
+}
+
+.slider-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #38bdf8;
+}
+
+.tuning-val {
+  color: #f8fafc;
+  font-weight: 800;
+}
+
+.tuning-slider {
+  width: 100%;
+  accent-color: #38bdf8;
+  cursor: pointer;
+}
+
+/* Unlocked Lore Codex Display */
+.precursor-codex-card {
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(251, 191, 36, 0.5);
+  border-radius: 8px;
+  padding: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  box-shadow: 0 0 20px rgba(251, 191, 36, 0.15);
+}
+
+.codex-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.codex-header-row h3 {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #fbbf24;
+  letter-spacing: 0.05em;
+  margin: 0;
+}
+
+.codex-relic-badge {
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  font-weight: 700;
+  background: rgba(56, 189, 248, 0.2);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+}
+
+.codex-body-text {
+  font-size: 0.82rem;
+  line-height: 1.6;
+  color: #cbd5e1;
+  font-style: italic;
+  margin: 0;
+  background: rgba(2, 6, 23, 0.5);
+  padding: 0.85rem;
+  border-radius: 6px;
+  border-left: 3px solid #fbbf24;
+}
+
+/* ============================================================================
+   PRECURSOR PROTOTYPE TECH LAB STYLING
+   ============================================================================ */
+
+.precursor-telemetry-banner {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+  background: rgba(2, 6, 23, 0.7);
+  border: 1px solid rgba(51, 65, 85, 0.5);
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin-bottom: 0.85rem;
+}
+
+.precursor-balance-badge {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.precursor-balance-badge strong {
+  font-family: var(--font-mono);
+  font-size: 0.92rem;
+  color: #f8fafc;
+}
+
+.precursor-balance-badge strong.highlight-cyan {
+  color: #38bdf8;
+  text-shadow: 0 0 10px rgba(56, 189, 248, 0.5);
+}
+
+.precursor-tech-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.85rem;
+  margin-bottom: 0.95rem;
+}
+
+.proto-tech-card {
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(51, 65, 85, 0.6);
+  border-radius: 8px;
+  padding: 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  transition: all 0.2s ease;
+}
+
+.proto-tech-card:hover {
+  border-color: rgba(56, 189, 248, 0.5);
+  background: rgba(15, 23, 42, 0.9);
+}
+
+.proto-tech-card.synthesized {
+  border-color: rgba(16, 185, 129, 0.5);
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.proto-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.proto-title {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #f8fafc;
+}
+
+.proto-slot-tag {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 700;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.4);
+}
+
+.proto-desc {
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: #94a3b8;
+  min-height: 2.2rem;
+  margin: 0;
+}
+
+.proto-synth-btn {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 800;
+  background: rgba(56, 189, 248, 0.2);
+  border: 1px solid #38bdf8;
+  color: #38bdf8;
+  padding: 0.45rem 0.65rem;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-top: auto;
+}
+
+.proto-synth-btn:hover:not(:disabled) {
+  background: rgba(56, 189, 248, 0.4);
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.45);
+}
+
+.proto-synth-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  border-color: #475569;
+  color: #64748b;
+}
+
+/* Ambassador Relic Remittance */
+.relic-remit-box {
+  background: rgba(2, 6, 23, 0.65);
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  border-radius: 8px;
+  padding: 0.95rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.remit-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.remit-title {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  font-weight: 800;
+  color: #fbbf24;
+  letter-spacing: 0.05em;
+}
+
+.remit-hint {
+  font-size: 0.7rem;
+  color: #94a3b8;
+}
+
+.remit-controls-row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
 
 
 
