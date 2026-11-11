@@ -23,6 +23,13 @@ async function runDay13OutfittingTests() {
   const playerId = 'acc_sol_captain';
 
   try {
+    // 0. Reset Pilot Baseline State
+    await fetch(`${BASE_URL}/api/player/debug-baseline`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accountId: playerId }),
+    });
+
     // 1. Catalog Blueprints Verification
     console.log('--- Test Suite 1: Equipment Blueprints Catalog ---');
     const catalogRes = await fetch(`${BASE_URL}/api/outfitting/catalog`);

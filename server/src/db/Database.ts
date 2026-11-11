@@ -55,16 +55,59 @@ export class DatabaseManager {
   }
 
   private async runMigrations(): Promise<void> {
-    const schemaPath = path.resolve(__dirname, 'schema.sql');
-    if (!fs.existsSync(schemaPath)) {
-      console.error(`[DB] schema.sql not found at ${schemaPath}`);
-      return;
+    // 1. Ensure migrations ledger exists
+    await this.exec(`
+      CREATE TABLE IF NOT EXISTS _migrations (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255) NOT NULL UNIQUE,
+        applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    // 2. Scan and execute pending migrations sequentially
+    const migrationsDir = path.resolve(__dirname, 'migrations');
+    if (fs.existsSync(migrationsDir)) {
+      const files = fs.readdirSync(migrationsDir)
+        .filter(f => f.endsWith('.sql'))
+        .sort();
+
+      for (const file of files) {
+        const { rows } = await this.query('SELECT name FROM _migrations WHERE name = $1', [file]);
+        if (rows.length === 0) {
+          console.log(`[DB] Applying migration: ${file}...`);
+          const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf-8');
+          await this.exec(sql);
+          await this.query('INSERT INTO _migrations (name) VALUES ($1)', [file]);
+          console.log(`[DB] Migration ${file} applied successfully.`);
+        }
+      }
+    } else {
+      // Legacy fallback
+      const schemaPath = path.resolve(__dirname, 'schema.sql');
+      if (fs.existsSync(schemaPath)) {
+        const sql = fs.readFileSync(schemaPath, 'utf-8');
+        await this.exec(sql);
+      }
     }
 
-    const sql = fs.readFileSync(schemaPath, 'utf-8');
-    console.log(`[DB] Executing relational schema migrations...`);
-    await this.exec(sql);
-    console.log(`[DB] Schema migrations applied successfully.`);
+    // 3. Auto-seed if database is fresh (0 sectors exist)
+    const { rows: sectorCheck } = await this.query<{ count: string }>('SELECT COUNT(*) as count FROM sectors');
+    const sectorCount = parseInt(sectorCheck[0]?.count || '0', 10);
+    if (sectorCount === 0) {
+      console.log(`[DB] Fresh database detected (0 sectors). Running initial world seeds...`);
+      const seedsDir = path.resolve(__dirname, 'seeds');
+      if (fs.existsSync(seedsDir)) {
+        const seedFiles = fs.readdirSync(seedsDir)
+          .filter(f => f.endsWith('.sql'))
+          .sort();
+        for (const seedFile of seedFiles) {
+          console.log(`[DB] Applying seed: ${seedFile}...`);
+          const seedSql = fs.readFileSync(path.join(seedsDir, seedFile), 'utf-8');
+          await this.exec(seedSql);
+          console.log(`[DB] Seed ${seedFile} applied successfully.`);
+        }
+      }
+    }
   }
 
   public async exec(sql: string): Promise<void> {
