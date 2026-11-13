@@ -113,6 +113,29 @@ export const playerRoutes: FastifyPluginAsync = async (server) => {
     reply.send({ success: true, credits });
   });
 
+  // Debug Cargo Helper
+  server.post('/debug-cargo', async (req, reply) => {
+    const body = (req.body || {}) as { accountId?: string; commodityId?: string; quantity?: number };
+    const accountId = body.accountId || 'acc_sol_captain';
+    const commodityId = body.commodityId || 'COMM_BIO_SPECIMENS';
+    const quantity = typeof body.quantity === 'number' ? body.quantity : 10;
+    const sRes = await db.query<{ id: string }>('SELECT id FROM ships WHERE account_id = $1 LIMIT 1', [accountId]);
+    if (sRes.rows.length === 0) return reply.status(404).send({ success: false, error: 'Ship not found' });
+    const shipId = sRes.rows[0].id;
+    if (quantity <= 0) {
+      await db.query('DELETE FROM ship_cargo WHERE ship_id = $1 AND commodity_id = $2', [shipId, commodityId]);
+    } else {
+      await db.query(
+        `INSERT INTO ship_cargo (ship_id, commodity_id, quantity)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (ship_id, commodity_id)
+         DO UPDATE SET quantity = EXCLUDED.quantity`,
+        [shipId, commodityId, quantity]
+      );
+    }
+    reply.send({ success: true, commodityId, quantity });
+  });
+
   // Debug Reset Survey / Colony / Precursor
   server.post('/debug-reset-survey', async (req, reply) => {
     const body = (req.body || {}) as { accountId?: string; planetId?: string };

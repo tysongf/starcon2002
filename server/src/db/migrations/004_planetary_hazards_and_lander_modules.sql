@@ -17,3 +17,4 @@ UPDATE planets SET hazard_thermal_level = 0, hazard_ion_level = 2, hazard_causti
 UPDATE planets SET hazard_thermal_level = 3, hazard_ion_level = 0, hazard_caustic_level = 0 WHERE id = 'planet_sec3_ignis';
 UPDATE planets SET hazard_thermal_level = 0, hazard_ion_level = 0, hazard_caustic_level = 2 WHERE id = 'planet_sec4_mycelia';
 UPDATE planets SET hazard_thermal_level = 1, hazard_ion_level = 1, hazard_caustic_level = 0 WHERE id = 'planet_sec5_skrit';
+

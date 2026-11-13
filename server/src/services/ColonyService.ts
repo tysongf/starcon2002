@@ -1,6 +1,7 @@
 import { db } from '../db/Database';
 import { apService } from './ActionPointService';
 import { reputationService } from './ReputationService';
+import { BIOSPHERE_TIERS } from './XenobiologyService';
 
 export interface ColonyDetail {
   id: string;
@@ -24,6 +25,10 @@ export interface ColonyDetail {
   productionRatePerMinute: number;
   lastHarvestAt: string;
   createdAt: string;
+  biosphereTier?: number;
+  biosphereMoraleBonus?: number;
+  taxBonus?: number;
+  unlockedProjects?: string[];
 }
 
 export class ColonyService {
@@ -62,6 +67,29 @@ export class ColonyService {
       throw new Error(`SURFACE_BEACON_NOT_FOUND: Requires an active sensor beacon planted on ${planetId}.`);
     }
     const beacon = bRes.rows[0];
+
+    // 1.1 Environmental Hazard Gating: Extreme hazard worlds (level >= 2) require BIO_EXTREMOPHILE_DOMES
+    const { rows: pCheck } = await db.query<any>(
+      'SELECT hazard_thermal_level, hazard_ion_level, hazard_caustic_level FROM planets WHERE id = $1',
+      [planetId]
+    );
+    if (pCheck.length > 0) {
+      const pHaz = pCheck[0];
+      const maxHazard = Math.max(pHaz.hazard_thermal_level || 0, pHaz.hazard_ion_level || 0, pHaz.hazard_caustic_level || 0);
+      if (maxHazard >= 2) {
+        const { rows: bioRes } = await db.query<any>(
+          'SELECT unlocked_projects FROM player_biotech_research WHERE account_id = $1',
+          [accountId]
+        );
+        const unlocked: string[] = bioRes.length > 0 && typeof bioRes[0].unlocked_projects === 'string'
+          ? JSON.parse(bioRes[0].unlocked_projects)
+          : (bioRes[0]?.unlocked_projects || []);
+
+        if (!unlocked.includes('BIO_EXTREMOPHILE_DOMES')) {
+          throw new Error('HAZARD_ENVIRONMENT_UNSUITABLE: Extreme planetary hazards prevent founding an outpost. Research Adaptive Extremophile Bio-Domes at the Xenobiology Lab to colonize hostile biomes.');
+        }
+      }
+    }
 
     // 2. Check if a colony is already anchored at this beacon
     const existing = await db.query('SELECT id FROM colonies WHERE beacon_id = $1', [beaconId]);
@@ -159,12 +187,28 @@ export class ColonyService {
     const lastHarvest = new Date(c.last_harvest_at).getTime();
     const elapsedSeconds = Math.max(0, Math.floor((now - lastHarvest) / 1000));
 
+    // Query player biotech research
+    const bioRes = await db.query<any>(
+      `SELECT biosphere_tier, unlocked_projects FROM player_biotech_research WHERE account_id = $1`,
+      [accountId]
+    );
+    const bioRow = bioRes.rows[0];
+    const bioTierNum = bioRow?.biosphere_tier || 1;
+    const bioTierDef = BIOSPHERE_TIERS[bioTierNum] || BIOSPHERE_TIERS[1];
+    const unlockedProjects: string[] = bioRow
+      ? (typeof bioRow.unlocked_projects === 'string' ? JSON.parse(bioRow.unlocked_projects) : (bioRow.unlocked_projects || []))
+      : [];
+
+    const effectiveMaxPop = Math.round(c.max_population * bioTierDef.populationMultiplier);
+
     // Calculate deterministic accrual rates
     // Base extraction: 6 units per minute at Tier 1, scaled by derrickTier and population factor
+    // Spore-Synthesized Crops (BIO_SPORE_AGRICULTURE) doubles COMM_RATIONS output
+    const sporeMult = (c.commodity_id === 'COMM_RATIONS' && unlockedProjects.includes('BIO_SPORE_AGRICULTURE')) ? 2.0 : 1.0;
     const derrickMult = c.derrick_tier === 1 ? 1.0 : c.derrick_tier === 2 ? 2.5 : 5.0;
     const popFactor = 1.0 + (c.population / 1000);
     const habFactor = 0.5 + (c.habitability_rating / 200);
-    const unitsPerSecond = (6 / 60) * derrickMult * popFactor * habFactor;
+    const unitsPerSecond = (6 / 60) * derrickMult * popFactor * habFactor * sporeMult;
     const productionRatePerMinute = Math.round(unitsPerSecond * 60 * 10) / 10;
 
     let newStockpile = c.stockpiled_amount;
@@ -180,11 +224,12 @@ export class ColonyService {
         needsUpdate = true;
       }
 
-      // 2. Accrue Population Growth (mitigated by habitation tier)
-      const popGrowthPerSec = 0.05 * c.habitation_tier;
+      // 2. Accrue Population Growth (mitigated by habitation tier and BIO_CELLULAR_GROWTH)
+      const growthMult = unlockedProjects.includes('BIO_CELLULAR_GROWTH') ? 1.5 : 1.0;
+      const popGrowthPerSec = 0.05 * c.habitation_tier * growthMult;
       const accruedPop = Math.floor(elapsedSeconds * popGrowthPerSec);
-      if (accruedPop > 0 && c.population < c.max_population) {
-        newPop = Math.min(c.max_population, c.population + accruedPop);
+      if (accruedPop > 0 && c.population < effectiveMaxPop) {
+        newPop = Math.min(effectiveMaxPop, c.population + accruedPop);
         needsUpdate = true;
       }
 
@@ -225,7 +270,7 @@ export class ColonyService {
       commodityId: c.commodity_id,
       commodityName: this.getCommodityName(c.commodity_id),
       population: newPop,
-      maxPopulation: c.max_population,
+      maxPopulation: effectiveMaxPop,
       stockpiledAmount: newStockpile,
       siloCapacity: c.silo_capacity,
       derrickTier: c.derrick_tier,
@@ -236,6 +281,10 @@ export class ColonyService {
       productionRatePerMinute,
       lastHarvestAt: needsUpdate ? new Date().toISOString() : c.last_harvest_at,
       createdAt: c.created_at,
+      biosphereTier: bioTierNum,
+      biosphereMoraleBonus: bioTierDef.moraleBonus,
+      taxBonus: bioTierDef.taxBonus,
+      unlockedProjects,
     };
   }
 
@@ -331,6 +380,7 @@ export class ColonyService {
     harvestedAmount: number;
     commodityId: string;
     commodityName: string;
+    bioFuelBonus?: number;
     colony: ColonyDetail;
     message: string;
   }> {
@@ -343,6 +393,7 @@ export class ColonyService {
 
     // 1. Add to player ship cargo hold
     const sRes = await db.query<{ id: string }>('SELECT id FROM ships WHERE account_id = $1 LIMIT 1', [accountId]);
+    let bioFuelBonus = 0;
     if (sRes.rows.length > 0) {
       const shipId = sRes.rows[0].id;
       await db.query(
@@ -352,6 +403,18 @@ export class ColonyService {
          DO UPDATE SET quantity = ship_cargo.quantity + EXCLUDED.quantity`,
         [shipId, colony.commodityId, harvested]
       );
+
+      // 1.1 Check BIO_ORGANIC_REFINERY for bio-fuel byproduct (+5 COMM_FUEL)
+      if (colony.unlockedProjects?.includes('BIO_ORGANIC_REFINERY')) {
+        bioFuelBonus = 5;
+        await db.query(
+          `INSERT INTO ship_cargo (ship_id, commodity_id, quantity)
+           VALUES ($1, 'COMM_FUEL', 5)
+           ON CONFLICT (ship_id, commodity_id)
+           DO UPDATE SET quantity = ship_cargo.quantity + 5`,
+          [shipId]
+        );
+      }
     }
 
     // 2. Empty silo and reset harvest timestamp
@@ -367,8 +430,11 @@ export class ColonyService {
       harvestedAmount: harvested,
       commodityId: colony.commodityId,
       commodityName: colony.commodityName,
+      bioFuelBonus,
       colony: updated,
-      message: `Transferred ${harvested} units of ${colony.commodityName} from silo into ship cargo hold.`,
+      message: bioFuelBonus > 0
+        ? `Transferred ${harvested} units of ${colony.commodityName} and ${bioFuelBonus} units of Cryo-Deuterium Bio-Fuel into ship cargo hold.`
+        : `Transferred ${harvested} units of ${colony.commodityName} from silo into ship cargo hold.`,
     };
   }
 }

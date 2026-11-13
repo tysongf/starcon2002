@@ -343,6 +343,16 @@
         <button id="btn-hud-release-tow" class="tow-release-btn">RELEASE [T]</button>
       </div>
 
+      <!-- Day 29: Xenobiology Tactical Stim & Nanite Buff HUD -->
+      <div id="biotech-buff-hud" class="biotech-buff-hud hidden">
+        <div class="biotech-stim-badge hidden" id="stim-adrenal-badge">
+          ⚡ ADRENAL SURGE: <span id="stim-timer">30s</span> (+35% THRUST / -30% COOLDOWN)
+        </div>
+        <div class="biotech-regen-badge hidden" id="regen-coating-badge">
+          🧬 BIO-REPAIR ACTIVE (+1.5 HP/s)
+        </div>
+      </div>
+
       <!-- Bottom-Center Command Console & Ability Hotbar -->
       <div id="combat-command-console" class="combat-command-console">
         <!-- Stacked Ship Vitals -->
@@ -528,6 +538,9 @@
           <button id="tab-btn-diplomacy" class="station-tab-btn" data-tab="diplomacy">
             📡 DIPLOMATIC ENVOYS
           </button>
+          <button id="tab-btn-xenobiology" class="station-tab-btn" data-tab="xenobiology">
+            🧪 XENOBIOLOGY & GENOMICS LAB
+          </button>
         </div>
 
         <!-- Tab View 1: Commodity Exchange (Default) -->
@@ -567,12 +580,15 @@
                 <div><span>RESERVE FUEL:</span> <strong>100 / 100 UNITS</strong></div>
                 <div><span>CARGO HOLD:</span> <strong id="modal-cargo-display" style="color: #38bdf8;">0 / 40 m³</strong></div>
               </div>
-              <div style="display: flex; gap: 0.5rem; margin-top: 0.75rem;">
+              <div style="display: flex; gap: 0.5rem; margin-top: 0.75rem; flex-wrap: wrap;">
                 <button id="btn-quick-service" class="hud-btn" style="flex: 1;" title="Cycle power couplers and recharge +50 AP">
                   ⚡ Recharge Core (+50 AP)
                 </button>
                 <button id="btn-dock-haggle" class="hud-btn" style="flex: 1;" title="Haggle with Harbormaster for trade intel (Costs 1 AP)">
                   💬 Haggle (-1 AP)
+                </button>
+                <button id="btn-dock-xenobiology" class="hud-btn primary" style="flex: 1 1 100%; margin-top: 0.25rem;" title="Access Xenobiology & Genomics Lab">
+                  🧪 Xenobiology & Genomics Lab
                 </button>
               </div>
             </div>
@@ -1641,6 +1657,123 @@
           <span class="undock-hint">Direct jumps between non-adjacent sectors are prevented by subspace topology</span>
           <button id="btn-close-nav" class="hud-btn large-btn">
             DISMISS CONSOLE [ESC]
+          </button>
+        </footer>
+      </div>
+    </div>
+
+    <!-- Day 29: Xenobiology Genetics & Bio-Tech Synthesis Lab Modal -->
+    <div id="modal-xenobiology-lab" class="dock-modal-overlay hidden">
+      <div class="dock-modal-card xenobiology-modal-card">
+        <header class="dock-modal-header xenobiology-header">
+          <div class="dock-title-group">
+            <span class="dock-badge xeno-badge">BIOTECHNOLOGY RESEARCH FACILITY // CLASS 1 & 2 STARPORT</span>
+            <h2 class="dock-station-name">🧪 XENOBIOLOGY & GENOMICS LAB</h2>
+            <span class="dock-subtext">ALIEN GENE SEQUENCING // PLANETARY BIOMASS SYNTHESIS // EXTREMOPHILE ENGINEERING</span>
+          </div>
+          <div class="xeno-header-stats">
+            <div class="stat-pill xeno-bio-data-pill">
+              <span class="pill-label">BIO-DATA:</span>
+              <strong class="pill-value" id="lab-bio-data-points">0 BD</strong>
+            </div>
+            <div class="stat-pill xeno-cargo-pill">
+              <span class="pill-label">SPECIMENS IN HOLD:</span>
+              <strong class="pill-value" id="lab-cargo-specimens">0</strong>
+            </div>
+          </div>
+        </header>
+
+        <!-- Lab Navigation Tabs -->
+        <div class="station-tabs-nav xeno-tabs-nav">
+          <button id="tab-lab-sequencer" class="station-tab-btn active" data-xeno-tab="sequencer">
+            🧬 SPECIMEN SEQUENCER & GENOME
+          </button>
+          <button id="tab-lab-colony" class="station-tab-btn" data-xeno-tab="colony">
+            🌱 COLONY BIOTECHNOLOGY GRID
+          </button>
+          <button id="tab-lab-synthesis" class="station-tab-btn" data-xeno-tab="synthesis">
+            ⚡ BIO-SYNTHESIS WORKBENCH
+          </button>
+        </div>
+
+        <div id="xeno-lab-toast" class="market-toast hidden"></div>
+
+        <!-- Tab 1: Specimen Sequencer -->
+        <div id="view-lab-sequencer" class="station-tab-content xeno-tab-content">
+          <div class="xeno-sequencer-grid">
+            <!-- Left: Turn-In Terminal -->
+            <div class="service-card xeno-card">
+              <h4>SPECIMEN REMITTANCE & EXTRACTION</h4>
+              <p class="xeno-desc">
+                Feed collected planetary alien biological specimens into the cryogenic sequencer to extract high-density Bio-Data points (+15 BD per specimen) and advance species genetic mastery.
+              </p>
+              <div class="specimen-turnin-controls">
+                <div class="specimen-input-row">
+                  <label for="input-specimen-qty">SUBMIT QUANTITY:</label>
+                  <input type="number" id="input-specimen-qty" min="1" max="100" value="1" class="xeno-input" />
+                  <button id="btn-specimen-max" class="hud-btn small-btn">MAX</button>
+                </div>
+                <button id="btn-submit-specimens" class="hud-btn primary large-btn">
+                  🧬 SUBMIT SPECIMENS TO LAB
+                </button>
+              </div>
+            </div>
+
+            <!-- Right: Species Mastery Grid -->
+            <div class="service-card xeno-card">
+              <h4>SPECIES GENOME MASTERY ARCHIVE</h4>
+              <div class="species-mastery-list" id="species-mastery-list">
+                <!-- Populated dynamically -->
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 2: Colony Biotechnology Grid -->
+        <div id="view-lab-colony" class="station-tab-content xeno-tab-content hidden">
+          <!-- Global Biosphere Fertility Banner -->
+          <div class="biosphere-tier-card">
+            <div class="biosphere-tier-header">
+              <div class="biosphere-title-group">
+                <span class="biosphere-badge" id="biosphere-badge">TIER 1 // BASELINE</span>
+                <h3 id="biosphere-name">Standard Biosphere (Baseline)</h3>
+                <p id="biosphere-description" class="biosphere-desc">Standard planetary colony bio-envelope.</p>
+              </div>
+              <button id="btn-upgrade-biosphere" class="hud-btn primary">
+                🌱 UPGRADE BIOSPHERE (100 BD)
+              </button>
+            </div>
+            <div class="biosphere-perks-row">
+              <div class="perk-box"><span>POPULATION CAPACITY:</span> <strong id="biosphere-pop-mult">1.00x</strong></div>
+              <div class="perk-box"><span>COLONY MORALE:</span> <strong id="biosphere-morale-bonus">+0%</strong></div>
+              <div class="perk-box"><span>TAX REVENUE:</span> <strong id="biosphere-tax-bonus">+0%</strong></div>
+            </div>
+          </div>
+
+          <!-- Targeted Colony Breakthroughs -->
+          <h4 style="margin: 1rem 0 0.5rem 0; color: #10b981; font-family: monospace;">TARGETED COLONY GENETIC BREAKTHROUGHS</h4>
+          <div class="colony-projects-grid" id="colony-projects-grid">
+            <!-- Dynamically populated project cards -->
+          </div>
+        </div>
+
+        <!-- Tab 3: Bio-Synthesis Workbench -->
+        <div id="view-lab-synthesis" class="station-tab-content xeno-tab-content hidden">
+          <div class="service-card xeno-card">
+            <h4>TACTICAL BIO-TECHNOLOGY SYNTHESIS</h4>
+            <p class="xeno-desc">
+              Synthesize neural stimulants, self-repairing organic nanite armor coatings, and bio-fuel enzymes using specimen biomolecules and station catalysts.
+            </p>
+            <div class="synthesis-catalog-grid" id="synthesis-catalog-grid">
+              <!-- Dynamically populated synthesis cards -->
+            </div>
+          </div>
+        </div>
+
+        <footer class="dock-modal-footer">
+          <span class="undock-hint">Starport Research Wing Terminal // Press <kbd>ESC</kbd> to return</span>
+          <button id="btn-close-xenobiology-lab" class="hud-btn large-btn">
+            DISMISS LAB CONSOLE [ESC]
           </button>
         </footer>
       </div>

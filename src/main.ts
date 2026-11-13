@@ -16,6 +16,7 @@ import { CommsController } from './controllers/CommsController';
 import { ColonyController } from './controllers/ColonyController';
 import { SurveyController } from './controllers/SurveyController';
 import { CombatClient } from './controllers/CombatClient';
+import { XenobiologyController } from './controllers/XenobiologyController';
 
 class GameEngine {
   private canvas: HTMLCanvasElement;
@@ -40,6 +41,7 @@ class GameEngine {
   public colonyController!: ColonyController;
   public surveyController!: SurveyController;
   public combatClient!: CombatClient;
+  public xenobiologyController!: XenobiologyController;
 
   // Navigation & Sector Jump System (Day 8)
   private currentSectorId: number = 1;
@@ -736,12 +738,16 @@ class GameEngine {
     this.viewTabDiplomacy = document.getElementById('view-tab-diplomacy');
     this.tabBtnDiplomacy?.addEventListener('click', () => this.switchStationTab('diplomacy'));
 
+    // Day 29: Xenobiology & Genomics Lab Tab & Direct Trigger
+    document.getElementById('tab-btn-xenobiology')?.addEventListener('click', () => this.openXenobiologyLab());
+    document.getElementById('btn-dock-xenobiology')?.addEventListener('click', () => this.openXenobiologyLab());
+
     this.btnHudHailTarget = document.getElementById('btn-hud-hail-target');
     this.btnHudHailTarget?.addEventListener('click', () => this.hailCurrentTargetOrEnvoy());
 
     this.refreshFactionStandings();
 
-    // Hash routing for direct modal access / deep linking (#survey, #lander, #precursor, #terminal)
+    // Hash routing for direct modal access / deep linking (#survey, #lander, #precursor, #terminal, #lab)
     const handleHash = () => {
       const hash = window.location.hash;
       if (hash === '#survey') {
@@ -755,6 +761,8 @@ class GameEngine {
       } else if (hash === '#terminal' || hash === '#precursor-terminal') {
         this.enterOrbit();
         this.openPrecursorTerminal();
+      } else if (hash === '#xenobiology' || hash === '#lab') {
+        this.openXenobiologyLab();
       }
     };
     window.addEventListener('hashchange', handleHash);
@@ -1777,6 +1785,11 @@ class GameEngine {
       closeComms: () => this.commsController.closeAlienComms(),
       loadSectorScene: (id, seed) => this.loadSectorScene(id, seed ?? 99201),
     });
+
+    this.xenobiologyController = new XenobiologyController({
+      getAccountId: () => 'acc_sol_captain',
+      onCargoUpdated: () => this.refreshPlayerHold(),
+    });
   }
 
   private setupEventListeners(): void {
@@ -2547,6 +2560,9 @@ class GameEngine {
 
     // 9c. Day 18: Update Celestial Planet & In-Flight Orbital Guidance Banner
     this.surveyController.updatePlanetaryGuidance(deltaSec);
+
+    // 9d. Day 29: Update Xenobiology Tactical Buffs & Flight HUD
+    this.xenobiologyController.updateHudBuffs(deltaSec);
 
     // 10. Render
     this.renderer.render(this.scene, this.camera);
@@ -3433,6 +3449,15 @@ class GameEngine {
 
   public getEquipmentCatalog(): any[] {
     return this.equipmentCatalog;
+  }
+
+  // --- Day 29: Xenobiology Controller Delegates ---
+  public openXenobiologyLab(): void {
+    this.xenobiologyController?.openLab();
+  }
+
+  public closeXenobiologyLab(): void {
+    this.xenobiologyController?.closeLab();
   }
 }
 

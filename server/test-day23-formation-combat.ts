@@ -22,8 +22,9 @@ async function runDay23Tests() {
 
   try {
     // ----------------------------------------------------
-    // Reset Sectors 1 & 2 baseline entities
+    // Reset Sectors 1 & 2 baseline entities & convoys
     // ----------------------------------------------------
+    await fetch('http://localhost:3000/api/convoys/debug-reset', { method: 'POST' });
     await fetch('http://localhost:3000/api/combat/reset-sector', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

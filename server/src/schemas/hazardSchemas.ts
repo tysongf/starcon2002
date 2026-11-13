@@ -26,3 +26,4 @@ export const EquipModuleBodySchema = Type.Object({
   moduleId: Type.String({ minLength: 1 }),
 });
 export type EquipModuleBody = Static<typeof EquipModuleBodySchema>;
+

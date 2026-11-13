@@ -81,3 +81,4 @@ export const shipyardRoutes: FastifyPluginAsync = async (server) => {
     }
   );
 };
+
