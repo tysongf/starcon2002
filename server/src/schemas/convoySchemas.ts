@@ -45,3 +45,11 @@ export const ResolveSkirmishBodySchema = Type.Object({
 });
 export type ResolveSkirmishBody = Static<typeof ResolveSkirmishBodySchema>;
 
+export const DeclareAllegianceBodySchema = Type.Object({
+  accountId: Type.String({ minLength: 1 }),
+  skirmishId: Type.Optional(Type.String()),
+  sectorId: Type.Optional(Type.Number()),
+  factionId: Type.String({ minLength: 1 }),
+});
+export type DeclareAllegianceBody = Static<typeof DeclareAllegianceBodySchema>;
+

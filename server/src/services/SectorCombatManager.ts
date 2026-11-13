@@ -4,6 +4,8 @@ import { outfittingService } from './OutfittingService';
 import { ContractService } from './ContractService';
 import { wreckService, SectorWreck } from './WreckService';
 import { reputationService } from './ReputationService';
+import { convoyService } from './ConvoyService';
+import { db } from '../db/Database';
 
 export const contractService = new ContractService();
 
@@ -103,6 +105,12 @@ export interface SectorEntity {
   isWarpSpooling?: boolean;
   isWarpInterrupted?: boolean;
   cargoManifest?: any[];
+  // Day 25 Ambush & Skirmish Arena
+  isAmbushRaider?: boolean;
+  targetHaulerId?: string;
+  isSkirmishVessel?: boolean;
+  allegiance?: string;
+  targetEntityId?: string | null;
 }
 
 export interface Projectile {
@@ -119,7 +127,7 @@ export interface Projectile {
 }
 
 export interface CombatEvent {
-  type: 'HIT' | 'SHIELD_BREAK' | 'DESTROYED' | 'LOOT_SPAWNED' | 'LOOT_COLLECTED' | 'POD_EJECTED' | 'CONTAINER_SCOOPED' | 'WRECK_SPAWNED' | 'TOW_ATTACHED' | 'TOW_RELEASED' | 'SALVAGE_BEAM_TICK' | 'WRECK_DISINTEGRATED' | 'TRUCE_DECLARED' | 'TRUCE_BROKEN' | 'LIFE_SUPPORT_EXHAUSTED' | 'WARP_SPOOL_STARTED' | 'WARP_SPOOL_INTERRUPTED' | 'WARP_JUMP_SUCCESS' | 'CONVOY_SURRENDERED' | 'COMMS_ABORTED';
+  type: 'HIT' | 'SHIELD_BREAK' | 'DESTROYED' | 'LOOT_SPAWNED' | 'LOOT_COLLECTED' | 'POD_EJECTED' | 'CONTAINER_SCOOPED' | 'WRECK_SPAWNED' | 'TOW_ATTACHED' | 'TOW_RELEASED' | 'SALVAGE_BEAM_TICK' | 'WRECK_DISINTEGRATED' | 'TRUCE_DECLARED' | 'TRUCE_BROKEN' | 'LIFE_SUPPORT_EXHAUSTED' | 'WARP_SPOOL_STARTED' | 'WARP_SPOOL_INTERRUPTED' | 'WARP_JUMP_SUCCESS' | 'CONVOY_SURRENDERED' | 'COMMS_ABORTED' | 'AMBUSH_TRIGGERED' | 'AMBUSH_CLEARED' | 'ESCORT_FAILED' | 'ALLEGIANCE_DECLARED' | 'COMBAT_BOND_AWARDED' | 'SKIRMISH_VICTORY';
 
   sourceId?: string;
   targetId?: string;
@@ -175,6 +183,11 @@ export interface SnapshotPayload {
     isWarpSpooling?: boolean;
     isWarpInterrupted?: boolean;
     cargoManifest?: any[];
+    // Day 25 Ambush & Skirmish
+    isAmbushRaider?: boolean;
+    targetHaulerId?: string;
+    isSkirmishVessel?: boolean;
+    allegiance?: string;
   }>;
   convoys?: Array<{
     convoyId: string;
@@ -187,6 +200,9 @@ export interface SnapshotPayload {
     isWarpInterrupted: boolean;
     cargoManifest: any[];
   }>;
+  isSkirmishArena?: boolean;
+  skirmishScores?: { FACTION_HEGEMONY: number; FACTION_KRYLL: number };
+  skirmishBeacon?: { id: string; name: string; x: number; z: number; radius: number; skirmishSectorId: number };
   projectiles: Array<{
     id: string;
     ownerId: string;
@@ -239,6 +255,110 @@ export class SectorRoom {
   private projectileSeq: number = 0;
   private activeTruces: Map<string, number> = new Map(); // `${playerId}:${factionId}` -> expiryTimestamp
   public isCommsStandDown: boolean = false;
+
+  // Day 25: Skirmish Arena & Ambush fields
+  public isSkirmishArena: boolean = false;
+  public skirmishScores: { FACTION_HEGEMONY: number; FACTION_KRYLL: number } = {
+    FACTION_HEGEMONY: 100,
+    FACTION_KRYLL: 100,
+  };
+  public playerAllegiances: Map<string, string> = new Map();
+  public playerCombatBonds: Map<string, number> = new Map();
+
+  public declareAllegiance(playerId: string, factionId: string): void {
+    this.playerAllegiances.set(playerId, factionId);
+    const pEntity = this.entities.get(`player_${playerId}`);
+    if (pEntity) {
+      pEntity.allegiance = factionId;
+    }
+    this.pendingEvents.push({
+      type: 'ALLEGIANCE_DECLARED',
+      sourceId: playerId,
+      targetId: factionId,
+      data: {
+        playerId,
+        factionId,
+        message: `Allegiance declared for ${factionId}. Inter-faction combat IFF online.`,
+      },
+    });
+  }
+
+  public spawnAmbushWing(convoyId: string, riskLevel: 'LOW' | 'MODERATE' | 'HIGH' | 'EXTREME' = 'MODERATE'): string[] {
+    let hauler: SectorEntity | undefined;
+    for (const e of this.entities.values()) {
+      if ((e.convoyId === convoyId || e.id === convoyId) && e.isConvoyHauler) {
+        hauler = e;
+        break;
+      }
+    }
+    if (!hauler || hauler.state === 'DESTROYED') return [];
+
+    const raiderCount = riskLevel === 'EXTREME' ? 4 : riskLevel === 'HIGH' ? 3 : 2;
+    const raiderIds: string[] = [];
+
+    for (let i = 0; i < raiderCount; i++) {
+      const raiderId = `raider_ambush_${convoyId}_${i + 1}`;
+      raiderIds.push(raiderId);
+
+      const offsetDist = 45.0 + i * 15.0;
+      const angle = (i * Math.PI) / 3;
+      const rx = hauler.x + Math.sin(angle) * offsetDist;
+      const rz = hauler.z + Math.cos(angle) * offsetDist;
+
+      this.entities.set(raiderId, {
+        id: raiderId,
+        type: 'DRONE',
+        factionId: 'FACTION_KRYLL',
+        name: `Cartel Raider Strike ${i + 1}`,
+        hullClass: riskLevel === 'EXTREME' ? 'HEGEMONY_INTERCEPTOR' : 'KRYLL_BLOCKADE_RUNNER',
+        hullSeed: 77100 + i,
+        x: rx,
+        z: rz,
+        vx: 0,
+        vz: 0,
+        yaw: Math.atan2(hauler.x - rx, hauler.z - rz),
+        angularVelocity: 0,
+        hp: riskLevel === 'EXTREME' ? 140 : riskLevel === 'HIGH' ? 120 : 100,
+        maxHp: riskLevel === 'EXTREME' ? 140 : riskLevel === 'HIGH' ? 120 : 100,
+        shields: riskLevel === 'EXTREME' ? 100 : riskLevel === 'HIGH' ? 80 : 60,
+        maxShields: riskLevel === 'EXTREME' ? 100 : riskLevel === 'HIGH' ? 80 : 60,
+        energy: 100,
+        maxEnergy: 100,
+        powerGridMax: 100,
+        powerGridUsed: 60,
+        cpuMax: 140,
+        cpuUsed: 90,
+        state: 'ENGAGE',
+        inputs: {
+          forward: true,
+          reverse: false,
+          turnLeft: false,
+          turnRight: false,
+          brake: false,
+          firePrimary: false,
+          fireTactical: false,
+        },
+        lastHitTime: 0,
+        fireCooldown: 0,
+        isAmbushRaider: true,
+        targetHaulerId: hauler.id,
+      });
+    }
+
+    this.pendingEvents.push({
+      type: 'AMBUSH_TRIGGERED',
+      sourceId: hauler.id,
+      data: {
+        convoyId,
+        haulerId: hauler.id,
+        riskLevel,
+        raiderIds,
+        message: '⚠️ HOSTILE RAIDING WING INBOUND // PROTECT BULK HAULER',
+      },
+    });
+
+    return raiderIds;
+  }
 
   public setCommsStandDown(isStandDown: boolean): void {
     this.isCommsStandDown = isStandDown;
@@ -342,6 +462,10 @@ export class SectorRoom {
       },
     });
 
+    if (hauler.convoyId) {
+      convoyService.recordConvoyRaid(hauler.convoyId, 'SURRENDERED').catch(() => {});
+    }
+
     return { droppedContainers, totalUnits };
   }
 
@@ -385,6 +509,10 @@ export class SectorRoom {
    * Spawns initial sector environment: Sector 2 gets Hegemony Interceptor drones
    */
   private seedSectorEntities(): void {
+    if (this.sectorId === 201) {
+      this.seedSkirmishEntities();
+      return;
+    }
     if (this.sectorId === 2) {
       // Spawn autonomous Hegemony Patrol Drone in Void Expanse Hazard Zone
       const droneId = 'drone_vaelic_patrol_01';
@@ -775,6 +903,91 @@ export class SectorRoom {
         fireCooldown: 0,
         leaderId: 'hauler_sol_freight_01',
         formationOffset: { x: 10.0, z: -10.0 },
+      });
+    }
+  }
+
+  private seedSkirmishEntities(): void {
+    this.isSkirmishArena = true;
+    this.skirmishScores = { FACTION_HEGEMONY: 100, FACTION_KRYLL: 100 };
+
+    const hegConfigs = [
+      { id: 'hegemony_skirmish_lead', name: 'Vaelic Sovereign Commander', hull: 'HEGEMONY_INTERCEPTOR', hp: 180, shields: 120, x: -50, z: -40 },
+      { id: 'hegemony_skirmish_wing_1', name: 'Vaelic Interceptor Alpha', hull: 'HEGEMONY_INTERCEPTOR', hp: 120, shields: 80, x: -70, z: -30 },
+      { id: 'hegemony_skirmish_wing_2', name: 'Vaelic Interceptor Beta', hull: 'HEGEMONY_INTERCEPTOR', hp: 120, shields: 80, x: -35, z: -60 },
+      { id: 'hegemony_skirmish_wing_3', name: 'Vaelic Interceptor Gamma', hull: 'HEGEMONY_INTERCEPTOR', hp: 120, shields: 80, x: -75, z: -55 },
+    ];
+
+    for (const h of hegConfigs) {
+      this.entities.set(h.id, {
+        id: h.id,
+        type: 'DRONE',
+        factionId: 'FACTION_HEGEMONY',
+        name: h.name,
+        hullClass: h.hull,
+        hullSeed: 11001,
+        x: h.x,
+        z: h.z,
+        vx: 0,
+        vz: 0,
+        yaw: Math.PI / 4,
+        angularVelocity: 0,
+        hp: h.hp,
+        maxHp: h.hp,
+        shields: h.shields,
+        maxShields: h.shields,
+        energy: 100,
+        maxEnergy: 100,
+        powerGridMax: 100,
+        powerGridUsed: 65,
+        cpuMax: 140,
+        cpuUsed: 90,
+        state: 'ENGAGE',
+        inputs: { forward: true, reverse: false, turnLeft: false, turnRight: false, brake: false, firePrimary: false, fireTactical: false },
+        lastHitTime: 0,
+        fireCooldown: 0,
+        isSkirmishVessel: true,
+        allegiance: 'FACTION_HEGEMONY',
+      });
+    }
+
+    const kryllConfigs = [
+      { id: 'kryll_skirmish_lead', name: 'Cartel Warlord Skrit-Bane', hull: 'KRYLL_BLOCKADE_RUNNER', hp: 180, shields: 120, x: 50, z: 40 },
+      { id: 'kryll_skirmish_wing_1', name: 'Cartel Raider Alpha', hull: 'KRYLL_BLOCKADE_RUNNER', hp: 110, shields: 70, x: 70, z: 30 },
+      { id: 'kryll_skirmish_wing_2', name: 'Cartel Raider Beta', hull: 'KRYLL_BLOCKADE_RUNNER', hp: 110, shields: 70, x: 35, z: 60 },
+      { id: 'kryll_skirmish_wing_3', name: 'Cartel Raider Gamma', hull: 'KRYLL_BLOCKADE_RUNNER', hp: 110, shields: 70, x: 75, z: 55 },
+    ];
+
+    for (const k of kryllConfigs) {
+      this.entities.set(k.id, {
+        id: k.id,
+        type: 'DRONE',
+        factionId: 'FACTION_KRYLL',
+        name: k.name,
+        hullClass: k.hull,
+        hullSeed: 22002,
+        x: k.x,
+        z: k.z,
+        vx: 0,
+        vz: 0,
+        yaw: -Math.PI * 0.75,
+        angularVelocity: 0,
+        hp: k.hp,
+        maxHp: k.hp,
+        shields: k.shields,
+        maxShields: k.shields,
+        energy: 100,
+        maxEnergy: 100,
+        powerGridMax: 100,
+        powerGridUsed: 65,
+        cpuMax: 140,
+        cpuUsed: 90,
+        state: 'ENGAGE',
+        inputs: { forward: true, reverse: false, turnLeft: false, turnRight: false, brake: false, firePrimary: false, fireTactical: false },
+        lastHitTime: 0,
+        fireCooldown: 0,
+        isSkirmishVessel: true,
+        allegiance: 'FACTION_KRYLL',
       });
     }
   }
@@ -1220,6 +1433,65 @@ export class SectorRoom {
         drone.inputs.firePrimary = false;
         drone.inputs.fireTactical = false;
         continue;
+      }
+
+      // Day 25: Ambush Raiders targeting Bulk Hauler
+      if (drone.isAmbushRaider && drone.targetHaulerId) {
+        const hauler = this.entities.get(drone.targetHaulerId);
+        if (hauler && hauler.state !== 'DESTROYED') {
+          drone.state = 'ENGAGE';
+          const dx = hauler.x - drone.x;
+          const dz = hauler.z - drone.z;
+          const dist = Math.sqrt(dx * dx + dz * dz);
+          const desiredYaw = Math.atan2(dx, dz);
+          let yawDiff = desiredYaw - drone.yaw;
+          while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
+          while (yawDiff > Math.PI) yawDiff -= Math.PI * 2;
+
+          drone.inputs.turnLeft = yawDiff > 0.08;
+          drone.inputs.turnRight = yawDiff < -0.08;
+          drone.inputs.forward = dist > 20.0;
+          drone.inputs.brake = dist <= 15.0;
+          drone.inputs.firePrimary = Math.abs(yawDiff) < 0.35 && dist < 65.0;
+          continue;
+        }
+      }
+
+      // Day 25: Skirmish Arena Autonomous Inter-Faction Dogfighting
+      if (this.isSkirmishArena && drone.isSkirmishVessel) {
+        let nearestEnemy: SectorEntity | null = null;
+        let nearestEnemyDist = Infinity;
+
+        for (const other of this.entities.values()) {
+          if (other.id === drone.id || other.state === 'DESTROYED') continue;
+          const isEnemyDrone = other.type === 'DRONE' && other.isSkirmishVessel && other.allegiance !== drone.allegiance;
+          const isEnemyPlayer = other.type === 'PLAYER' && other.allegiance && other.allegiance !== drone.allegiance;
+
+          if (isEnemyDrone || isEnemyPlayer) {
+            const dist = Math.hypot(other.x - drone.x, other.z - drone.z);
+            if (dist < nearestEnemyDist) {
+              nearestEnemyDist = dist;
+              nearestEnemy = other;
+            }
+          }
+        }
+
+        if (nearestEnemy) {
+          drone.state = 'ENGAGE';
+          const dx = nearestEnemy.x - drone.x;
+          const dz = nearestEnemy.z - drone.z;
+          const desiredYaw = Math.atan2(dx, dz);
+          let yawDiff = desiredYaw - drone.yaw;
+          while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
+          while (yawDiff > Math.PI) yawDiff -= Math.PI * 2;
+
+          drone.inputs.turnLeft = yawDiff > 0.08;
+          drone.inputs.turnRight = yawDiff < -0.08;
+          drone.inputs.forward = nearestEnemyDist > 25.0;
+          drone.inputs.brake = nearestEnemyDist <= 18.0;
+          drone.inputs.firePrimary = Math.abs(yawDiff) < 0.35 && nearestEnemyDist < 75.0;
+          continue;
+        }
       }
 
       // Day 23: Escort Wingman Formation AI
@@ -1744,6 +2016,97 @@ export class SectorRoom {
       reputationService.modifyStanding(killerId, 'FACTION_HEGEMONY', -15, `Destroyed ${target.name}`).catch(() => {});
     }
 
+    // Day 25: Convoy Hauler Destruction (Escort contract failure & economic shortage)
+    if (target.isConvoyHauler) {
+      this.pendingEvents.push({
+        type: 'ESCORT_FAILED',
+        sourceId: target.id,
+        data: {
+          convoyId: target.convoyId,
+          message: '🚨 CONVOY DESTROYED // ESCORT CONTRACT FAILED',
+        },
+      });
+
+      if (target.convoyId) {
+        convoyService.recordConvoyRaid(target.convoyId, 'DESTROYED').catch(() => {});
+        db.query(`UPDATE escort_contracts SET status = 'FAILED' WHERE convoy_id = $1 AND status = 'ACCEPTED'`, [target.convoyId]).catch(() => {});
+      }
+    }
+
+    // Day 25: Ambush Raider Destruction Check
+    if (target.isAmbushRaider && target.targetHaulerId) {
+      let remainingRaiders = 0;
+      for (const e of this.entities.values()) {
+        if (e.id !== target.id && e.isAmbushRaider && e.targetHaulerId === target.targetHaulerId && e.state !== 'DESTROYED') {
+          remainingRaiders++;
+        }
+      }
+      if (remainingRaiders === 0) {
+        const hauler = this.entities.get(target.targetHaulerId);
+        this.pendingEvents.push({
+          type: 'AMBUSH_CLEARED',
+          sourceId: target.targetHaulerId,
+          data: {
+            convoyId: hauler?.convoyId,
+            message: '🛡️ AMBUSH REPELLED // ESCORT ROUTE SECURED',
+          },
+        });
+      }
+    }
+
+    // Day 25: Skirmish Arena Vessel Destruction & Combat Bonds
+    if (this.isSkirmishArena && target.isSkirmishVessel && target.allegiance) {
+      const opposingFaction = target.allegiance as 'FACTION_HEGEMONY' | 'FACTION_KRYLL';
+      if (this.skirmishScores[opposingFaction] !== undefined) {
+        this.skirmishScores[opposingFaction] = Math.max(0, this.skirmishScores[opposingFaction] - 25);
+      }
+
+      // Check if player scored the kill and had opposing allegiance
+      if (killerId && killerId.startsWith('player_')) {
+        const playerId = killerId.replace('player_', '');
+        const pAllegiance = this.playerAllegiances.get(playerId);
+        if (pAllegiance && pAllegiance !== target.allegiance) {
+          const currentBonds = this.playerCombatBonds.get(playerId) || 0;
+          this.playerCombatBonds.set(playerId, currentBonds + 750);
+
+          db.query('UPDATE accounts SET credits = credits + 750 WHERE id = $1', [playerId]).catch(() => {});
+
+          this.pendingEvents.push({
+            type: 'COMBAT_BOND_AWARDED',
+            sourceId: playerId,
+            targetId: target.id,
+            data: {
+              rewardCredits: 750,
+              totalBonds: currentBonds + 750,
+              destroyedFaction: target.allegiance,
+              message: '🎖️ COMBAT BOND VOUCHER: +750 CR (Confirmed Skirmish Kill)',
+            },
+          });
+        }
+      }
+
+      // Check for Skirmish Victory (one side depleted to 0)
+      if (this.skirmishScores[opposingFaction] <= 0) {
+        const winningFaction = opposingFaction === 'FACTION_HEGEMONY' ? 'FACTION_KRYLL' : 'FACTION_HEGEMONY';
+        this.pendingEvents.push({
+          type: 'SKIRMISH_VICTORY',
+          sourceId: winningFaction,
+          data: {
+            winningFaction,
+            influenceShift: 15,
+            message: `🏆 SKIRMISH VICTORY: ${winningFaction} claims sector front! (+15 Influence)`,
+          },
+        });
+
+        for (const e of this.entities.values()) {
+          if (e.isSkirmishVessel && e.allegiance === opposingFaction && e.state !== 'DESTROYED') {
+            e.state = 'FLEE';
+            e.inputs.forward = true;
+          }
+        }
+      }
+    }
+
     // Day 15: Spawn Persistent 3D Ship Wreck for Laser Scrap Mining & Towing
 
     const wreckId = `wreck_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
@@ -2014,6 +2377,11 @@ export class SectorRoom {
         isWarpSpooling: e.isWarpSpooling,
         isWarpInterrupted: e.isWarpInterrupted,
         cargoManifest: e.cargoManifest,
+        // Day 25 Ambush & Skirmish
+        isAmbushRaider: e.isAmbushRaider,
+        targetHaulerId: e.targetHaulerId,
+        isSkirmishVessel: e.isSkirmishVessel,
+        allegiance: e.allegiance,
       })),
       convoys: Array.from(this.entities.values())
         .filter((e) => e.isConvoyHauler && e.state !== 'DESTROYED')
@@ -2028,6 +2396,16 @@ export class SectorRoom {
           isWarpInterrupted: !!h.isWarpInterrupted,
           cargoManifest: h.cargoManifest || [],
         })),
+      isSkirmishArena: this.isSkirmishArena,
+      skirmishScores: this.isSkirmishArena ? this.skirmishScores : undefined,
+      skirmishBeacon: this.sectorId === 2 ? {
+        id: 'beacon_charybdis',
+        name: 'Charybdis Conflict Front',
+        x: 80,
+        z: -120,
+        radius: 35,
+        skirmishSectorId: 201,
+      } : undefined,
       projectiles: this.projectiles.map((p) => ({
         id: p.id,
         ownerId: p.ownerId,
@@ -2095,6 +2473,15 @@ export class SectorRoom {
       entity.lifeSupportSeconds = undefined;
     }
   }
+
+  public destroyEntity(entityId: string, killerId: string = 'player_acc_sol_captain'): boolean {
+    const target = this.entities.get(entityId);
+    if (!target) return false;
+    target.hp = 0;
+    target.shields = 0;
+    this.handleEntityDestruction(target, killerId);
+    return true;
+  }
 }
 
 /**
@@ -2140,6 +2527,29 @@ export class SectorCombatManager {
     }
   }
 
+  public declareAllegiance(sectorId: number, playerId: string, factionId: string): void {
+    const room = this.rooms.get(sectorId);
+    if (room) {
+      room.declareAllegiance(playerId, factionId);
+    }
+  }
+
+  public spawnAmbushWing(sectorId: number, convoyId: string, riskLevel: 'LOW' | 'MODERATE' | 'HIGH' | 'EXTREME' = 'MODERATE'): string[] {
+    const room = this.rooms.get(sectorId);
+    if (room) {
+      return room.spawnAmbushWing(convoyId, riskLevel);
+    }
+    return [];
+  }
+
+  public destroyEntity(sectorId: number, entityId: string, killerId: string = 'player_acc_sol_captain'): boolean {
+    const room = this.rooms.get(sectorId);
+    if (room) {
+      return room.destroyEntity(entityId, killerId);
+    }
+    return false;
+  }
+
   public handleConnection(socket: WebSocket, sectorId: number, playerId: string, shipData?: any): void {
 
     const room = this.getOrCreateRoom(sectorId);
@@ -2160,6 +2570,8 @@ export class SectorCombatManager {
           room.startSalvageBeam(playerId, msg.wreckId);
         } else if (msg.type === 'STOP_SALVAGE_BEAM') {
           room.stopSalvageBeam(playerId);
+        } else if (msg.type === 'DECLARE_ALLEGIANCE') {
+          room.declareAllegiance(playerId, msg.factionId);
         }
       } catch (err) {
         // Ignore malformed client frames

@@ -169,6 +169,15 @@ export class ConvoyService {
       };
     }
 
+    // Check if player already has an active accepted contract for this convoy
+    const { rows: existing } = await db.query<any>(
+      `SELECT id FROM escort_contracts WHERE account_id = $1 AND convoy_id = $2 AND status = 'ACCEPTED'`,
+      [accountId, convoyId]
+    );
+    if (existing.length > 0) {
+      return { success: false, error: 'CONTRACT_ALREADY_ACCEPTED: Pilot is already under contract for this convoy.' };
+    }
+
     const totalValue = convoy.totalCargoValue || 1000;
     const rewardCredits = Math.round(totalValue * 0.25);
     const reputationGain = convoy.convoy_type === 'TITHE_HAULER' ? 25 : 15;
@@ -393,7 +402,7 @@ export class ConvoyService {
     const skirmish = rows[0];
 
     await db.query(
-      `UPDATE sector_skirmishes SET status = 'RESOLVED_INITIATOR', updated_at = NOW() WHERE id = $1`,
+      `UPDATE sector_skirmishes SET status = 'RESOLVED_INITIATOR' WHERE id = $1`,
       [skirmishId]
     );
 

@@ -1,5 +1,6 @@
 import { FastifyPluginAsync } from 'fastify';
 import { convoyService } from '../services/ConvoyService';
+import { combatManager } from '../services/SectorCombatManager';
 import {
   ConvoyQuerySchema,
   ConvoyParamSchema,
@@ -9,6 +10,7 @@ import {
   FastForwardConvoysBodySchema,
   RaidConvoyBodySchema,
   ResolveSkirmishBodySchema,
+  DeclareAllegianceBodySchema,
   type ConvoyQuery,
   type ConvoyParam,
   type EscortContractQuery,
@@ -17,6 +19,7 @@ import {
   type FastForwardConvoysBody,
   type RaidConvoyBody,
   type ResolveSkirmishBody,
+  type DeclareAllegianceBody,
 } from '../schemas/convoySchemas';
 
 export const convoyRoutes: FastifyPluginAsync = async (server) => {
@@ -132,6 +135,39 @@ export const convoyRoutes: FastifyPluginAsync = async (server) => {
         return reply.status(400).send({ success: false, error: result.message });
       }
       reply.send(result);
+    }
+  );
+
+  // 8b. Declare Skirmish Allegiance
+  server.post<{ Body: DeclareAllegianceBody }>(
+    '/skirmish/allegiance',
+    { schema: { body: DeclareAllegianceBodySchema } },
+    async (req, reply) => {
+      const { accountId, sectorId = 201, factionId } = req.body;
+      combatManager.declareAllegiance(sectorId, accountId, factionId);
+      reply.send({
+        success: true,
+        accountId,
+        sectorId,
+        factionId,
+        message: `Allegiance declared for ${factionId} in sector ${sectorId}.`,
+      });
+    }
+  );
+
+  // 8c. Trigger Ambush Wing (Testing & Dynamic Hazard Interception)
+  server.post<{ Body: { sectorId?: number; convoyId: string; riskLevel?: 'LOW' | 'MODERATE' | 'HIGH' | 'EXTREME' } }>(
+    '/ambush/trigger',
+    async (req, reply) => {
+      const { sectorId = 2, convoyId, riskLevel = 'MODERATE' } = req.body;
+      const raiderIds = combatManager.spawnAmbushWing(sectorId, convoyId, riskLevel);
+      reply.send({
+        success: true,
+        convoyId,
+        sectorId,
+        riskLevel,
+        raiderIds,
+      });
     }
   );
 

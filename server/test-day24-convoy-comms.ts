@@ -307,7 +307,9 @@ async function runDay24Tests() {
           assert(haulerSnap.state === 'FLEE', 'Snapshot reflects hauler in FLEE state');
 
           // Check container proximity to hauler in live snapshot
-          for (const c of msg.containers) {
+          const convoyContainers = msg.containers.filter((c: any) => c.id.startsWith('container_convoy_'));
+          assert(convoyContainers.length >= 2, 'Found at least 2 jettisoned convoy containers');
+          for (const c of convoyContainers) {
             const dist = Math.sqrt((c.x - haulerSnap.x) ** 2 + (c.z - haulerSnap.z) ** 2);
             assert(dist <= 25.0, `Canister ${c.id} spawned near hauler (${Math.round(dist)}u <= 25u)`);
             assert(Array.isArray(c.items) && c.items.length > 0, `Canister ${c.id} contains cargo items`);

@@ -1595,6 +1595,20 @@ class GameEngine {
         this.modalStationName.textContent = 'OBSIDIAN FOUNDRY 3 // SECTOR 03';
       }
       this.loadPortInventory('PORT_SMELTER_01');
+    } else if (sectorId === 201) {
+      // Day 25: Charybdis Contested Skirmish Warzone
+      this.scene.background = new THREE.Color(0x180505);
+      this.scene.fog = new THREE.FogExp2(0x180505, 0.0022);
+      this.starLight.color.setHex(0xff5555);
+      this.ambientLight.color.setHex(0x351010);
+
+      this.station = null;
+      this.asteroidField = new AsteroidField(seed || 99201, 35);
+      this.scene.add(this.asteroidField.group);
+
+      if (this.modalStationName) {
+        this.modalStationName.textContent = 'CHARYBDIS WARZONE // SECTOR 201';
+      }
     }
 
     // Reset ship position slightly forward in the sector
@@ -1690,6 +1704,7 @@ class GameEngine {
         if (this.elContractsPlayerCredits) this.elContractsPlayerCredits.textContent = `${this.playerCredits.toLocaleString()} Cr`;
       },
       closeComms: () => this.commsController.closeAlienComms(),
+      loadSectorScene: (id, seed) => this.loadSectorScene(id, seed ?? 99201),
     });
   }
 
@@ -1859,6 +1874,24 @@ class GameEngine {
           return;
         }
         return; // Suppress other flight/game keys while in alien comms
+      }
+
+      // Day 25: Skirmish Arena Allegiance Modal Key Handling
+      const allegianceModal = document.getElementById('skirmish-allegiance-modal');
+      if (allegianceModal && !allegianceModal.classList.contains('hidden')) {
+        if (e.code === 'Digit1' || e.code === 'Numpad1') {
+          this.combatClient.declareAllegiance('FACTION_HEGEMONY');
+          return;
+        }
+        if (e.code === 'Digit2' || e.code === 'Numpad2') {
+          this.combatClient.declareAllegiance('FACTION_KRYLL');
+          return;
+        }
+        if (e.code === 'Escape') {
+          this.combatClient.closeAllegianceModal();
+          return;
+        }
+        return;
       }
 
       // Day 20: Star Control II Precursor Archaeological Terminal Key Handling
@@ -2053,6 +2086,10 @@ class GameEngine {
           break;
         case 'KeyE': {
           e.preventDefault();
+          if (this.combatClient.canEngageSkirmish()) {
+            this.combatClient.engageSkirmish();
+            break;
+          }
           if (this.station) {
             const dockCheck = this.station.checkDocking(
               this.flightController.position,

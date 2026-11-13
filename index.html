@@ -269,12 +269,67 @@
             <div class="cargo-scan-items" id="convoy-cargo-items">SCANNING...</div>
           </div>
         </div>
-        <!-- Target Interaction Quick-Actions (Day 15 Wrecks & Day 16 Comms) -->
+        <!-- Target Interaction Quick-Actions (Day 15 Wrecks, Day 16 Comms, Day 25 Skirmishes) -->
         <div id="target-quick-actions" class="target-quick-actions hidden">
           <button id="btn-hud-salvage-beam" class="target-action-btn beam-btn">⚡ SALVAGE BEAM [E]</button>
           <button id="btn-hud-tether-wreck" class="target-action-btn tow-btn">🪝 TETHER WRECK [T]</button>
           <button id="btn-hud-hail-target" class="target-action-btn hail-btn">📡 HAIL [H]</button>
+          <button id="btn-hud-engage-skirmish" class="target-action-btn skirmish-btn hidden">⚔️ ENGAGE SKIRMISH [E]</button>
         </div>
+      </div>
+
+      <!-- Day 25: Skirmish Arena Reinforcement Score HUD -->
+      <div id="skirmish-score-hud" class="skirmish-score-hud hidden">
+        <div class="skirmish-hud-title">⚔️ CONTESTED FRONT: CHARYBDIS // FLEET ENGAGEMENT</div>
+        <div class="skirmish-scores-container">
+          <div class="skirmish-faction hegemony-score">
+            <span class="skirmish-faction-name">VAELIC HEGEMONY</span>
+            <div class="skirmish-bar-track">
+              <div class="skirmish-bar-fill hegemony-fill" id="skirmish-hegemony-bar" style="width: 100%;"></div>
+            </div>
+            <span class="skirmish-ticket-num" id="skirmish-hegemony-tickets">100 / 100</span>
+          </div>
+          <div class="skirmish-vs">VS</div>
+          <div class="skirmish-faction kryll-score">
+            <span class="skirmish-faction-name">KRYLL CARTEL</span>
+            <div class="skirmish-bar-track">
+              <div class="skirmish-bar-fill kryll-fill" id="skirmish-kryll-bar" style="width: 100%;"></div>
+            </div>
+            <span class="skirmish-ticket-num" id="skirmish-kryll-tickets">100 / 100</span>
+          </div>
+        </div>
+        <div class="skirmish-player-telemetry">
+          <span class="skirmish-allegiance-badge" id="skirmish-player-allegiance">ALLEGIANCE: UNDECLARED</span>
+          <span class="skirmish-bonds-badge" id="skirmish-player-bonds">COMBAT BONDS: 0 CR</span>
+        </div>
+      </div>
+
+      <!-- Day 25: Mercenary Escort Telemetry HUD Widget -->
+      <div id="escort-telemetry-hud" class="escort-telemetry-hud hidden">
+        <div class="escort-hud-header">
+          <span class="escort-badge">🛡️ VIP ESCORT ACTIVE</span>
+          <span class="escort-tether-badge" id="escort-tether-status">TETHER: NOMINAL (22.5 u)</span>
+        </div>
+        <div class="escort-hauler-details">
+          <div class="escort-hauler-name" id="escort-hauler-name">Vaelic Bulk Hauler Omega</div>
+          <div class="escort-hauler-vitals">
+            <div class="escort-vital-row">
+              <span class="escort-vital-lbl">SHD</span>
+              <div class="escort-bar-track">
+                <div class="escort-bar-fill escort-shield-fill" id="escort-shield-bar" style="width: 100%;"></div>
+              </div>
+              <span class="escort-vital-val" id="escort-shield-val">300/300</span>
+            </div>
+            <div class="escort-vital-row">
+              <span class="escort-vital-lbl">HULL</span>
+              <div class="escort-bar-track">
+                <div class="escort-bar-fill escort-hull-fill" id="escort-hull-bar" style="width: 100%;"></div>
+              </div>
+              <span class="escort-vital-val" id="escort-hull-val">450/450</span>
+            </div>
+          </div>
+        </div>
+        <button id="btn-escort-claim-bounty" class="escort-claim-btn hidden">💰 CLAIM ESCORT BOUNTY</button>
       </div>
 
       <!-- Day 15: Tow Cable Active HUD Banner -->
@@ -816,6 +871,40 @@
           <div class="comms-telemetry-item">BANDWIDTH: <span>1.24 TB/s</span></div>
           <div class="comms-telemetry-item">FREQUENCY DRIFT: <span>±0.002%</span></div>
           <div class="comms-telemetry-item comms-action-hint">PRESS [1-5] OR CLICK TO SELECT // [ESC] TO DISCONNECT</div>
+        </footer>
+      </div>
+    </div>
+
+    <!-- Day 25: Skirmish Arena Allegiance Declaration Modal -->
+    <div id="skirmish-allegiance-modal" class="dock-modal-overlay hidden">
+      <div class="dock-modal-card allegiance-modal-card">
+        <header class="dock-modal-header">
+          <div class="dock-header-left">
+            <span class="dock-badge" style="background: rgba(239, 68, 68, 0.2); border-color: #ef4444; color: #ef4444;">ACTIVE WARZONE // SECTOR 201</span>
+            <h2 class="dock-station-name">CHARYBDIS FLEET CONFLICT</h2>
+            <span class="dock-subtext">DECLARE FLEET ALLEGIANCE TO DEPLOY FRIEND-OR-FOE IFF RECOGNITION</span>
+          </div>
+        </header>
+        <div class="allegiance-cards-row">
+          <div class="allegiance-card hegemony-card" id="card-allegiance-hegemony">
+            <div class="allegiance-card-badge">ORDER & SOVEREIGNTY</div>
+            <div class="allegiance-crest">🦅</div>
+            <h3 class="allegiance-name">VAELIC HEGEMONY</h3>
+            <p class="allegiance-desc">High-tech pulse shields and plasma lances. Defend the Hegemony perimeter against syndicate raiders.</p>
+            <div class="allegiance-perk">🏆 BOUNTY: +750 CR per confirmed Cartel kill</div>
+            <button id="btn-allegiance-hegemony" class="allegiance-select-btn hegemony-btn">ENLIST HEGEMONY [KEY 1]</button>
+          </div>
+          <div class="allegiance-card kryll-card" id="card-allegiance-kryll">
+            <div class="allegiance-card-badge">PIRACY & FREEDOM</div>
+            <div class="allegiance-crest">☠️</div>
+            <h3 class="allegiance-name">KRYLL CARTEL</h3>
+            <p class="allegiance-desc">Kinetic blockade runners and scrap railguns. Break Hegemony dominance and plunder the trade lane.</p>
+            <div class="allegiance-perk">🏆 BOUNTY: +750 CR per confirmed Hegemony kill</div>
+            <button id="btn-allegiance-kryll" class="allegiance-select-btn kryll-btn">ENLIST CARTEL [KEY 2]</button>
+          </div>
+        </div>
+        <footer class="dock-modal-footer">
+          <div class="dock-action-hint">PRESS [1] OR [2] TO CHOOSE // COMBAT BONDS CREDITED IMMEDIATELY TO FLIGHT LOG</div>
         </footer>
       </div>
     </div>

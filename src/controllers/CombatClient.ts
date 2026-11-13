@@ -34,6 +34,7 @@ export interface CombatClientCallbacks {
   getPlayerCredits?: () => number;
   setPlayerCredits?: (cr: number) => void;
   closeComms?: () => void;
+  loadSectorScene?: (sectorId: number, seed?: number) => void;
 }
 
 export class CombatClient {
@@ -218,6 +219,38 @@ export class CombatClient {
 
   private elHudTruceTimerPill: HTMLElement | null = null;
 
+  // Day 25 Skirmish & Escort
+  public skirmishBeacon: { id: string; name: string; x: number; z: number; radius: number; skirmishSectorId: number } | null = null;
+  public skirmishBeaconMesh: THREE.Group | null = null;
+  public isSkirmishArena: boolean = false;
+  public skirmishScores: { FACTION_HEGEMONY: number; FACTION_KRYLL: number } = { FACTION_HEGEMONY: 100, FACTION_KRYLL: 100 };
+  public playerAllegiance: string | null = null;
+  public playerCombatBonds: number = 0;
+  public activeEscortHauler: any | null = null;
+
+  // Day 25 DOM Elements
+  private btnHudEngageSkirmish: HTMLElement | null = null;
+  private elSkirmishScoreHud: HTMLElement | null = null;
+  private elSkirmishHegemonyBar: HTMLElement | null = null;
+  private elSkirmishHegemonyTickets: HTMLElement | null = null;
+  private elSkirmishKryllBar: HTMLElement | null = null;
+  private elSkirmishKryllTickets: HTMLElement | null = null;
+  private elSkirmishPlayerAllegiance: HTMLElement | null = null;
+  private elSkirmishPlayerBonds: HTMLElement | null = null;
+
+  private elEscortTelemetryHud: HTMLElement | null = null;
+  private elEscortTetherStatus: HTMLElement | null = null;
+  private elEscortHaulerName: HTMLElement | null = null;
+  private elEscortShieldBar: HTMLElement | null = null;
+  private elEscortShieldVal: HTMLElement | null = null;
+  private elEscortHullBar: HTMLElement | null = null;
+  private elEscortHullVal: HTMLElement | null = null;
+  private btnEscortClaimBounty: HTMLElement | null = null;
+
+  private modalSkirmishAllegiance: HTMLElement | null = null;
+  private btnAllegianceHegemony: HTMLElement | null = null;
+  private btnAllegianceKryll: HTMLElement | null = null;
+
   constructor(callbacks: CombatClientCallbacks) {
     this.callbacks = callbacks;
     this.audio = callbacks.audio;
@@ -320,7 +353,35 @@ export class CombatClient {
 
     this.elHudTruceTimerPill = document.getElementById('hud-truce-timer-pill');
 
+    // Day 25 Skirmish & Escort DOM Lookups
+    this.btnHudEngageSkirmish = document.getElementById('btn-hud-engage-skirmish');
+    this.elSkirmishScoreHud = document.getElementById('skirmish-score-hud');
+    this.elSkirmishHegemonyBar = document.getElementById('skirmish-hegemony-bar');
+    this.elSkirmishHegemonyTickets = document.getElementById('skirmish-hegemony-tickets');
+    this.elSkirmishKryllBar = document.getElementById('skirmish-kryll-bar');
+    this.elSkirmishKryllTickets = document.getElementById('skirmish-kryll-tickets');
+    this.elSkirmishPlayerAllegiance = document.getElementById('skirmish-player-allegiance');
+    this.elSkirmishPlayerBonds = document.getElementById('skirmish-player-bonds');
+
+    this.elEscortTelemetryHud = document.getElementById('escort-telemetry-hud');
+    this.elEscortTetherStatus = document.getElementById('escort-tether-status');
+    this.elEscortHaulerName = document.getElementById('escort-hauler-name');
+    this.elEscortShieldBar = document.getElementById('escort-shield-bar');
+    this.elEscortShieldVal = document.getElementById('escort-shield-val');
+    this.elEscortHullBar = document.getElementById('escort-hull-bar');
+    this.elEscortHullVal = document.getElementById('escort-hull-val');
+    this.btnEscortClaimBounty = document.getElementById('btn-escort-claim-bounty');
+
+    this.modalSkirmishAllegiance = document.getElementById('skirmish-allegiance-modal');
+    this.btnAllegianceHegemony = document.getElementById('btn-allegiance-hegemony');
+    this.btnAllegianceKryll = document.getElementById('btn-allegiance-kryll');
+
     // Attach listeners
+    this.btnHudEngageSkirmish?.addEventListener('click', () => this.engageSkirmish());
+    this.btnAllegianceHegemony?.addEventListener('click', () => this.declareAllegiance('FACTION_HEGEMONY'));
+    this.btnAllegianceKryll?.addEventListener('click', () => this.declareAllegiance('FACTION_KRYLL'));
+    this.btnEscortClaimBounty?.addEventListener('click', () => this.claimEscortBounty());
+
     this.btnCloseLoot?.addEventListener('click', () => this.closeContainerLootModal());
     this.btnLootAll?.addEventListener('click', () => this.lootAllCurrentContainer());
 
@@ -386,6 +447,12 @@ export class CombatClient {
       scene.remove(pMesh);
     }
     this.projectileMeshes.clear();
+
+    if (this.skirmishBeaconMesh) {
+      scene.remove(this.skirmishBeaconMesh);
+      this.skirmishBeaconMesh = null;
+    }
+    this.skirmishBeacon = null;
 
     const host = window.location.hostname || 'localhost';
     const wsUrl = `ws://${host}:3000/ws/combat?playerId=acc_sol_captain&sectorId=${sectorId}`;
@@ -869,6 +936,99 @@ export class CombatClient {
       this.hideSalvageBeam();
     }
 
+    // Day 25: 3D Skirmish Beacon & Engage Action
+    if (snapshot.skirmishBeacon) {
+      this.skirmishBeacon = snapshot.skirmishBeacon;
+      this.updateSkirmishBeaconMesh(scene, snapshot.skirmishBeacon);
+      const pPos = flightController.position;
+      const bDist = Math.hypot(pPos.x - snapshot.skirmishBeacon.x, pPos.z - snapshot.skirmishBeacon.z);
+      if (bDist <= 35.0) {
+        if (this.btnHudEngageSkirmish) this.btnHudEngageSkirmish.classList.remove('hidden');
+        if (this.elTargetQuickActions) this.elTargetQuickActions.classList.remove('hidden');
+      } else {
+        if (this.btnHudEngageSkirmish) this.btnHudEngageSkirmish.classList.add('hidden');
+      }
+    } else {
+      this.skirmishBeacon = null;
+      if (this.skirmishBeaconMesh) {
+        this.skirmishBeaconMesh.visible = false;
+      }
+      if (this.btnHudEngageSkirmish) {
+        this.btnHudEngageSkirmish.classList.add('hidden');
+      }
+    }
+
+    // Day 25: Skirmish Arena State & HUD Synchronization
+    const currentSec = this.callbacks.getCurrentSectorId();
+    this.isSkirmishArena = !!snapshot.isSkirmishArena || currentSec === 201;
+
+    if (this.isSkirmishArena) {
+      if (this.elSkirmishScoreHud) this.elSkirmishScoreHud.classList.remove('hidden');
+
+      if (snapshot.skirmishScores) {
+        this.skirmishScores = snapshot.skirmishScores;
+        const heg = snapshot.skirmishScores.FACTION_HEGEMONY ?? 100;
+        const kry = snapshot.skirmishScores.FACTION_KRYLL ?? 100;
+
+        if (this.elSkirmishHegemonyBar) this.elSkirmishHegemonyBar.style.width = `${Math.max(0, Math.min(100, heg))}%`;
+        if (this.elSkirmishHegemonyTickets) this.elSkirmishHegemonyTickets.textContent = `${heg} / 100`;
+
+        if (this.elSkirmishKryllBar) this.elSkirmishKryllBar.style.width = `${Math.max(0, Math.min(100, kry))}%`;
+        if (this.elSkirmishKryllTickets) this.elSkirmishKryllTickets.textContent = `${kry} / 100`;
+      }
+
+      if (!this.playerAllegiance) {
+        if (this.modalSkirmishAllegiance) this.modalSkirmishAllegiance.classList.remove('hidden');
+      }
+    } else {
+      if (this.elSkirmishScoreHud) this.elSkirmishScoreHud.classList.add('hidden');
+      if (this.modalSkirmishAllegiance) this.modalSkirmishAllegiance.classList.add('hidden');
+    }
+
+    // Day 25: VIP Escort Telemetry Widget Synchronization
+    const escortHauler = snapshot.entities?.find((e: any) => e.isConvoyHauler && e.state !== 'DESTROYED');
+    if (escortHauler) {
+      this.activeEscortHauler = escortHauler;
+      if (this.elEscortTelemetryHud) this.elEscortTelemetryHud.classList.remove('hidden');
+      if (this.elEscortHaulerName) this.elEscortHaulerName.textContent = escortHauler.name;
+
+      if (this.elEscortShieldBar) {
+        const sPct = Math.max(0, Math.min(100, (escortHauler.shields / (escortHauler.maxShields || 1)) * 100));
+        this.elEscortShieldBar.style.width = `${sPct}%`;
+      }
+      if (this.elEscortShieldVal) {
+        this.elEscortShieldVal.textContent = `${escortHauler.shields}/${escortHauler.maxShields}`;
+      }
+      if (this.elEscortHullBar) {
+        const hPct = Math.max(0, Math.min(100, (escortHauler.hp / (escortHauler.maxHp || 1)) * 100));
+        this.elEscortHullBar.style.width = `${hPct}%`;
+      }
+      if (this.elEscortHullVal) {
+        this.elEscortHullVal.textContent = `${escortHauler.hp}/${escortHauler.maxHp}`;
+      }
+
+      const pPos = flightController.position;
+      const dist = Math.hypot(pPos.x - escortHauler.x, pPos.z - escortHauler.z);
+      if (this.elEscortTetherStatus) {
+        if (dist <= 45.0) {
+          this.elEscortTetherStatus.className = 'escort-tether-badge';
+          this.elEscortTetherStatus.textContent = `TETHER: NOMINAL (${dist.toFixed(1)} u)`;
+        } else {
+          this.elEscortTetherStatus.className = 'escort-tether-badge tether-warning';
+          this.elEscortTetherStatus.textContent = `WARNING: TETHER BREAKING (${dist.toFixed(1)} u > 45u)`;
+        }
+      }
+
+      if (escortHauler.state === 'DOCKED') {
+        if (this.btnEscortClaimBounty) this.btnEscortClaimBounty.classList.remove('hidden');
+      } else {
+        if (this.btnEscortClaimBounty) this.btnEscortClaimBounty.classList.add('hidden');
+      }
+    } else {
+      this.activeEscortHauler = null;
+      if (this.elEscortTelemetryHud) this.elEscortTelemetryHud.classList.add('hidden');
+    }
+
     // 4. Process Combat Events (VFX, Audio & Alerts)
     if (snapshot.events && snapshot.events.length > 0) {
       for (const ev of snapshot.events) {
@@ -953,6 +1113,31 @@ export class CombatClient {
           if (this.elHudTruceTimerPill) this.elHudTruceTimerPill.classList.add('hidden');
           this.callbacks.showApNotification('⚠️ CEASEFIRE VIOLATED! Hostile patrols engaging!', true);
           this.audio.playApWarningSound();
+          this.callbacks.refreshFactionStandings();
+        } else if (ev.type === 'AMBUSH_TRIGGERED') {
+          this.audio.playApWarningSound();
+          this.callbacks.showApNotification('⚠️ HOSTILE RAIDING WING INBOUND // PROTECT BULK HAULER', true);
+        } else if (ev.type === 'AMBUSH_CLEARED') {
+          this.callbacks.showApNotification('🛡️ AMBUSH REPELLED // ESCORT ROUTE SECURED', false);
+        } else if (ev.type === 'ESCORT_FAILED') {
+          this.audio.playShipExplosionSound();
+          this.callbacks.showApNotification('❌ ESCORT MISSION FAILED // BULK HAULER DESTROYED', true);
+        } else if (ev.type === 'ALLEGIANCE_DECLARED') {
+          this.callbacks.showApNotification(ev.data?.message || 'Allegiance declared. IFF online.', false);
+        } else if (ev.type === 'COMBAT_BOND_AWARDED') {
+          this.audio.playLootPickupSound();
+          const reward = ev.data?.rewardCredits || 750;
+          this.playerCombatBonds += reward;
+          if (this.elSkirmishPlayerBonds) {
+            this.elSkirmishPlayerBonds.textContent = `COMBAT BONDS: +${this.playerCombatBonds.toLocaleString()} CR`;
+          }
+          this.callbacks.showApNotification(`🎖️ COMBAT BOND VOUCHER: +${reward} CR (Confirmed Skirmish Kill)`, false);
+          if (this.callbacks.getPlayerCredits && this.callbacks.setPlayerCredits) {
+            this.callbacks.setPlayerCredits(this.callbacks.getPlayerCredits() + reward);
+          }
+        } else if (ev.type === 'SKIRMISH_VICTORY') {
+          const winFaction = ev.data?.winningFaction || 'Allies';
+          this.callbacks.showApNotification(`🏆 SKIRMISH VICTORY: ${winFaction} claims sector front! (+15 Influence)`, false);
           this.callbacks.refreshFactionStandings();
         }
       }
@@ -1079,6 +1264,21 @@ export class CombatClient {
     this.elTacticalReticle.style.left = `${Math.round(x)}px`;
     this.elTacticalReticle.style.top = `${Math.round(y)}px`;
     this.elTacticalReticle.classList.remove('hidden');
+
+    // Day 25: Inter-faction IFF Friend/Foe Reticle Coloring
+    const targetAllegiance = (this.primaryDroneTarget as any).allegiance || (this.primaryDroneTarget as any).factionId;
+    if (this.playerAllegiance && targetAllegiance) {
+      const isAlly = targetAllegiance === this.playerAllegiance;
+      if (isAlly) {
+        this.elTacticalReticle.classList.add('iff-ally');
+        this.elTacticalReticle.classList.remove('iff-hostile');
+      } else {
+        this.elTacticalReticle.classList.add('iff-hostile');
+        this.elTacticalReticle.classList.remove('iff-ally');
+      }
+    } else {
+      this.elTacticalReticle.classList.remove('iff-ally', 'iff-hostile');
+    }
 
     if (this.elReticleName) {
       const isTruce = (this.primaryDroneTarget as any).state === 'TRUCE';
@@ -1967,6 +2167,140 @@ export class CombatClient {
       }
     } catch (err) {
       console.error('[CombatClient] Error handling emergency recall:', err);
+    }
+  }
+
+  // Day 25: Skirmish Arena & Escort Contracts Methods
+
+  public updateSkirmishBeaconMesh(scene: THREE.Scene, beacon: any): void {
+    if (!this.skirmishBeaconMesh) {
+      const group = new THREE.Group();
+
+      // Glowing outer ring
+      const ringGeom = new THREE.RingGeometry(6, 7.5, 32);
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: 0xef4444,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.6,
+      });
+      const ring = new THREE.Mesh(ringGeom, ringMat);
+      ring.rotation.x = Math.PI / 2;
+      group.add(ring);
+
+      // Rotating inner diamond beacon
+      const diamondGeom = new THREE.OctahedronGeometry(2.8, 0);
+      const diamondMat = new THREE.MeshBasicMaterial({
+        color: 0xff3b3b,
+        wireframe: true,
+      });
+      const diamond = new THREE.Mesh(diamondGeom, diamondMat);
+      diamond.position.y = 1.8;
+      diamond.name = 'beacon_diamond';
+      group.add(diamond);
+
+      // Light beacon pillar
+      const pillarGeom = new THREE.CylinderGeometry(0.2, 0.2, 16, 8);
+      const pillarMat = new THREE.MeshBasicMaterial({
+        color: 0xef4444,
+        transparent: true,
+        opacity: 0.35,
+      });
+      const pillar = new THREE.Mesh(pillarGeom, pillarMat);
+      pillar.position.y = 8;
+      group.add(pillar);
+
+      scene.add(group);
+      this.skirmishBeaconMesh = group;
+    }
+
+    this.skirmishBeaconMesh.position.set(beacon.x, 0, beacon.z);
+    this.skirmishBeaconMesh.visible = true;
+
+    const diamond = this.skirmishBeaconMesh.getObjectByName('beacon_diamond');
+    if (diamond) {
+      diamond.rotation.y += 0.03;
+      diamond.rotation.x += 0.01;
+    }
+  }
+
+  public canEngageSkirmish(): boolean {
+    if (!this.skirmishBeacon) return false;
+    const flightController = this.callbacks.getFlightController();
+    const dist = Math.hypot(
+      flightController.position.x - this.skirmishBeacon.x,
+      flightController.position.z - this.skirmishBeacon.z
+    );
+    return dist <= 35.0;
+  }
+
+  public engageSkirmish(): void {
+    if (!this.skirmishBeacon) return;
+    const targetSector = this.skirmishBeacon.skirmishSectorId;
+    this.callbacks.showApNotification(`⚔️ DROPPING OUT OF WARP INTO CONTESTED SKIRMISH FRONT (SECTOR ${targetSector})`, false);
+    this.callbacks.setCurrentSectorId(targetSector);
+    if (this.callbacks.loadSectorScene) {
+      this.callbacks.loadSectorScene(targetSector, 99201);
+    } else {
+      this.initCombatWebSocket(targetSector);
+    }
+  }
+
+  public declareAllegiance(factionId: 'FACTION_HEGEMONY' | 'FACTION_KRYLL'): void {
+    this.playerAllegiance = factionId;
+    if (this.modalSkirmishAllegiance) {
+      this.modalSkirmishAllegiance.classList.add('hidden');
+    }
+    if (this.combatSocket && this.combatSocket.readyState === WebSocket.OPEN) {
+      this.combatSocket.send(JSON.stringify({
+        type: 'DECLARE_ALLEGIANCE',
+        factionId,
+      }));
+    }
+    const name = factionId === 'FACTION_HEGEMONY' ? 'Vaelic Hegemony Ally' : 'Kryll Cartel Raider';
+    this.callbacks.showApNotification(`🎖️ IFF ONLINE: Enlisted as ${name}`, false);
+    if (this.elSkirmishPlayerAllegiance) {
+      this.elSkirmishPlayerAllegiance.textContent = `ALLEGIANCE: ${factionId === 'FACTION_HEGEMONY' ? 'VAELIC HEGEMONY' : 'KRYLL CARTEL'}`;
+      this.elSkirmishPlayerAllegiance.style.color = factionId === 'FACTION_HEGEMONY' ? '#38bdf8' : '#f87171';
+    }
+  }
+
+  public closeAllegianceModal(): void {
+    if (this.modalSkirmishAllegiance) {
+      this.modalSkirmishAllegiance.classList.add('hidden');
+    }
+  }
+
+  public async claimEscortBounty(): Promise<void> {
+    if (!this.activeEscortHauler || !this.activeEscortHauler.convoyId) {
+      this.callbacks.showApNotification('❌ No active escort contract found.', true);
+      return;
+    }
+    try {
+      const res = await fetch('/api/convoys/contracts/claim', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accountId: 'acc_sol_captain',
+          convoyId: this.activeEscortHauler.convoyId,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        this.callbacks.showApNotification(`💰 ESCORT BOUNTY CLAIMED: +${data.rewardCredits} CR // +${data.reputationGain} Rep`, false);
+        this.audio.playLootPickupSound();
+        if (this.callbacks.getPlayerCredits && this.callbacks.setPlayerCredits) {
+          this.callbacks.setPlayerCredits(this.callbacks.getPlayerCredits() + (data.rewardCredits || 0));
+        }
+        if (this.btnEscortClaimBounty) {
+          this.btnEscortClaimBounty.classList.add('hidden');
+        }
+        this.callbacks.refreshFactionStandings();
+      } else {
+        this.callbacks.showApNotification(`❌ ${data.error || 'Failed to claim bounty'}`, true);
+      }
+    } catch (err) {
+      console.error('[CombatClient] Error claiming escort bounty:', err);
     }
   }
 }

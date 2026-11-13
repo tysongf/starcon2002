@@ -100,6 +100,16 @@ export const combatRoutes: FastifyPluginAsync = async (server) => {
     reply.send({ success: true, message: `Sector ${sectorId} entities reseeded.` });
   });
 
+  server.post('/api/combat/destroy-entity', async (req, reply) => {
+    const body = (req.body || {}) as { sectorId?: number; entityId: string; killerId?: string };
+    const sectorId = body.sectorId || 2;
+    const ok = combatManager.destroyEntity(sectorId, body.entityId, body.killerId || 'player_acc_sol_captain');
+    if (!ok) {
+      return reply.status(404).send({ success: false, error: 'Entity or room not found.' });
+    }
+    reply.send({ success: true, entityId: body.entityId, sectorId });
+  });
+
   // Persistent Wrecks & In-Situ Salvage
   server.get('/api/combat/wrecks', async (req, reply) => {
     const query = (req.query || {}) as { sectorId?: string };
