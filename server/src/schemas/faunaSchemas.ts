@@ -32,3 +32,4 @@ export const RecoverLanderBodySchema = Type.Object({
   fuelRemaining: Type.Number({ minimum: 0, maximum: 250 }),
 });
 export type RecoverLanderBody = Static<typeof RecoverLanderBodySchema>;
+

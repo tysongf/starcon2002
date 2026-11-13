@@ -1,5 +1,6 @@
 import { FastifyPluginAsync } from 'fastify';
 import { planetaryFaunaService } from '../services/PlanetaryFaunaService';
+import { planetaryHazardService } from '../services/PlanetaryHazardService';
 import {
   PlanetParamSchema,
   DeployLanderBodySchema,
@@ -23,6 +24,20 @@ export const faunaRoutes: FastifyPluginAsync = async (server) => {
         count: fauna.length,
         fauna,
       });
+    }
+  );
+
+  // 1.1 Get Planetary Atmospheric & Geological Hazard Profile
+  server.get<{ Params: PlanetParam }>(
+    '/:id/hazards',
+    { schema: { params: PlanetParamSchema } },
+    async (req, reply) => {
+      const planetId = req.params.id;
+      const result = await planetaryHazardService.getPlanetHazards(planetId);
+      if (!result.success) {
+        return reply.status(404).send(result);
+      }
+      reply.send(result);
     }
   );
 
@@ -64,3 +79,4 @@ export const faunaRoutes: FastifyPluginAsync = async (server) => {
     }
   );
 };
+

@@ -5843,6 +5843,22 @@ kbd {
   box-shadow: 0 0 8px rgba(192, 132, 252, 0.6);
 }
 
+.lander-bar-fill.orange {
+  background: linear-gradient(90deg, #ea580c, #f97316);
+  box-shadow: 0 0 8px rgba(249, 115, 22, 0.6);
+}
+
+.lander-bar-fill.red {
+  background: linear-gradient(90deg, #dc2626, #ef4444);
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.8);
+  animation: pulse-hazard 1s infinite alternate;
+}
+
+@keyframes pulse-hazard {
+  from { opacity: 0.8; }
+  to { opacity: 1; filter: brightness(1.2); }
+}
+
 /* Lander Radar Targets */
 .lander-radar-section {
   display: flex;
@@ -5912,6 +5928,22 @@ kbd {
 .target-card-item.fauna.collected {
   opacity: 0.45;
   border-left-color: #64748b;
+}
+
+.target-card-item.hazard {
+  border-left-color: #f97316;
+}
+
+.target-card-item.hazard.ion {
+  border-left-color: #a855f7;
+}
+
+.target-card-item.hazard.geyser {
+  border-left-color: #ef4444;
+}
+
+.target-card-item.hazard.acid {
+  border-left-color: #84cc16;
 }
 
 @keyframes pulse-border-cyan {

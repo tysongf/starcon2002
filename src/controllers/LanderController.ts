@@ -58,6 +58,51 @@ export interface BioSampleEntry {
   speciesClass: string;
 }
 
+export interface LanderHazardProfile {
+  thermalLevel: number;
+  ionLevel: number;
+  causticLevel: number;
+}
+
+export interface LanderIonStorm {
+  id: string;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  radiusX: number;
+  radiusY: number;
+  lightningTimer: number;
+  isStriking: boolean;
+  strikeFlashTime: number;
+}
+
+export interface LanderCausticMist {
+  id: string;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  radiusX: number;
+  radiusY: number;
+}
+
+export interface LanderLavaGeyser {
+  id: string;
+  x: number;
+  y: number;
+  radius: number;
+  isErupting: boolean;
+  cycleTimer: number;
+}
+
+export interface LanderAcidPool {
+  id: string;
+  x: number;
+  y: number;
+  radius: number;
+}
+
 export interface LanderCallbacks {
   audio: AudioEngine;
   showApNotification: (msg: string, isError: boolean) => void;
@@ -101,6 +146,17 @@ export class LanderController {
   public landerBioSamples: BioSampleEntry[] = [];
   public landerParticles: Array<{ x: number; y: number; vx: number; vy: number; life: number; maxLife: number; color: string; size: number }> = [];
   public landerSonarWaves: Array<{ x: number; y: number; radius: number; maxRadius: number; alpha: number }> = [];
+
+  public landerHazardProfile: LanderHazardProfile = { thermalLevel: 0, ionLevel: 0, causticLevel: 0 };
+  public landerTemp: number = 0;
+  public isLanderFlamedOut: boolean = false;
+  public landerFlameoutTimer: number = 0;
+  public landerFittedModules: Record<string, string> = {};
+  public landerIonStorms: LanderIonStorm[] = [];
+  public landerCausticMists: LanderCausticMist[] = [];
+  public landerLavaGeysers: LanderLavaGeyser[] = [];
+  public landerAcidPools: LanderAcidPool[] = [];
+  public isLanderDestroyed: boolean = false;
 
   private lastStunFireTime: number = 0;
   private screenShakeTime: number = 0;
@@ -225,6 +281,16 @@ export class LanderController {
     this.landerBioSamples = [];
     this.screenShakeTime = 0;
 
+    // Reset Atmospheric Hazards & Environmental Telemetry
+    this.landerTemp = 0;
+    this.isLanderFlamedOut = false;
+    this.landerFlameoutTimer = 0;
+    this.isLanderDestroyed = false;
+    this.landerIonStorms = [];
+    this.landerCausticMists = [];
+    this.landerLavaGeysers = [];
+    this.landerAcidPools = [];
+
     // Initialize surface nodes: Megastructures from planet precursor sites + mineral deposits
     this.landerNodes = [];
     const precursorSites = this.callbacks.getPlanetPrecursorSites();
@@ -299,6 +365,9 @@ export class LanderController {
 
     // Populate indigenous alien fauna from planet catalog
     this.loadPlanetaryFauna(activePlanet?.data?.id || 'planet_sec1_aegis');
+
+    // Populate atmospheric weather fronts and geological hazards
+    this.loadPlanetaryHazards(activePlanet?.data?.id || 'planet_sec1_aegis');
 
     const dockBanner = document.getElementById('megastructure-dock-banner');
     if (dockBanner) dockBanner.classList.add('hidden');
@@ -401,6 +470,129 @@ export class LanderController {
   }
 
   /**
+   * Loads planetary environmental hazards and fitted lander modules from server
+   */
+  public async loadPlanetaryHazards(planetId: string): Promise<void> {
+    this.landerIonStorms = [];
+    this.landerCausticMists = [];
+    this.landerLavaGeysers = [];
+    this.landerAcidPools = [];
+
+    // 1. Verify player lander status & fitted modules
+    try {
+      const statusRes = await fetch('/api/shipyard/lander/status?accountId=acc_sol_captain');
+      if (statusRes.ok) {
+        const sData = await statusRes.json();
+        if (!sData.hasActiveLander || sData.lander.hull <= 0 || !sData.lander.is_active) {
+          this.closeSurfaceLander();
+          this.callbacks.showApNotification(
+            '⚠️ NO ACTIVE LANDER: Chassis breached or missing. Purchase a replacement or claim an Emergency Loaner Drone at a spaceport shipyard.',
+            true
+          );
+          return;
+        }
+
+        this.landerFittedModules = sData.lander.fitted_modules || {};
+        this.landerState.maxCargo = sData.lander.cargo_capacity || 25;
+        this.landerState.hull = sData.lander.hull || 100;
+        this.landerState.maxHull = sData.lander.max_hull || 100;
+      }
+    } catch {
+      // offline fallback
+    }
+
+    // 2. Fetch planet hazard classifications
+    try {
+      const hazardRes = await fetch(`/api/planets/${planetId}/hazards`);
+      if (hazardRes.ok) {
+        const hData = await hazardRes.json();
+        this.landerHazardProfile = {
+          thermalLevel: hData.thermalLevel || 0,
+          ionLevel: hData.ionLevel || 0,
+          causticLevel: hData.causticLevel || 0,
+        };
+      }
+    } catch {
+      if (planetId.includes('ignis')) {
+        this.landerHazardProfile = { thermalLevel: 3, ionLevel: 0, causticLevel: 0 };
+      } else if (planetId.includes('charybdis')) {
+        this.landerHazardProfile = { thermalLevel: 0, ionLevel: 2, causticLevel: 1 };
+      } else if (planetId.includes('mycelia')) {
+        this.landerHazardProfile = { thermalLevel: 0, ionLevel: 0, causticLevel: 2 };
+      }
+    }
+
+    // 3. Initialize Geological & Atmospheric Hazard Entities
+    // Ion Storms
+    if (this.landerHazardProfile.ionLevel >= 1) {
+      this.landerIonStorms.push({
+        id: 'storm_1',
+        x: 210,
+        y: 140,
+        vx: 16,
+        vy: 8,
+        radiusX: 95,
+        radiusY: 55,
+        lightningTimer: 3.5,
+        isStriking: false,
+        strikeFlashTime: 0,
+      });
+      this.landerIonStorms.push({
+        id: 'storm_2',
+        x: 540,
+        y: 330,
+        vx: -14,
+        vy: -9,
+        radiusX: 110,
+        radiusY: 65,
+        lightningTimer: 5.0,
+        isStriking: false,
+        strikeFlashTime: 0,
+      });
+    }
+
+    // Caustic Mist & Acid Pools
+    if (this.landerHazardProfile.causticLevel >= 1) {
+      this.landerCausticMists.push({
+        id: 'mist_1',
+        x: 190,
+        y: 280,
+        vx: 12,
+        vy: -6,
+        radiusX: 120,
+        radiusY: 70,
+      });
+      this.landerCausticMists.push({
+        id: 'mist_2',
+        x: 520,
+        y: 160,
+        vx: -10,
+        vy: 8,
+        radiusX: 100,
+        radiusY: 60,
+      });
+
+      this.landerAcidPools.push(
+        { id: 'acid_1', x: 260, y: 380, radius: 26 },
+        { id: 'acid_2', x: 490, y: 220, radius: 22 },
+        { id: 'acid_3', x: 620, y: 390, radius: 28 }
+      );
+    }
+
+    // Thermal Lava Geysers
+    if (this.landerHazardProfile.thermalLevel >= 1) {
+      this.landerLavaGeysers.push(
+        { id: 'geyser_1', x: 220, y: 150, radius: 36, isErupting: false, cycleTimer: 3.0 },
+        { id: 'geyser_2', x: 540, y: 290, radius: 40, isErupting: false, cycleTimer: 5.0 },
+        { id: 'geyser_3', x: 380, y: 400, radius: 34, isErupting: false, cycleTimer: 1.5 }
+      );
+    }
+
+    this.refreshLanderRadarList();
+    this.updateLanderTelemetryUI();
+  }
+
+  /**
    * Fires the Star Control II Stun Blaster to tranquilize indigenous alien wildlife
    */
   public fireStunBlaster(): void {
@@ -458,6 +650,25 @@ export class LanderController {
       .filter((n) => n.type === 'MINERAL' && n.collected)
       .map((n) => ({ name: n.name, quantity: n.amount || 5 }));
 
+    const hullVal = Math.max(0, Math.round(this.landerState.hull));
+    const fuelVal = Math.max(0, Math.round(this.landerState.fuel));
+
+    // If lander suffered total hull failure on surface, notify backend and wipe uncommitted cargo
+    if (hullVal <= 0 || this.isLanderDestroyed) {
+      fetch(`/api/planets/${planetId}/lander/recover`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accountId: 'acc_sol_captain',
+          mineralsHarvested: [],
+          bioSamplesHarvested: [],
+          hullRemaining: 0,
+          fuelRemaining: 0,
+        }),
+      }).catch(() => {});
+      return;
+    }
+
     if (collectedMinerals.length > 0 || this.landerBioSamples.length > 0) {
       this.audio.playCargoHarvestSound();
 
@@ -468,8 +679,8 @@ export class LanderController {
           accountId: 'acc_sol_captain',
           mineralsHarvested: collectedMinerals,
           bioSamplesHarvested: this.landerBioSamples,
-          hullRemaining: Math.round(this.landerState.hull),
-          fuelRemaining: Math.round(this.landerState.fuel),
+          hullRemaining: hullVal,
+          fuelRemaining: fuelVal,
         }),
       })
         .then((res) => res.json())
@@ -544,12 +755,28 @@ export class LanderController {
     const s = this.landerState;
     const k = this.landerKeys;
 
+    // Check for fatal hull failure / destruction
+    if (s.hull <= 0 && !this.isLanderDestroyed) {
+      this.isLanderDestroyed = true;
+      s.hull = 0;
+      s.cargo = 0;
+      this.landerBioSamples = [];
+      this.audio.playExplosion();
+      this.callbacks.showApNotification(
+        '💥 CRITICAL HULL BREACH! Surface lander destroyed in extreme atmospheric hazards. Uncommitted cargo lost. Purchase replacement at Spaceport Shipyard.',
+        true
+      );
+      this.closeSurfaceLander();
+      return;
+    }
+
     // Rotation
     if (k.left) s.heading -= 0.055;
     if (k.right) s.heading += 0.055;
 
-    // Forward Thruster
-    if (k.up && s.fuel > 0) {
+    // Forward Thruster (inhibited during thermal flameout)
+    const canThrust = k.up && s.fuel > 0 && !this.isLanderFlamedOut;
+    if (canThrust) {
       const accel = 0.15;
       s.vx += Math.cos(s.heading) * accel;
       s.vy += Math.sin(s.heading) * accel;
@@ -602,6 +829,134 @@ export class LanderController {
       p.life -= 0.05;
       if (p.life <= 0) {
         this.landerParticles.splice(i, 1);
+      }
+    }
+
+    // Atmospheric Weather & Geological Hazards Processing
+    const hasThermalPlating = this.landerFittedModules?.thermal === 'MOD_THERMAL_PLATING';
+    const hasIonDissipator = this.landerFittedModules?.electrical === 'MOD_ION_DISSIPATOR';
+    const hasCausticSealant = this.landerFittedModules?.caustic === 'MOD_CAUSTIC_SEALANT';
+
+    // 1. Thermal Equilibrium
+    const ambientHeatRate = (this.landerHazardProfile.thermalLevel * 4.5 * 0.016) * (hasThermalPlating ? 0.25 : 1.0);
+    const thrusterHeatRate = canThrust ? (6.0 * 0.016 * (hasThermalPlating ? 0.4 : 1.0)) : 0;
+    const idleCoolingRate = !canThrust ? (8.0 * 0.016 * (hasThermalPlating ? 2.0 : 1.0)) : (2.0 * 0.016);
+
+    let geyserHeatRate = 0;
+    for (const g of this.landerLavaGeysers) {
+      g.cycleTimer -= 0.016;
+      if (g.cycleTimer <= 0) {
+        g.isErupting = !g.isErupting;
+        g.cycleTimer = g.isErupting ? 2.0 : 4.0;
+      }
+
+      if (g.isErupting) {
+        for (let p = 0; p < 2; p++) {
+          const ang = -Math.PI / 2 + (Math.random() - 0.5) * 0.9;
+          const spd = 30 + Math.random() * 50;
+          this.landerParticles.push({
+            x: g.x + (Math.random() - 0.5) * 14,
+            y: g.y,
+            vx: Math.cos(ang) * spd * 0.016,
+            vy: Math.sin(ang) * spd * 0.016,
+            life: 0.6,
+            maxLife: 0.6,
+            color: Math.random() > 0.4 ? '#f97316' : '#ef4444',
+            size: 2 + Math.random() * 3,
+          });
+        }
+
+        const d = Math.hypot(s.x - g.x, s.y - g.y);
+        if (d <= g.radius) {
+          geyserHeatRate += hasThermalPlating ? 0.08 : 0.5;
+          if (!hasThermalPlating) {
+            s.hull = Math.max(0, s.hull - (12.0 * 0.016));
+          }
+        }
+      }
+    }
+
+    this.landerTemp = Math.max(0, Math.min(100, this.landerTemp + ambientHeatRate + thrusterHeatRate + geyserHeatRate - idleCoolingRate));
+
+    if (this.landerTemp >= 100 && !this.isLanderFlamedOut) {
+      this.isLanderFlamedOut = true;
+      this.landerFlameoutTimer = 2.5;
+      this.audio.playShieldBreakSound();
+      this.callbacks.showApNotification('⚠️ THERMAL OVERHEAT! Engine flameout initiated for 2.5s! Hull scorching active!', true);
+    }
+
+    if (this.isLanderFlamedOut) {
+      this.landerFlameoutTimer -= 0.016;
+      s.hull = Math.max(0, s.hull - (10.0 * 0.016));
+      if (this.landerFlameoutTimer <= 0 && this.landerTemp < 80) {
+        this.isLanderFlamedOut = false;
+        this.callbacks.showApNotification('✅ Core temperature stabilized. Thruster ignition restored.', false);
+      }
+    }
+
+    // 2. Ion Storms Physics
+    for (const storm of this.landerIonStorms) {
+      storm.x += storm.vx * 0.016;
+      storm.y += storm.vy * 0.016;
+      if (storm.x < 80 || storm.x > 680) storm.vx = -storm.vx;
+      if (storm.y < 60 || storm.y > 420) storm.vy = -storm.vy;
+
+      storm.lightningTimer -= 0.016;
+      if (storm.isStriking) {
+        storm.strikeFlashTime -= 0.016;
+        if (storm.strikeFlashTime <= 0) storm.isStriking = false;
+      }
+
+      if (storm.lightningTimer <= 0) {
+        storm.isStriking = true;
+        storm.strikeFlashTime = 0.25;
+        storm.lightningTimer = 3.5 + Math.random() * 2.5;
+
+        const normX = (s.x - storm.x) / storm.radiusX;
+        const normY = (s.y - storm.y) / storm.radiusY;
+        if (normX * normX + normY * normY <= 1.0) {
+          if (hasIonDissipator) {
+            this.callbacks.showApNotification('⚡ Ion Grounding Matrix deflected atmospheric lightning strike! (0 damage)', false);
+          } else {
+            s.hull = Math.max(0, s.hull - 25);
+            this.audio.playShieldBreakSound();
+            this.callbacks.showApNotification('⚡ DIRECT LIGHTNING STRIKE! Severe chassis electrical damage (-25 HP)!', true);
+          }
+        }
+      }
+    }
+
+    // 3. Caustic Mist & Acid Pools Physics
+    for (const mist of this.landerCausticMists) {
+      mist.x += mist.vx * 0.016;
+      mist.y += mist.vy * 0.016;
+      if (mist.x < 80 || mist.x > 680) mist.vx = -mist.vx;
+      if (mist.y < 60 || mist.y > 420) mist.vy = -mist.vy;
+
+      const normX = (s.x - mist.x) / mist.radiusX;
+      const normY = (s.y - mist.y) / mist.radiusY;
+      if (normX * normX + normY * normY <= 1.0) {
+        const acidDmg = hasCausticSealant ? (1.2 * 0.016) : (6.0 * 0.016);
+        s.hull = Math.max(0, s.hull - acidDmg);
+      }
+    }
+
+    for (const pool of this.landerAcidPools) {
+      const d = Math.hypot(s.x - pool.x, s.y - pool.y);
+      if (d <= pool.radius) {
+        if (!hasCausticSealant) {
+          s.hull = Math.max(0, s.hull - (12.0 * 0.016));
+          this.landerParticles.push({
+            x: s.x + (Math.random() - 0.5) * 12,
+            y: s.y + 8,
+            vx: (Math.random() - 0.5) * 15 * 0.016,
+            vy: -Math.random() * 20 * 0.016,
+            life: 0.4,
+            maxLife: 0.4,
+            color: '#84cc16',
+            size: 2,
+          });
+        }
       }
     }
 
@@ -921,7 +1276,33 @@ export class LanderController {
       `;
     }).join('');
 
-    listEl.innerHTML = nodeHtml + faunaHtml;
+    const hazardCards: string[] = [];
+    if (this.landerHazardProfile.thermalLevel > 0) {
+      hazardCards.push(`
+        <div class="target-card-item hazard geyser">
+          <div class="target-title">🌋 VOLCANIC THERMAL FIELD</div>
+          <div class="target-meta">THERMAL LEVEL: ${this.landerHazardProfile.thermalLevel} // ACTIVE GEYSERS</div>
+        </div>
+      `);
+    }
+    if (this.landerHazardProfile.ionLevel > 0) {
+      hazardCards.push(`
+        <div class="target-card-item hazard ion">
+          <div class="target-title">⚡ ATMOSPHERIC ION STORM</div>
+          <div class="target-meta">ELECTRICAL SQUALLS // LIGHTNING HAZARD</div>
+        </div>
+      `);
+    }
+    if (this.landerHazardProfile.causticLevel > 0) {
+      hazardCards.push(`
+        <div class="target-card-item hazard acid">
+          <div class="target-title">🧪 CAUSTIC CHEMICAL BIOME</div>
+          <div class="target-meta">ACID RAIN & POOLS // CORROSIVE HAZARD</div>
+        </div>
+      `);
+    }
+
+    listEl.innerHTML = nodeHtml + faunaHtml + hazardCards.join('');
   }
 
   /**
@@ -933,10 +1314,12 @@ export class LanderController {
     const valFuel = document.getElementById('val-lander-fuel');
     const valCargo = document.getElementById('val-lander-cargo');
     const valBio = document.getElementById('val-lander-bio');
+    const valTemp = document.getElementById('val-lander-temp');
     const fillHull = document.getElementById('lander-hull-fill');
     const fillFuel = document.getElementById('lander-fuel-fill');
     const fillCargo = document.getElementById('lander-cargo-fill');
     const fillBio = document.getElementById('lander-bio-fill');
+    const fillTemp = document.getElementById('lander-temp-fill');
 
     if (valHull) valHull.textContent = `${Math.round(s.hull)}%`;
     if (valFuel) valFuel.textContent = `${Math.round(s.fuel)}%`;
@@ -946,10 +1329,29 @@ export class LanderController {
     const totalSpecimens = this.landerBioSamples.reduce((sum, b) => sum + b.quantity, 0);
     if (valBio) valBio.textContent = `${totalSpecimens} Specimens (${totalBioUnits} Units)`;
 
+    if (valTemp) {
+      const degC = Math.round(this.landerTemp * 3.2 + 24);
+      let statusStr = 'NOMINAL';
+      if (this.isLanderFlamedOut) statusStr = 'OVERHEAT // FLAMEOUT';
+      else if (this.landerTemp > 75) statusStr = 'CRITICAL HEAT';
+      else if (this.landerTemp > 45) statusStr = 'ELEVATED';
+
+      valTemp.textContent = `${degC}°C (${statusStr})`;
+    }
+
     if (fillHull) fillHull.style.width = `${Math.max(0, s.hull)}%`;
     if (fillFuel) fillFuel.style.width = `${Math.max(0, s.fuel)}%`;
     if (fillCargo) fillCargo.style.width = `${Math.min(100, (s.cargo / s.maxCargo) * 100)}%`;
     if (fillBio) fillBio.style.width = `${Math.min(100, (totalBioUnits / 100) * 100)}%`;
+
+    if (fillTemp) {
+      fillTemp.style.width = `${Math.min(100, Math.max(0, this.landerTemp))}%`;
+      if (this.landerTemp > 75 || this.isLanderFlamedOut) {
+        fillTemp.className = 'lander-bar-fill red';
+      } else {
+        fillTemp.className = 'lander-bar-fill orange';
+      }
+    }
   }
 
   /**
@@ -1031,6 +1433,92 @@ export class LanderController {
       ctx.strokeStyle = `rgba(56, 189, 248, ${wave.alpha * 0.3})`;
       ctx.lineWidth = 1;
       ctx.stroke();
+      ctx.restore();
+    });
+
+    // 4.1 Render Geological Hazards (Acid Pools & Lava Geysers)
+    this.landerAcidPools.forEach((pool) => {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(pool.x, pool.y, pool.radius, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(132, 204, 22, 0.28)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(163, 230, 53, 0.65)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // Popping chemical bubbles
+      const bTime = (Date.now() * 0.003) % (Math.PI * 2);
+      ctx.fillStyle = '#bef264';
+      ctx.beginPath();
+      ctx.arc(pool.x + Math.sin(bTime) * (pool.radius * 0.4), pool.y + Math.cos(bTime) * (pool.radius * 0.4), 2.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    });
+
+    this.landerLavaGeysers.forEach((geyser) => {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(geyser.x, geyser.y, geyser.radius * 0.55, 0, Math.PI * 2);
+      ctx.fillStyle = geyser.isErupting ? 'rgba(239, 68, 68, 0.65)' : 'rgba(180, 83, 9, 0.35)';
+      ctx.fill();
+      ctx.strokeStyle = geyser.isErupting ? '#f97316' : '#78350f';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Thermal Danger Perimeter
+      ctx.beginPath();
+      ctx.arc(geyser.x, geyser.y, geyser.radius, 0, Math.PI * 2);
+      ctx.strokeStyle = geyser.isErupting ? 'rgba(249, 115, 22, 0.5)' : 'rgba(249, 115, 22, 0.15)';
+      ctx.setLineDash([4, 4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    });
+
+    // 4.2 Render Atmospheric Weather Fronts (Caustic Mist & Ion Storms)
+    this.landerCausticMists.forEach((mist) => {
+      ctx.save();
+      ctx.beginPath();
+      ctx.ellipse(mist.x, mist.y, mist.radiusX, mist.radiusY, 0, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(132, 204, 22, 0.14)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(163, 230, 53, 0.25)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.restore();
+    });
+
+    this.landerIonStorms.forEach((storm) => {
+      ctx.save();
+      ctx.beginPath();
+      ctx.ellipse(storm.x, storm.y, storm.radiusX, storm.radiusY, 0, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(147, 51, 234, 0.22)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(192, 132, 252, 0.45)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // Atmospheric lightning arc
+      if (storm.isStriking) {
+        ctx.strokeStyle = '#38bdf8';
+        ctx.shadowColor = '#00f0ff';
+        ctx.shadowBlur = 14;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        let currX = storm.x;
+        let currY = storm.y;
+        ctx.moveTo(currX, currY);
+        const steps = 5;
+        const targetY = storm.y + storm.radiusY + 45;
+        const dy = (targetY - storm.y) / steps;
+        for (let sIdx = 1; sIdx <= steps; sIdx++) {
+          currX += (Math.random() - 0.5) * 26;
+          currY += dy;
+          ctx.lineTo(currX, currY);
+        }
+        ctx.stroke();
+      }
       ctx.restore();
     });
 
@@ -1308,12 +1796,19 @@ export class LanderController {
     }
     ctx.restore();
 
-    // 8. Topography Scanner HUD Coordinates
+    // 8. Topography Scanner HUD Coordinates & Hazard Telemetry
     ctx.save();
     ctx.fillStyle = 'rgba(0, 240, 255, 0.7)';
     ctx.font = '10px monospace';
     const hdgDeg = Math.round(((s.heading * 180) / Math.PI + 360) % 360);
     ctx.fillText(`HDG: ${hdgDeg}° // VEL: ${Math.hypot(s.vx, s.vy).toFixed(1)} m/s // TOPOGRAPHY MK-IV`, 16, 22);
+
+    if (this.isLanderFlamedOut) {
+      ctx.fillStyle = '#ef4444';
+      ctx.font = 'bold 11px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('⚠️ ENGINE FLAMEOUT // CORE TEMPERATURE CRITICAL // RESTARTING...', w / 2, 22);
+    }
     ctx.restore();
 
     // Restore shake translation

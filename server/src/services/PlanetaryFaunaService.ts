@@ -90,10 +90,20 @@ export class PlanetaryFaunaService {
       return { success: false, error: 'INSUFFICIENT_SHIP_FUEL: Lander deployment requires at least 1 unit of Deuterium Fuel.' };
     }
 
-    // 3. Get or initialize player's lander
-    let lander = await this.getOrCreateActiveLander(accountId);
-    if (lander.hull <= 0) {
-      return { success: false, error: 'LANDER_DAMAGED: Surface lander chassis is breached. Repairs required at spaceport.' };
+    // 3. Get or verify player's active lander
+    let lander = await this.getActiveLander(accountId);
+    if (!lander) {
+      const { rows: anyLander } = await db.query<any>(`SELECT id FROM player_landers WHERE account_id = $1 LIMIT 1`, [accountId]);
+      if (anyLander.length === 0) {
+        lander = await this.getOrCreateActiveLander(accountId);
+      }
+    }
+
+    if (!lander || lander.hull <= 0 || !lander.is_active) {
+      return {
+        success: false,
+        error: 'NO_ACTIVE_LANDER: Surface lander chassis is destroyed or missing. Purchase a replacement or claim an emergency loaner at a spaceport.',
+      };
     }
 
     const fauna = await this.getPlanetFauna(planetId);
@@ -113,6 +123,7 @@ export class PlanetaryFaunaService {
           fuel: lander.fuel,
           maxFuel: lander.max_fuel,
           cargoCapacity: lander.cargo_capacity,
+          fittedModules: lander.fitted_modules || {},
         },
         fauna,
         deployedAt: new Date().toISOString(),
@@ -126,7 +137,7 @@ export class PlanetaryFaunaService {
   public async recoverLander(
     planetId: string,
     payload: LanderRecoveryPayload
-  ): Promise<{ success: boolean; totalMinerals: number; totalBioUnits: number; recoveredCommodities: any[]; error?: string }> {
+  ): Promise<{ success: boolean; status?: string; totalMinerals: number; totalBioUnits: number; recoveredCommodities: any[]; error?: string }> {
     const { accountId, mineralsHarvested, bioSamplesHarvested, hullRemaining, fuelRemaining } = payload;
 
     // 1. Retrieve ship
@@ -135,6 +146,24 @@ export class PlanetaryFaunaService {
       return { success: false, totalMinerals: 0, totalBioUnits: 0, recoveredCommodities: [], error: 'Ship not found for account.' };
     }
     const ship = sRows[0];
+
+    // 2. Check if lander suffered total hull failure on surface
+    if (hullRemaining <= 0) {
+      await db.query(
+        `UPDATE player_landers
+         SET hull = 0, is_active = FALSE, status = 'DESTROYED'
+         WHERE account_id = $1 AND is_active = TRUE`,
+        [accountId]
+      );
+
+      return {
+        success: true,
+        status: 'LANDER_DESTROYED',
+        totalMinerals: 0,
+        totalBioUnits: 0,
+        recoveredCommodities: [],
+      };
+    }
 
     // 2. Update lander hull and fuel
     await db.query(
@@ -199,6 +228,31 @@ export class PlanetaryFaunaService {
       totalMinerals,
       totalBioUnits,
       recoveredCommodities,
+    };
+  }
+
+  /**
+   * Retrieves active lander for an account without auto-creating a new one
+   */
+  public async getActiveLander(accountId: string): Promise<PlayerLander | null> {
+    const { rows } = await db.query<any>(
+      `SELECT * FROM player_landers WHERE account_id = $1 AND is_active = TRUE LIMIT 1`,
+      [accountId]
+    );
+
+    if (rows.length === 0) return null;
+    const r = rows[0];
+    return {
+      id: r.id,
+      account_id: r.account_id,
+      name: r.name,
+      hull: r.hull,
+      max_hull: r.max_hull,
+      fuel: parseFloat(r.fuel),
+      max_fuel: parseFloat(r.max_fuel),
+      cargo_capacity: r.cargo_capacity,
+      fitted_modules: typeof r.fitted_modules === 'string' ? JSON.parse(r.fitted_modules) : (r.fitted_modules || {}),
+      is_active: r.is_active,
     };
   }
 
