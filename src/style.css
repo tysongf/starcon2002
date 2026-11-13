@@ -5838,6 +5838,11 @@ kbd {
   box-shadow: 0 0 8px rgba(251, 191, 36, 0.6);
 }
 
+.lander-bar-fill.purple {
+  background: linear-gradient(90deg, #9333ea, #c084fc);
+  box-shadow: 0 0 8px rgba(192, 132, 252, 0.6);
+}
+
 /* Lander Radar Targets */
 .lander-radar-section {
   display: flex;
@@ -5889,6 +5894,29 @@ kbd {
   border-left-color: #fbbf24;
   color: #fbbf24;
   font-weight: 700;
+}
+
+.target-card-item.fauna {
+  border-left-color: #c084fc;
+}
+
+.target-card-item.fauna.carnivore {
+  border-left-color: #f87171;
+}
+
+.target-card-item.fauna.stunned {
+  border-left-color: #38bdf8;
+  animation: pulse-border-cyan 1.5s infinite alternate;
+}
+
+.target-card-item.fauna.collected {
+  opacity: 0.45;
+  border-left-color: #64748b;
+}
+
+@keyframes pulse-border-cyan {
+  from { box-shadow: 0 0 4px rgba(56, 189, 248, 0.3); }
+  to { box-shadow: 0 0 12px rgba(56, 189, 248, 0.7); }
 }
 
 /* Megastructure Docking Banner */

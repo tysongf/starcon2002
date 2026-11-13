@@ -39,6 +39,13 @@ export const COMMODITIES: Record<string, CommodityDef> = {
     category: 'MANUFACTURED',
     description: 'High-tensile structural plating forged in industrial smelters.',
   },
+  COMM_BIO_SPECIMENS: {
+    id: 'COMM_BIO_SPECIMENS',
+    name: 'Alien Biological Specimens',
+    basePrice: 95,
+    category: 'RAW_MATERIAL',
+    description: 'Cryogenically preserved indigenous alien biological lifeforms harvested from planetary biomes.',
+  },
 };
 
 export interface MarketItem {

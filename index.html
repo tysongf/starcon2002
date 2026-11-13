@@ -1258,7 +1258,7 @@
           <div class="lander-canvas-wrapper">
             <canvas id="surface-lander-canvas" width="760" height="480"></canvas>
             <div class="lander-canvas-overlay">
-              <span>CONTROLS: [W][A][S][D] / ARROWS THRUSTERS // [SPACE] SEISMIC RADAR PING</span>
+              <span>CONTROLS: [W][A][S][D] / ARROWS THRUSTERS // [SPACE] / CLICK STUN BLASTER // [R] SEISMIC RADAR</span>
             </div>
           </div>
 
@@ -1294,13 +1294,23 @@
               </div>
             </div>
 
+            <div class="lander-metric-card">
+              <div class="metric-label-row">
+                <span>BIO-CONTAINMENT</span>
+                <strong id="val-lander-bio">0 Specimens (0 Units)</strong>
+              </div>
+              <div class="lander-bar-track">
+                <div class="lander-bar-fill purple" id="lander-bio-fill" style="width: 0%;"></div>
+              </div>
+            </div>
+
             <div class="lander-radar-section">
               <div class="radar-header">
-                <span>SEISMIC RADAR TELEMETRY</span>
-                <span class="radar-status-blip" id="lander-radar-status">READY [SPACE]</span>
+                <span>SEISMIC & BIOLOGICAL SENSORS</span>
+                <span class="radar-status-blip" id="lander-radar-status">READY [R]</span>
               </div>
               <div class="lander-targets-list" id="lander-targets-list">
-                <div class="target-card-item">Press [SPACE] to broadcast seismic pulse and detect surface deposits.</div>
+                <div class="target-card-item">Press [R] to broadcast seismic pulse and detect surface deposits & fauna.</div>
               </div>
             </div>
 

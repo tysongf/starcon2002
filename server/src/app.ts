@@ -17,6 +17,7 @@ import { surveyRoutes } from './routes/surveyRoutes';
 import { colonyRoutes } from './routes/colonyRoutes';
 import { precursorRoutes } from './routes/precursorRoutes';
 import { convoyRoutes } from './routes/convoyRoutes';
+import { faunaRoutes } from './routes/faunaRoutes';
 
 export async function buildApp(options: FastifyServerOptions = {}): Promise<FastifyInstance> {
   const startTime = Date.now();
@@ -98,6 +99,7 @@ export async function buildApp(options: FastifyServerOptions = {}): Promise<Fast
   await server.register(colonyRoutes);
   await server.register(precursorRoutes, { prefix: '/api/precursor' });
   await server.register(convoyRoutes, { prefix: '/api/convoys' });
+  await server.register(faunaRoutes, { prefix: '/api/planets' });
 
   return server;
 }
