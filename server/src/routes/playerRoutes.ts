@@ -192,6 +192,26 @@ export const playerRoutes: FastifyPluginAsync = async (server) => {
       await db.query(`UPDATE player_inventory SET is_fitted = true, fit_slot = 'L1' WHERE id = 'a1b2c3d4-e5f6-7890-abcd-555555555555' AND account_id = $1`, [accountId]);
       await db.query(`UPDATE player_inventory SET is_fitted = true, fit_slot = 'L2' WHERE id = 'a1b2c3d4-e5f6-7890-abcd-666666666666' AND account_id = $1`, [accountId]);
       await db.query(`UPDATE player_inventory SET is_fitted = false, fit_slot = NULL WHERE id IN ('a1b2c3d4-e5f6-7890-abcd-777777777777', 'a1b2c3d4-e5f6-7890-abcd-888888888888') AND account_id = $1`, [accountId]);
+      await db.query(`
+        INSERT INTO port_inventory (port_id, commodity_id, stock, demand, capacity, buy_price, sell_price)
+        VALUES 
+          ('PORT_AEGIS_01', 'COMM_FUEL', 2450, 500, 4000, 24.5, 26.2),
+          ('PORT_AEGIS_01', 'COMM_RATIONS', 1200, 600, 2000, 38.0, 41.5),
+          ('PORT_AEGIS_01', 'COMM_ORE', 400, 1800, 2500, 62.0, 68.0),
+          ('PORT_AEGIS_01', 'COMM_ALLOY', 450, 900, 1500, 152.0, 160.0),
+          ('PORT_AEGIS_01', 'COMM_BIO_SPECIMENS', 35, 120, 300, 75.0, 78.0),
+          ('PORT_SMELTER_01', 'COMM_FUEL', 750, 1200, 2500, 32.0, 35.0),
+          ('PORT_SMELTER_01', 'COMM_RATIONS', 550, 1400, 2000, 52.0, 56.5),
+          ('PORT_SMELTER_01', 'COMM_ORE', 2300, 300, 4000, 35.0, 38.0),
+          ('PORT_SMELTER_01', 'COMM_ALLOY', 1250, 400, 2500, 115.0, 122.0),
+          ('PORT_SMELTER_01', 'COMM_BIO_SPECIMENS', 20, 150, 400, 89.0, 92.0)
+        ON CONFLICT (port_id, commodity_id) DO UPDATE SET 
+          stock = EXCLUDED.stock,
+          demand = EXCLUDED.demand,
+          capacity = EXCLUDED.capacity,
+          buy_price = EXCLUDED.buy_price,
+          sell_price = EXCLUDED.sell_price
+      `);
       reply.send({ success: true, message: 'Pilot reset to fresh-start baseline.' });
     } catch (err: any) {
       reply.status(500).send({ success: false, error: err.message });
