@@ -50,7 +50,7 @@ export interface SectorLootContainer {
 
 export interface SectorEntity {
   id: string;
-  type: 'PLAYER' | 'DRONE' | 'WRECK' | 'CARGO_CRATE' | 'SCAVENGER';
+  type: 'PLAYER' | 'DRONE' | 'WRECK' | 'CARGO_CRATE' | 'SCAVENGER' | 'HAULER';
   factionId: string;
   name: string;
   hullClass: string;
@@ -93,6 +93,16 @@ export interface SectorEntity {
   towedWreckId?: string | null;
   miningWreckId?: string | null;
   miningTimer?: number;
+  // Day 23 Faction Convoys, Formation AI & Warp Spooling
+  isConvoyHauler?: boolean;
+  convoyId?: string;
+  escortIds?: string[];
+  leaderId?: string;
+  formationOffset?: { x: number; z: number };
+  warpChargeRemaining?: number;
+  isWarpSpooling?: boolean;
+  isWarpInterrupted?: boolean;
+  cargoManifest?: any[];
 }
 
 export interface Projectile {
@@ -109,7 +119,7 @@ export interface Projectile {
 }
 
 export interface CombatEvent {
-  type: 'HIT' | 'SHIELD_BREAK' | 'DESTROYED' | 'LOOT_SPAWNED' | 'LOOT_COLLECTED' | 'POD_EJECTED' | 'CONTAINER_SCOOPED' | 'WRECK_SPAWNED' | 'TOW_ATTACHED' | 'TOW_RELEASED' | 'SALVAGE_BEAM_TICK' | 'WRECK_DISINTEGRATED' | 'TRUCE_DECLARED' | 'TRUCE_BROKEN' | 'LIFE_SUPPORT_EXHAUSTED';
+  type: 'HIT' | 'SHIELD_BREAK' | 'DESTROYED' | 'LOOT_SPAWNED' | 'LOOT_COLLECTED' | 'POD_EJECTED' | 'CONTAINER_SCOOPED' | 'WRECK_SPAWNED' | 'TOW_ATTACHED' | 'TOW_RELEASED' | 'SALVAGE_BEAM_TICK' | 'WRECK_DISINTEGRATED' | 'TRUCE_DECLARED' | 'TRUCE_BROKEN' | 'LIFE_SUPPORT_EXHAUSTED' | 'WARP_SPOOL_STARTED' | 'WARP_SPOOL_INTERRUPTED' | 'WARP_JUMP_SUCCESS';
 
   sourceId?: string;
   targetId?: string;
@@ -157,6 +167,25 @@ export interface SnapshotPayload {
     targetCanisterId?: string | null;
     towedWreckId?: string | null;
     isMiningWreckId?: string | null;
+    // Day 23 Convoy & Formation
+    isConvoyHauler?: boolean;
+    convoyId?: string;
+    leaderId?: string;
+    warpChargeRemaining?: number;
+    isWarpSpooling?: boolean;
+    isWarpInterrupted?: boolean;
+    cargoManifest?: any[];
+  }>;
+  convoys?: Array<{
+    convoyId: string;
+    name: string;
+    factionId: string;
+    haulerId: string;
+    escortIds: string[];
+    warpChargeRemaining: number;
+    isWarpSpooling: boolean;
+    isWarpInterrupted: boolean;
+    cargoManifest: any[];
   }>;
   projectiles: Array<{
     id: string;
@@ -238,8 +267,11 @@ export class SectorRoom {
   }
 
   constructor(sectorId: number) {
-
     this.sectorId = sectorId;
+    this.seedSectorEntities();
+  }
+
+  public reseedEntities(): void {
     this.seedSectorEntities();
   }
 
@@ -402,6 +434,242 @@ export class SectorRoom {
         isTowed: false,
         towedByAccountId: null,
       });
+
+      // Day 23: Spawn persistent Vaelic Imperial Tithe Convoy with 2 Escort Wingmen
+      this.entities.set('hauler_hegemony_tithe_01', {
+        id: 'hauler_hegemony_tithe_01',
+        type: 'HAULER',
+        factionId: 'FACTION_VAELIC',
+        name: 'Vaelic Imperial Tithe Carrier IX',
+        hullClass: 'HEGEMONY_TITHE_CARRIER',
+        hullSeed: 77123,
+        x: 15.0,
+        z: -35.0,
+        vx: 0,
+        vz: 3.0,
+        yaw: 0,
+        angularVelocity: 0,
+        hp: 300,
+        maxHp: 300,
+        shields: 200,
+        maxShields: 200,
+        energy: 200,
+        maxEnergy: 200,
+        powerGridMax: 220,
+        powerGridUsed: 140,
+        cpuMax: 300,
+        cpuUsed: 180,
+        state: 'PATROL',
+        inputs: {
+          forward: true,
+          reverse: false,
+          turnLeft: false,
+          turnRight: false,
+          brake: false,
+          firePrimary: false,
+          fireTactical: false,
+        },
+        lastHitTime: 0,
+        fireCooldown: 0,
+        isConvoyHauler: true,
+        convoyId: 'convoy_hegemony_tithe_01',
+        escortIds: ['escort_hegemony_01', 'escort_hegemony_02'],
+        warpChargeRemaining: 30.0,
+        isWarpSpooling: false,
+        isWarpInterrupted: false,
+        cargoManifest: [
+          { commodityId: 'COMM_ORE', name: 'Silicate Ore', quantity: 40, unitValue: 70 },
+          { commodityId: 'COMM_ALLOY', name: 'Plasteel Alloy', quantity: 25, unitValue: 150 },
+        ],
+      });
+
+      this.entities.set('escort_hegemony_01', {
+        id: 'escort_hegemony_01',
+        type: 'DRONE',
+        factionId: 'FACTION_VAELIC',
+        name: 'Vaelic Escort Alpha',
+        hullClass: 'HEGEMONY_INTERCEPTOR',
+        hullSeed: 88201,
+        x: 3.0,
+        z: -45.0,
+        vx: 0,
+        vz: 3.0,
+        yaw: 0,
+        angularVelocity: 0,
+        hp: 100,
+        maxHp: 100,
+        shields: 80,
+        maxShields: 80,
+        energy: 100,
+        maxEnergy: 100,
+        powerGridMax: 95,
+        powerGridUsed: 65,
+        cpuMax: 140,
+        cpuUsed: 90,
+        state: 'PATROL',
+        inputs: {
+          forward: false,
+          reverse: false,
+          turnLeft: false,
+          turnRight: false,
+          brake: false,
+          firePrimary: false,
+          fireTactical: false,
+        },
+        lastHitTime: 0,
+        fireCooldown: 0,
+        leaderId: 'hauler_hegemony_tithe_01',
+        formationOffset: { x: -12.0, z: -10.0 },
+      });
+
+      this.entities.set('escort_hegemony_02', {
+        id: 'escort_hegemony_02',
+        type: 'DRONE',
+        factionId: 'FACTION_VAELIC',
+        name: 'Vaelic Escort Beta',
+        hullClass: 'HEGEMONY_INTERCEPTOR',
+        hullSeed: 88202,
+        x: 27.0,
+        z: -45.0,
+        vx: 0,
+        vz: 3.0,
+        yaw: 0,
+        angularVelocity: 0,
+        hp: 100,
+        maxHp: 100,
+        shields: 80,
+        maxShields: 80,
+        energy: 100,
+        maxEnergy: 100,
+        powerGridMax: 95,
+        powerGridUsed: 65,
+        cpuMax: 140,
+        cpuUsed: 90,
+        state: 'PATROL',
+        inputs: {
+          forward: false,
+          reverse: false,
+          turnLeft: false,
+          turnRight: false,
+          brake: false,
+          firePrimary: false,
+          fireTactical: false,
+        },
+        lastHitTime: 0,
+        fireCooldown: 0,
+        leaderId: 'hauler_hegemony_tithe_01',
+        formationOffset: { x: 12.0, z: -10.0 },
+      });
+    } else if (this.sectorId === 1) {
+      // Day 23: Spawn Sol-Perimeter Bulk Freighter Atlas with 2 Escorts
+      this.entities.set('hauler_sol_freight_01', {
+        id: 'hauler_sol_freight_01',
+        type: 'HAULER',
+        factionId: 'FACTION_SOL',
+        name: 'Sol-Perimeter Bulk Freighter Atlas',
+        hullClass: 'SOL_HEAVY_FREIGHTER',
+        hullSeed: 66101,
+        x: -20.0,
+        z: 30.0,
+        vx: 0,
+        vz: 2.5,
+        yaw: 0,
+        angularVelocity: 0,
+        hp: 280,
+        maxHp: 280,
+        shields: 180,
+        maxShields: 180,
+        energy: 200,
+        maxEnergy: 200,
+        powerGridMax: 200,
+        powerGridUsed: 130,
+        cpuMax: 280,
+        cpuUsed: 160,
+        state: 'PATROL',
+        inputs: {
+          forward: true,
+          reverse: false,
+          turnLeft: false,
+          turnRight: false,
+          brake: false,
+          firePrimary: false,
+          fireTactical: false,
+        },
+        lastHitTime: 0,
+        fireCooldown: 0,
+        isConvoyHauler: true,
+        convoyId: 'convoy_sol_freight_01',
+        escortIds: ['escort_sol_01', 'escort_sol_02'],
+        warpChargeRemaining: 30.0,
+        isWarpSpooling: false,
+        isWarpInterrupted: false,
+        cargoManifest: [
+          { commodityId: 'COMM_RATIONS', name: 'Bio-Protein Rations', quantity: 50, unitValue: 35 },
+          { commodityId: 'COMM_FUEL', name: 'Deuterium Fuel', quantity: 30, unitValue: 20 },
+        ],
+      });
+
+      this.entities.set('escort_sol_01', {
+        id: 'escort_sol_01',
+        type: 'DRONE',
+        factionId: 'FACTION_SOL',
+        name: 'Sol Escort Shield-1',
+        hullClass: 'SOL_INTERCEPTOR',
+        hullSeed: 55101,
+        x: -30.0,
+        z: 20.0,
+        vx: 0,
+        vz: 2.5,
+        yaw: 0,
+        angularVelocity: 0,
+        hp: 110,
+        maxHp: 110,
+        shields: 90,
+        maxShields: 90,
+        energy: 100,
+        maxEnergy: 100,
+        powerGridMax: 100,
+        powerGridUsed: 70,
+        cpuMax: 150,
+        cpuUsed: 100,
+        state: 'PATROL',
+        inputs: { forward: false, reverse: false, turnLeft: false, turnRight: false, brake: false, firePrimary: false, fireTactical: false },
+        lastHitTime: 0,
+        fireCooldown: 0,
+        leaderId: 'hauler_sol_freight_01',
+        formationOffset: { x: -10.0, z: -10.0 },
+      });
+
+      this.entities.set('escort_sol_02', {
+        id: 'escort_sol_02',
+        type: 'DRONE',
+        factionId: 'FACTION_SOL',
+        name: 'Sol Escort Shield-2',
+        hullClass: 'SOL_INTERCEPTOR',
+        hullSeed: 55102,
+        x: -10.0,
+        z: 20.0,
+        vx: 0,
+        vz: 2.5,
+        yaw: 0,
+        angularVelocity: 0,
+        hp: 110,
+        maxHp: 110,
+        shields: 90,
+        maxShields: 90,
+        energy: 100,
+        maxEnergy: 100,
+        powerGridMax: 100,
+        powerGridUsed: 70,
+        cpuMax: 150,
+        cpuUsed: 100,
+        state: 'PATROL',
+        inputs: { forward: false, reverse: false, turnLeft: false, turnRight: false, brake: false, firePrimary: false, fireTactical: false },
+        lastHitTime: 0,
+        fireCooldown: 0,
+        leaderId: 'hauler_sol_freight_01',
+        formationOffset: { x: 10.0, z: -10.0 },
+      });
     }
   }
 
@@ -488,14 +756,15 @@ export class SectorRoom {
   /**
    * 20Hz Kinematic, AI & Combat Tick
    */
-  public tick(): void {
+  public tick(customDt?: number): void {
     const now = Date.now();
-    const dt = Math.min((now - this.lastTickTimestamp) / 1000, 0.1); // Clamp max dt to 100ms
+    const dt = typeof customDt === 'number' ? customDt : Math.min((now - this.lastTickTimestamp) / 1000, 0.1); // Clamp max dt to 100ms
     this.lastTickTimestamp = now;
     this.tickCount++;
 
-    // 1. Process Drone & Scavenger AI
+    // 1. Process Drone, Hauler & Scavenger AI
     this.processDroneAI(dt);
+    this.processHaulerAI(dt);
     this.processScavengerAI(dt);
 
     // 2. Integrate Kinematics for all living vessels
@@ -724,9 +993,9 @@ export class SectorRoom {
 
   private integrateEntityPhysics(entity: SectorEntity, dt: number, now: number): void {
     const isEscapePod = entity.isEscapePod || entity.hullClass === 'ESCAPE_POD';
-    let accel = isEscapePod ? 8.0 : entity.type === 'DRONE' ? 18.0 : entity.type === 'SCAVENGER' ? 14.0 : 22.0;
-    const turnAccel = isEscapePod ? 2.0 : entity.type === 'SCAVENGER' ? 2.8 : 3.6;
-    let maxSpeed = isEscapePod ? 13.0 : entity.type === 'DRONE' ? 24.0 : entity.type === 'SCAVENGER' ? 18.0 : 28.0;
+    let accel = isEscapePod ? 8.0 : entity.type === 'HAULER' ? 6.0 : entity.type === 'DRONE' ? 18.0 : entity.type === 'SCAVENGER' ? 14.0 : 22.0;
+    const turnAccel = isEscapePod ? 2.0 : entity.type === 'HAULER' ? 1.4 : entity.type === 'SCAVENGER' ? 2.8 : 3.6;
+    let maxSpeed = isEscapePod ? 13.0 : entity.type === 'HAULER' ? 10.0 : entity.type === 'DRONE' ? 24.0 : entity.type === 'SCAVENGER' ? 18.0 : 28.0;
 
     // Day 14: Emergency Life Support countdown for Escape Pods
     if (isEscapePod && typeof entity.lifeSupportSeconds === 'number') {
@@ -829,6 +1098,45 @@ export class SectorRoom {
     for (const drone of this.entities.values()) {
       if (drone.type !== 'DRONE' || drone.state === 'DESTROYED') continue;
 
+      // Day 23: Escort Wingman Formation AI
+      if (drone.leaderId) {
+        const leader = this.entities.get(drone.leaderId);
+        if (leader && leader.state !== 'DESTROYED') {
+          // If in TRUCE or PATROL (and not actively provoked), fly in formation alongside leader!
+          if (hasTruce || (drone.state !== 'ENGAGE' && (!targetPlayer || minDistance >= 50.0))) {
+            drone.state = hasTruce ? 'TRUCE' : 'PATROL';
+            drone.inputs.firePrimary = false;
+            drone.inputs.fireTactical = false;
+
+            const offset = drone.formationOffset || { x: 0, z: -10 };
+            const cosY = Math.cos(leader.yaw);
+            const sinY = Math.sin(leader.yaw);
+            const targetX = leader.x + (offset.x * cosY + offset.z * sinY);
+            const targetZ = leader.z + (-offset.x * sinY + offset.z * cosY);
+
+            const dx = targetX - drone.x;
+            const dz = targetZ - drone.z;
+            const dist = Math.sqrt(dx * dx + dz * dz);
+            const desiredYaw = Math.atan2(dx, dz);
+
+            let yawDiff = desiredYaw - drone.yaw;
+            while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
+            while (yawDiff > Math.PI) yawDiff -= Math.PI * 2;
+
+            drone.inputs.turnLeft = yawDiff > 0.12;
+            drone.inputs.turnRight = yawDiff < -0.12;
+            drone.inputs.forward = dist > 1.8;
+            drone.inputs.brake = dist <= 1.2;
+
+            if (dist < 3.5) {
+              drone.vx = leader.vx;
+              drone.vz = leader.vz;
+            }
+            continue;
+          }
+        }
+      }
+
       if (hasTruce) {
         // TRUCE MODE: Stand down weapons, display non-aggression transponder & passive patrol
         drone.state = 'TRUCE';
@@ -926,6 +1234,48 @@ export class SectorRoom {
         drone.inputs.forward = true;
         drone.inputs.brake = false;
       }
+    }
+  }
+
+  private processHaulerAI(dt: number): void {
+    for (const hauler of this.entities.values()) {
+      if (!hauler.isConvoyHauler || hauler.state === 'DESTROYED') continue;
+
+      // Warp spooling logic
+      if (hauler.isWarpSpooling) {
+        // Disruption check: if shields drop below 15%
+        if (hauler.shields <= hauler.maxShields * 0.15) {
+          if (!hauler.isWarpInterrupted) {
+            hauler.isWarpInterrupted = true;
+            this.pendingEvents.push({
+              type: 'WARP_SPOOL_INTERRUPTED',
+              targetId: hauler.id,
+              x: hauler.x,
+              z: hauler.z,
+            });
+          }
+        }
+
+        if (!hauler.isWarpInterrupted && typeof hauler.warpChargeRemaining === 'number') {
+          hauler.warpChargeRemaining = Math.max(0, hauler.warpChargeRemaining - dt);
+          if (hauler.warpChargeRemaining <= 0) {
+            // Warp jump successful! Despawn via warp escape
+            hauler.state = 'DESTROYED';
+            this.pendingEvents.push({
+              type: 'WARP_JUMP_SUCCESS',
+              targetId: hauler.id,
+              x: hauler.x,
+              z: hauler.z,
+            });
+          }
+        }
+      }
+
+      // Gentle forward cruise along flight corridor
+      hauler.inputs.forward = true;
+      hauler.inputs.brake = false;
+      hauler.inputs.turnLeft = false;
+      hauler.inputs.turnRight = false;
     }
   }
 
@@ -1126,7 +1476,7 @@ export class SectorRoom {
         const dx = entity.x - proj.x;
         const dz = entity.z - proj.z;
         const distSq = dx * dx + dz * dz;
-        const hitRadius = entity.hullClass === 'ESCAPE_POD' ? 2.0 : 3.8;
+        const hitRadius = entity.hullClass === 'ESCAPE_POD' ? 2.0 : entity.type === 'HAULER' ? 6.5 : 3.8;
 
         if (distSq < hitRadius * hitRadius) {
           hit = true;
@@ -1198,6 +1548,53 @@ export class SectorRoom {
         x: target.x,
         z: target.z,
       });
+    }
+
+    // Day 23: Convoy Hauler & Escort reactive combat behavior
+    if (target.isConvoyHauler) {
+      if (!target.isWarpSpooling) {
+        target.isWarpSpooling = true;
+        this.pendingEvents.push({
+          type: 'WARP_SPOOL_STARTED',
+          targetId: target.id,
+          x: target.x,
+          z: target.z,
+          data: { warpChargeRemaining: target.warpChargeRemaining },
+        });
+      }
+      // Check if shields dropped below 15% threshold -> disrupts warp drive
+      if (target.shields <= target.maxShields * 0.15 && !target.isWarpInterrupted) {
+        target.isWarpInterrupted = true;
+        this.pendingEvents.push({
+          type: 'WARP_SPOOL_INTERRUPTED',
+          targetId: target.id,
+          x: target.x,
+          z: target.z,
+        });
+      }
+      // Alert escorts to engage attacker
+      if (target.escortIds) {
+        for (const escId of target.escortIds) {
+          const escort = this.entities.get(escId);
+          if (escort && escort.state !== 'DESTROYED') {
+            escort.state = 'ENGAGE';
+          }
+        }
+      }
+    } else if (target.leaderId) {
+      // An escort was attacked -> alert hauler leader to start warp spooling
+      const leader = this.entities.get(target.leaderId);
+      if (leader && leader.isConvoyHauler && !leader.isWarpSpooling) {
+        leader.isWarpSpooling = true;
+        this.pendingEvents.push({
+          type: 'WARP_SPOOL_STARTED',
+          targetId: leader.id,
+          x: leader.x,
+          z: leader.z,
+          data: { warpChargeRemaining: leader.warpChargeRemaining },
+        });
+      }
+      target.state = 'ENGAGE';
     }
 
     // Check Destruction
@@ -1485,7 +1882,28 @@ export class SectorRoom {
         // Day 15 Towing & Salvage Mining
         towedWreckId: e.towedWreckId || null,
         isMiningWreckId: e.miningWreckId || null,
+        // Day 23 Convoy & Formation
+        isConvoyHauler: e.isConvoyHauler,
+        convoyId: e.convoyId,
+        leaderId: e.leaderId,
+        warpChargeRemaining: typeof e.warpChargeRemaining === 'number' ? Math.round(e.warpChargeRemaining * 10) / 10 : undefined,
+        isWarpSpooling: e.isWarpSpooling,
+        isWarpInterrupted: e.isWarpInterrupted,
+        cargoManifest: e.cargoManifest,
       })),
+      convoys: Array.from(this.entities.values())
+        .filter((e) => e.isConvoyHauler && e.state !== 'DESTROYED')
+        .map((h) => ({
+          convoyId: h.convoyId || h.id,
+          name: h.name,
+          factionId: h.factionId,
+          haulerId: h.id,
+          escortIds: h.escortIds || [],
+          warpChargeRemaining: typeof h.warpChargeRemaining === 'number' ? Math.round(h.warpChargeRemaining * 10) / 10 : 30,
+          isWarpSpooling: !!h.isWarpSpooling,
+          isWarpInterrupted: !!h.isWarpInterrupted,
+          cargoManifest: h.cargoManifest || [],
+        })),
       projectiles: this.projectiles.map((p) => ({
         id: p.id,
         ownerId: p.ownerId,
@@ -1581,6 +1999,13 @@ export class SectorCombatManager {
     const room = this.rooms.get(sectorId);
     if (room) {
       room.setTruce(playerId, factionId, durationMs);
+    }
+  }
+
+  public reseedSector(sectorId: number): void {
+    const room = this.rooms.get(sectorId);
+    if (room) {
+      room.reseedEntities();
     }
   }
 

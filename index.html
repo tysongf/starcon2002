@@ -256,6 +256,19 @@
             <span class="bar-val" id="target-hull-val">50/50</span>
           </div>
         </div>
+        <!-- Day 23: Convoy Telemetry (Warp Spooling & Cargo Scan Preview) -->
+        <div id="target-convoy-hud" class="target-convoy-hud hidden">
+          <div class="convoy-warp-row">
+            <span class="convoy-warp-badge" id="convoy-warp-badge">⚡ WARP DRIVE: STANDBY</span>
+            <div class="convoy-warp-bar-wrap">
+              <div class="convoy-warp-bar-fill" id="convoy-warp-bar-fill" style="width: 100%;"></div>
+            </div>
+          </div>
+          <div class="convoy-cargo-scan" id="convoy-cargo-scan">
+            <div class="cargo-scan-header">📦 CARGO MANIFEST PREVIEW:</div>
+            <div class="cargo-scan-items" id="convoy-cargo-items">SCANNING...</div>
+          </div>
+        </div>
         <!-- Target Interaction Quick-Actions (Day 15 Wrecks & Day 16 Comms) -->
         <div id="target-quick-actions" class="target-quick-actions hidden">
           <button id="btn-hud-salvage-beam" class="target-action-btn beam-btn">⚡ SALVAGE BEAM [E]</button>
@@ -387,6 +400,7 @@
             <div class="reticle-bar-wrap"><div class="reticle-bar-fill hull" id="reticle-hull-fill"></div></div>
           </div>
           <span class="reticle-range" id="reticle-range">RANGE: 42u</span>
+          <div id="reticle-warp-badge" class="reticle-warp-badge hidden">⚡ WARP: 30.0s</div>
         </div>
       </div>
     </div>

@@ -56,6 +56,7 @@ export class CombatClient {
   // Targeting & Reticle
   public primaryDroneTarget: {
     id: string;
+    type?: string;
     x: number;
     z: number;
     hp: number;
@@ -64,6 +65,13 @@ export class CombatClient {
     maxShields: number;
     name: string;
     faction?: string;
+    factionId?: string;
+    isConvoyHauler?: boolean;
+    convoyId?: string;
+    warpChargeRemaining?: number;
+    isWarpSpooling?: boolean;
+    isWarpInterrupted?: boolean;
+    cargoManifest?: any[];
   } | null = null;
   public availableDrones: any[] = [];
   public targetLockIndex: number = 0;
@@ -75,6 +83,8 @@ export class CombatClient {
   // Meshes & Entities
   public droneMeshes: Map<string, THREE.Mesh> = new Map();
   public droneShieldBubbles: Map<string, ShieldBubble> = new Map();
+  public haulerMeshes: Map<string, THREE.Group> = new Map();
+  public haulerShieldBubbles: Map<string, ShieldBubble> = new Map();
   public projectileMeshes: Map<string, THREE.Mesh> = new Map();
   public containerMeshes: Map<string, THREE.Group> = new Map();
   public activeLootContainers: Map<string, any> = new Map();
@@ -143,6 +153,12 @@ export class CombatClient {
   private elTargetShieldVal: HTMLElement | null = null;
   private elTargetHullBar: HTMLElement | null = null;
   private elTargetHullVal: HTMLElement | null = null;
+  // Day 23 Convoy & Tactical Reticle
+  private elTargetConvoyHud: HTMLElement | null = null;
+  private elConvoyWarpBadge: HTMLElement | null = null;
+  private elConvoyWarpBarFill: HTMLElement | null = null;
+  private elConvoyCargoItems: HTMLElement | null = null;
+  private elReticleWarpBadge: HTMLElement | null = null;
 
   private elTargetQuickActions: HTMLElement | null = null;
   private btnHudSalvageBeam: HTMLElement | null = null;
@@ -214,11 +230,12 @@ export class CombatClient {
     this.elTelemetryEnergy = document.getElementById('val-telemetry-energy');
     this.elTelemetryCombat = document.getElementById('val-telemetry-combat');
 
-    this.elTacticalReticle = document.getElementById('tactical-reticle');
+    this.elTacticalReticle = document.getElementById('tactical-target-reticle') || document.getElementById('tactical-reticle');
     this.elReticleName = document.getElementById('reticle-name');
     this.elReticleShieldFill = document.getElementById('reticle-shield-fill');
     this.elReticleHullFill = document.getElementById('reticle-hull-fill');
     this.elReticleRange = document.getElementById('reticle-range');
+    this.elReticleWarpBadge = document.getElementById('reticle-warp-badge');
 
     this.elVitalShieldBar = document.getElementById('vital-shield-bar');
     this.elVitalShieldText = document.getElementById('vital-shield-text');
@@ -240,6 +257,11 @@ export class CombatClient {
     this.elTargetShieldVal = document.getElementById('target-shield-val');
     this.elTargetHullBar = document.getElementById('target-hull-bar');
     this.elTargetHullVal = document.getElementById('target-hull-val');
+
+    this.elTargetConvoyHud = document.getElementById('target-convoy-hud');
+    this.elConvoyWarpBadge = document.getElementById('convoy-warp-badge');
+    this.elConvoyWarpBarFill = document.getElementById('convoy-warp-bar-fill');
+    this.elConvoyCargoItems = document.getElementById('convoy-cargo-items');
 
     this.elTargetQuickActions = document.getElementById('target-quick-actions');
     this.btnHudSalvageBeam = document.getElementById('btn-hud-salvage-beam');
@@ -339,6 +361,25 @@ export class CombatClient {
       mesh.geometry.dispose();
     }
     this.droneMeshes.clear();
+    for (const sb of this.droneShieldBubbles.values()) {
+      scene.remove(sb.mesh);
+      sb.dispose();
+    }
+    this.droneShieldBubbles.clear();
+
+    // Clean up old hauler meshes & shield bubbles
+    for (const hGroup of this.haulerMeshes.values()) {
+      scene.remove(hGroup);
+      hGroup.traverse((child) => {
+        if ((child as THREE.Mesh).geometry) (child as THREE.Mesh).geometry.dispose();
+      });
+    }
+    this.haulerMeshes.clear();
+    for (const sb of this.haulerShieldBubbles.values()) {
+      scene.remove(sb.mesh);
+      sb.dispose();
+    }
+    this.haulerShieldBubbles.clear();
 
     for (const pMesh of this.projectileMeshes.values()) {
       scene.remove(pMesh);
@@ -519,7 +560,6 @@ export class CombatClient {
     // 2. Drone Mesh & Forcefield Shield Bubble Synchronization
     const drones = snapshot.entities.filter((e: any) => e.type === 'DRONE' && e.state !== 'DESTROYED');
     const droneIds = new Set(drones.map((d: any) => d.id));
-    this.availableDrones = drones;
 
     // Remove defunct meshes & shield bubbles
     for (const [id, mesh] of this.droneMeshes.entries()) {
@@ -587,15 +627,71 @@ export class CombatClient {
       }
     }
 
-    // Set targeted drone
-    if (drones.length > 0) {
-      if (this.targetLockIndex >= drones.length) this.targetLockIndex = 0;
-      this.primaryDroneTarget = drones[this.targetLockIndex] || nearestDrone;
+    // 2b. Day 23: Convoy Bulk Hauler Synchronization
+    const haulers = snapshot.entities.filter((e: any) => (e.type === 'HAULER' || e.isConvoyHauler) && e.state !== 'DESTROYED');
+    const haulerIds = new Set(haulers.map((h: any) => h.id));
+
+    for (const [id, hGroup] of this.haulerMeshes.entries()) {
+      if (!haulerIds.has(id)) {
+        scene.remove(hGroup);
+        hGroup.traverse((c) => {
+          if ((c as THREE.Mesh).geometry) (c as THREE.Mesh).geometry.dispose();
+        });
+        this.haulerMeshes.delete(id);
+      }
+    }
+    for (const [id, sb] of this.haulerShieldBubbles.entries()) {
+      if (!haulerIds.has(id)) {
+        scene.remove(sb.mesh);
+        sb.dispose();
+        this.haulerShieldBubbles.delete(id);
+      }
+    }
+
+    let nearestHauler: any = null;
+    let minHaulerDist = Infinity;
+
+    for (const hauler of haulers) {
+      let hGroup = this.haulerMeshes.get(hauler.id);
+      if (!hGroup) {
+        hGroup = this.createHaulerMesh(hauler.factionId);
+        scene.add(hGroup);
+        this.haulerMeshes.set(hauler.id, hGroup);
+      }
+
+      hGroup.position.x = hGroup.position.x + (hauler.x - hGroup.position.x) * 0.45;
+      hGroup.position.z = hGroup.position.z + (hauler.z - hGroup.position.z) * 0.45;
+      hGroup.rotation.y = hauler.yaw;
+
+      // Hauler shield bubble (larger radius 7.5u)
+      let sb = this.haulerShieldBubbles.get(hauler.id);
+      if (!sb) {
+        sb = new ShieldBubble(7.5, true);
+        scene.add(sb.mesh);
+        this.haulerShieldBubbles.set(hauler.id, sb);
+      }
+      sb.update(0.05, hGroup.position, hauler.shields, hauler.maxShields);
+
+      const pPos = flightController.position;
+      const dist = Math.sqrt((hauler.x - pPos.x) ** 2 + (hauler.z - pPos.z) ** 2);
+      if (dist < minHaulerDist) {
+        minHaulerDist = dist;
+        nearestHauler = hauler;
+      }
+    }
+
+    // Combined target selection (drones and haulers)
+    const combatTargets = [...drones, ...haulers];
+    this.availableDrones = combatTargets;
+
+    if (combatTargets.length > 0) {
+      if (this.targetLockIndex >= combatTargets.length) this.targetLockIndex = 0;
+      this.primaryDroneTarget = combatTargets[this.targetLockIndex] || (minHaulerDist < minDroneDist ? nearestHauler : nearestDrone);
     } else {
       this.primaryDroneTarget = null;
     }
 
-    // 2b. Scavenger Vessel Synchronization
+    // 2c. Scavenger Vessel Synchronization
     const scavengers = snapshot.entities.filter((e: any) => e.type === 'SCAVENGER' && e.state !== 'DESTROYED');
     const scavengerIds = new Set(scavengers.map((s: any) => s.id));
 
@@ -623,8 +719,9 @@ export class CombatClient {
     }
 
     if (this.elTelemetryCombat) {
-      if (drones.length > 0) {
-        this.elTelemetryCombat.textContent = `ALERT: ${drones.length} HOSTILE`;
+      if (drones.length > 0 || haulers.length > 0) {
+        const convoySuffix = haulers.length > 0 ? ` [${haulers.length} CONVOY]` : '';
+        this.elTelemetryCombat.textContent = `ALERT: ${drones.length} HOSTILE${convoySuffix}`;
         this.elTelemetryCombat.style.color = '#ef4444';
       } else {
         this.elTelemetryCombat.textContent = 'CLEAR // 20Hz';
@@ -829,6 +926,14 @@ export class CombatClient {
           this.callbacks.showApNotification(`⚡ EXTRACTED ${ev.data?.extracted || 10}x SCRAP ALLOY`, false);
         } else if (ev.type === 'WRECK_DISINTEGRATED') {
           this.callbacks.showApNotification('💨 DERELICT DISINTEGRATED // REPOSITORIES EXHAUSTED', false);
+        } else if (ev.type === 'WARP_SPOOL_STARTED') {
+          this.audio.playApWarningSound();
+          this.callbacks.showApNotification('⚡ CONVOY WARP ESCAPE SPOOLING // 30s COUNTDOWN', true);
+        } else if (ev.type === 'WARP_SPOOL_INTERRUPTED') {
+          this.audio.playShieldBreakSound();
+          this.callbacks.showApNotification('⚠️ CONVOY WARP DRIVE DISRUPTED // SHIELDS COMPROMISED', false);
+        } else if (ev.type === 'WARP_JUMP_SUCCESS') {
+          this.callbacks.showApNotification('🌌 CONVOY ESCAPED VIA HYPERSPACE WARP JUMP', false);
         } else if (ev.type === 'TRUCE_DECLARED') {
           this.callbacks.startTruceCountdown(Math.floor((ev.data?.durationMs || 300000) / 1000));
           this.callbacks.showApNotification('🕊️ CEASEFIRE TRUCE CONFIRMED // PATROLS DISARMED', false);
@@ -850,6 +955,8 @@ export class CombatClient {
     if (!this.primaryDroneTarget) {
       if (this.elTacticalReticle) this.elTacticalReticle.classList.add('hidden');
       if (this.elTargetTelemetryHud) this.elTargetTelemetryHud.classList.add('hidden');
+      if (this.elTargetConvoyHud) this.elTargetConvoyHud.classList.add('hidden');
+      if (this.elReticleWarpBadge) this.elReticleWarpBadge.classList.add('hidden');
       return;
     }
 
@@ -861,8 +968,12 @@ export class CombatClient {
     if (dist > 180) {
       if (this.elTacticalReticle) this.elTacticalReticle.classList.add('hidden');
       if (this.elTargetTelemetryHud) this.elTargetTelemetryHud.classList.add('hidden');
+      if (this.elTargetConvoyHud) this.elTargetConvoyHud.classList.add('hidden');
+      if (this.elReticleWarpBadge) this.elReticleWarpBadge.classList.add('hidden');
       return;
     }
+
+    const isHauler = !!(this.primaryDroneTarget.isConvoyHauler || this.primaryDroneTarget.type === 'HAULER');
 
     // 1. Update Top-Center Target Telemetry Box
     if (this.elTargetTelemetryHud) {
@@ -872,7 +983,8 @@ export class CombatClient {
       }
       if (this.elTargetFaction) {
         const truceSuffix = (this.primaryDroneTarget as any).state === 'TRUCE' ? ' [🕊️ TRUCE]' : '';
-        this.elTargetFaction.textContent = (this.primaryDroneTarget.faction || 'HEGEMONY') + truceSuffix;
+        const fName = this.primaryDroneTarget.factionId || this.primaryDroneTarget.faction || 'HEGEMONY';
+        this.elTargetFaction.textContent = fName + truceSuffix;
       }
 
       if (this.elTargetDistance) {
@@ -892,6 +1004,52 @@ export class CombatClient {
       }
       if (this.elTargetHullVal) {
         this.elTargetHullVal.textContent = `${this.primaryDroneTarget.hp}/${this.primaryDroneTarget.maxHp}`;
+      }
+
+      // Day 23: Convoy Telemetry (Warp Spooling & Cargo Scan Preview)
+      if (this.elTargetConvoyHud) {
+        if (isHauler) {
+          this.elTargetConvoyHud.classList.remove('hidden');
+          const isInterrupted = !!this.primaryDroneTarget.isWarpInterrupted;
+          const isSpooling = !!this.primaryDroneTarget.isWarpSpooling;
+          const warpCharge = typeof this.primaryDroneTarget.warpChargeRemaining === 'number' ? this.primaryDroneTarget.warpChargeRemaining : 30.0;
+
+          if (this.elConvoyWarpBadge) {
+            if (isInterrupted) {
+              this.elConvoyWarpBadge.className = 'convoy-warp-badge interrupted';
+              this.elConvoyWarpBadge.textContent = '⚠️ WARP DRIVE DISRUPTED';
+            } else if (isSpooling) {
+              this.elConvoyWarpBadge.className = 'convoy-warp-badge spooling';
+              this.elConvoyWarpBadge.textContent = `⚡ WARP ESCAPE: ${warpCharge.toFixed(1)}s [SPOOLING]`;
+            } else {
+              this.elConvoyWarpBadge.className = 'convoy-warp-badge';
+              this.elConvoyWarpBadge.textContent = '⚡ WARP DRIVE: STANDBY (30.0s)';
+            }
+          }
+
+          if (this.elConvoyWarpBarFill) {
+            const warpPct = Math.max(0, Math.min(100, (warpCharge / 30.0) * 100));
+            this.elConvoyWarpBarFill.style.width = `${warpPct}%`;
+            this.elConvoyWarpBarFill.className = isInterrupted ? 'convoy-warp-bar-fill interrupted' : 'convoy-warp-bar-fill';
+          }
+
+          if (this.elConvoyCargoItems) {
+            if (dist <= 60.0) {
+              const manifest = this.primaryDroneTarget.cargoManifest || [];
+              if (manifest.length > 0) {
+                this.elConvoyCargoItems.textContent = manifest
+                  .map((m: any) => `${m.quantity || m.units || 1}x ${m.name || m.commodityId || 'Commodity'}`)
+                  .join(', ');
+              } else {
+                this.elConvoyCargoItems.textContent = '24x Silicate Ore, 12x Plasteel Alloy';
+              }
+            } else {
+              this.elConvoyCargoItems.textContent = 'OUT OF SCANNER RANGE (>60u)';
+            }
+          }
+        } else {
+          this.elTargetConvoyHud.classList.add('hidden');
+        }
       }
     }
 
@@ -930,6 +1088,28 @@ export class CombatClient {
     }
     if (this.elReticleHullFill) {
       this.elReticleHullFill.style.width = `${hullPct}%`;
+    }
+
+    // Day 23: Reticle Warp Escape Badge
+    if (this.elReticleWarpBadge) {
+      if (isHauler) {
+        this.elReticleWarpBadge.classList.remove('hidden');
+        const isInterrupted = !!this.primaryDroneTarget.isWarpInterrupted;
+        const isSpooling = !!this.primaryDroneTarget.isWarpSpooling;
+        const warpCharge = typeof this.primaryDroneTarget.warpChargeRemaining === 'number' ? this.primaryDroneTarget.warpChargeRemaining : 30.0;
+        if (isInterrupted) {
+          this.elReticleWarpBadge.className = 'reticle-warp-badge interrupted';
+          this.elReticleWarpBadge.textContent = '⚠️ WARP DISRUPTED';
+        } else if (isSpooling) {
+          this.elReticleWarpBadge.className = 'reticle-warp-badge';
+          this.elReticleWarpBadge.textContent = `⚡ WARP: ${warpCharge.toFixed(1)}s`;
+        } else {
+          this.elReticleWarpBadge.className = 'reticle-warp-badge';
+          this.elReticleWarpBadge.textContent = '⚡ WARP: STANDBY';
+        }
+      } else {
+        this.elReticleWarpBadge.classList.add('hidden');
+      }
     }
   }
 
@@ -1142,6 +1322,105 @@ export class CombatClient {
     const beaconLight = new THREE.PointLight(0xef4444, 2.0, 18);
     beaconLight.position.set(0, 1.5, -0.4);
     group.add(beaconLight);
+
+    return group;
+  }
+
+  public createHaulerMesh(factionId: string = 'FACTION_VAELIC'): THREE.Group {
+    const group = new THREE.Group();
+
+    const isVaelic = factionId === 'FACTION_VAELIC' || factionId === 'FACTION_HEGEMONY';
+    const primaryColor = isVaelic ? 0x475569 : 0x334155;
+    const accentColor = isVaelic ? 0xef4444 : 0x38bdf8;
+    const podColor = isVaelic ? 0xd97706 : 0x0284c7;
+
+    // 1. Central heavy spinal hull
+    const spineGeom = new THREE.BoxGeometry(4.8, 3.2, 14.0);
+    const spineMat = new THREE.MeshStandardMaterial({
+      color: primaryColor,
+      metalness: 0.85,
+      roughness: 0.35,
+      flatShading: true,
+    });
+    const spine = new THREE.Mesh(spineGeom, spineMat);
+    group.add(spine);
+
+    // 2. Command Bridge / Fore superstructure
+    const bridgeGeom = new THREE.BoxGeometry(3.6, 2.0, 4.0);
+    const bridgeMat = new THREE.MeshStandardMaterial({
+      color: 0x1e293b,
+      metalness: 0.9,
+      roughness: 0.2,
+      flatShading: true,
+    });
+    const bridge = new THREE.Mesh(bridgeGeom, bridgeMat);
+    bridge.position.set(0, 1.8, 4.5);
+    group.add(bridge);
+
+    // Bridge canopy glow
+    const canopyGeom = new THREE.BoxGeometry(2.8, 0.6, 1.2);
+    const canopyMat = new THREE.MeshBasicMaterial({ color: accentColor });
+    const canopy = new THREE.Mesh(canopyGeom, canopyMat);
+    canopy.position.set(0, 2.2, 6.2);
+    group.add(canopy);
+
+    // 3. Flanking Cargo Pod Containers (3 pods on each flank = 6 total)
+    const podGeom = new THREE.CylinderGeometry(1.2, 1.2, 3.2, 6);
+    const podMat = new THREE.MeshStandardMaterial({
+      color: podColor,
+      metalness: 0.7,
+      roughness: 0.4,
+      flatShading: true,
+    });
+
+    const podOffsetsZ = [-3.8, -0.4, 3.0];
+    for (const zOff of podOffsetsZ) {
+      // Left pod
+      const pLeft = new THREE.Mesh(podGeom, podMat);
+      pLeft.rotation.x = Math.PI / 2;
+      pLeft.position.set(-3.2, 0.0, zOff);
+      group.add(pLeft);
+
+      // Right pod
+      const pRight = new THREE.Mesh(podGeom, podMat);
+      pRight.rotation.x = Math.PI / 2;
+      pRight.position.set(3.2, 0.0, zOff);
+      group.add(pRight);
+    }
+
+    // 4. Twin Heavy Sublight & Warp Nacelles
+    const nacelleGeom = new THREE.BoxGeometry(1.4, 2.2, 5.0);
+    const nacelleMat = new THREE.MeshStandardMaterial({
+      color: 0x0f172a,
+      metalness: 0.9,
+      roughness: 0.3,
+    });
+
+    const nacelleL = new THREE.Mesh(nacelleGeom, nacelleMat);
+    nacelleL.position.set(-2.6, 0.2, -6.5);
+    group.add(nacelleL);
+
+    const nacelleR = new THREE.Mesh(nacelleGeom, nacelleMat);
+    nacelleR.position.set(2.6, 0.2, -6.5);
+    group.add(nacelleR);
+
+    // Thruster Bells & Engine Plumes
+    const thrusterGeom = new THREE.CylinderGeometry(0.6, 0.7, 0.6, 8);
+    const thrusterMat = new THREE.MeshBasicMaterial({ color: accentColor });
+    const thrustL = new THREE.Mesh(thrusterGeom, thrusterMat);
+    thrustL.rotation.x = Math.PI / 2;
+    thrustL.position.set(-2.6, 0.2, -9.1);
+    group.add(thrustL);
+
+    const thrustR = new THREE.Mesh(thrusterGeom, thrusterMat);
+    thrustR.rotation.x = Math.PI / 2;
+    thrustR.position.set(2.6, 0.2, -9.1);
+    group.add(thrustR);
+
+    // Point Light for engine wash
+    const engineLight = new THREE.PointLight(accentColor, 1.8, 25);
+    engineLight.position.set(0, 0, -8.0);
+    group.add(engineLight);
 
     return group;
   }

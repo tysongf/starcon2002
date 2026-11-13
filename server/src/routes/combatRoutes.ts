@@ -93,6 +93,13 @@ export const combatRoutes: FastifyPluginAsync = async (server) => {
     });
   });
 
+  server.post('/api/combat/reset-sector', async (req, reply) => {
+    const body = (req.body || {}) as { sectorId?: number };
+    const sectorId = body.sectorId || 2;
+    combatManager.reseedSector(sectorId);
+    reply.send({ success: true, message: `Sector ${sectorId} entities reseeded.` });
+  });
+
   // Persistent Wrecks & In-Situ Salvage
   server.get('/api/combat/wrecks', async (req, reply) => {
     const query = (req.query || {}) as { sectorId?: string };

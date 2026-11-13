@@ -31,10 +31,10 @@ async function runMilestone02Test() {
 
   // Step 1: Clean Reset
   console.log('[1/8] Resetting pilot baseline state (Sector 1, 2500 Cr, 100 Fuel, 600 AP)...');
-  await fetch(`${BASE_URL}/api/player/ship/debug-set`, {
+  await fetch(`${BASE_URL}/api/player/debug-baseline`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ playerId: PLAYER_ID, sectorId: 1, fuel: 100 }),
+    body: JSON.stringify({ accountId: PLAYER_ID }),
   });
   await fetch(`${BASE_URL}/api/player/ap/debug-set`, {
     method: 'POST',
