@@ -140,6 +140,7 @@ class GameEngine {
   private elTelemetryNetWorth: HTMLElement | null = null;
   private elTelemetryProfit: HTMLElement | null = null;
   private navRadarRoutes: HTMLElement | null = null;
+  private activeRadarTab: 'TRAFFIC' | 'COMMERCE' = 'TRAFFIC';
   private modalOfficerAvatar: HTMLElement | null = null;
   private modalOfficerName: HTMLElement | null = null;
   private modalDockBadge: HTMLElement | null = null;
@@ -1352,12 +1353,20 @@ class GameEngine {
         });
       }
 
-      // Fetch and render Sub-Space Commerce Radar
-      this.loadMarketRadar();
+      // Fetch and render Sub-Space Traffic & Commerce Radar
+      this.loadRadarFeed();
     }
   }
 
-  private async loadMarketRadar(): Promise<void> {
+  private loadRadarFeed(): void {
+    if (this.activeRadarTab === 'TRAFFIC') {
+      this.loadTrafficRadar();
+    } else {
+      this.loadCommerceRadar();
+    }
+  }
+
+  private async loadCommerceRadar(): Promise<void> {
     if (!this.navRadarRoutes) return;
     try {
       const res = await fetch('/api/market/intel');
@@ -1382,6 +1391,49 @@ class GameEngine {
       }
     } catch {
       this.navRadarRoutes.innerHTML = `<div class="radar-loading">Subspace commerce relay offline.</div>`;
+    }
+  }
+
+  private async loadTrafficRadar(): Promise<void> {
+    if (!this.navRadarRoutes) return;
+    try {
+      const res = await fetch('/api/convoys/traffic');
+      if (res.ok) {
+        const data = await res.json();
+        let html = '';
+        if (data.skirmishes && data.skirmishes.length > 0) {
+          const sk = data.skirmishes[0];
+          html += `
+            <div class="radar-skirmish-banner">
+              <span>⚠️ SEC-0${sk.sector_id} CONFLICT ZONE: ${sk.initiator_faction_id === 'FACTION_VAELIC' ? 'Vaelic Hegemony' : sk.initiator_faction_id} vs ${sk.defender_faction_id === 'FACTION_KRYLL' ? 'Kryll Cartel' : sk.defender_faction_id}</span>
+              <span class="profit-badge" style="color: #ef4444;">${sk.hazard_level} RISK</span>
+            </div>
+          `;
+        }
+        if (data.convoys && data.convoys.length > 0) {
+          html += data.convoys.map((convoy: any) => {
+            const manifestSummary = convoy.cargo_manifest.map((m: any) => `${m.quantity}x ${m.name}`).join(', ');
+            return `
+              <div class="radar-convoy-card">
+                <div class="radar-route-info">
+                  <span class="radar-route-title">${convoy.name}</span>
+                  <span class="radar-route-path">SEC-0${convoy.current_sector_id} ➔ Target: SEC-0${convoy.target_sector_id || convoy.current_sector_id} (Shield: ${convoy.escort_count}x Escorts)</span>
+                  <span class="convoy-manifest-summary">📦 Cargo: ${manifestSummary} (~${convoy.totalCargoValue} Cr)</span>
+                </div>
+                <div class="radar-route-profit">
+                  <span class="convoy-badge-transit">ETA ${convoy.etaSeconds}s</span>
+                  <span class="profit-label">${convoy.status}</span>
+                </div>
+              </div>
+            `;
+          }).join('');
+        } else {
+          html += `<div class="radar-loading">No active faction convoys detected in local sectors.</div>`;
+        }
+        this.navRadarRoutes.innerHTML = html;
+      }
+    } catch {
+      this.navRadarRoutes.innerHTML = `<div class="radar-loading">Subspace traffic relay offline.</div>`;
     }
   }
 
@@ -1766,6 +1818,21 @@ class GameEngine {
 
     this.btnCloseNav?.addEventListener('click', () => {
       this.closeNavModal();
+    });
+
+    const tabTraffic = document.getElementById('tab-radar-traffic');
+    const tabCommerce = document.getElementById('tab-radar-commerce');
+    tabTraffic?.addEventListener('click', () => {
+      this.activeRadarTab = 'TRAFFIC';
+      tabTraffic.classList.add('active');
+      tabCommerce?.classList.remove('active');
+      this.loadRadarFeed();
+    });
+    tabCommerce?.addEventListener('click', () => {
+      this.activeRadarTab = 'COMMERCE';
+      tabCommerce.classList.add('active');
+      tabTraffic?.classList.remove('active');
+      this.loadRadarFeed();
     });
 
     // Keydown Controls
