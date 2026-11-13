@@ -1274,7 +1274,7 @@
           <div class="lander-canvas-wrapper">
             <canvas id="surface-lander-canvas" width="760" height="480"></canvas>
             <div class="lander-canvas-overlay">
-              <span>CONTROLS: [W][A][S][D] / ARROWS THRUSTERS // [SPACE] / CLICK STUN BLASTER // [R] SEISMIC RADAR</span>
+              <span>CONTROLS: [W][A][S][D] / ARROWS THRUSTERS // [SPACE] / CLICK STUN BLASTER // [R] SEISMIC RADAR // [E] STASH/DOCK // [X/ESC] ASCEND</span>
             </div>
           </div>
 
@@ -1320,6 +1320,13 @@
               </div>
             </div>
 
+            <div class="lander-metric-card" id="lander-expedition-card">
+              <div class="metric-label-row">
+                <span>EXPEDITION STASHED</span>
+                <strong id="val-lander-stashed-total">0 Min / 0 Bio</strong>
+              </div>
+            </div>
+
             <div class="lander-metric-card" id="lander-thermal-card">
               <div class="metric-label-row">
                 <span>CORE TEMPERATURE</span>
@@ -1338,6 +1345,15 @@
               <div class="lander-targets-list" id="lander-targets-list">
                 <div class="target-card-item">Press [R] to broadcast seismic pulse and detect surface deposits & fauna.</div>
               </div>
+            </div>
+
+            <!-- Orbital Rendezvous Stash Banner -->
+            <div class="rendezvous-stash-banner hidden" id="rendezvous-stash-banner">
+              <div class="stash-banner-title">📡 ORBITAL RENDEZVOUS BEACON IN RANGE</div>
+              <p class="stash-banner-desc" id="rendezvous-stash-desc">Transporter beam aligned. Offload cargo to mothership and receive +25 fuel.</p>
+              <button id="btn-lander-stash-cargo" class="colony-action-btn primary large-btn">
+                STASH CARGO & REFUEL (+25 FUEL) [E] 📦
+              </button>
             </div>
 
             <!-- Megastructure Proximity Docking Banner -->

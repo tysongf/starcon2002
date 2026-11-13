@@ -9,6 +9,7 @@ export interface LanderNode {
   mineralType?: string;
   amount?: number;
   collected?: boolean;
+  stashed?: boolean;
   discovered: boolean;
   color: string;
   siteData?: any;
@@ -48,6 +49,14 @@ export interface LanderFaunaEntity {
   discovered: boolean;
   changeDirTimer: number;
   legPhase: number;
+  isApex?: boolean;
+  stunHitsRequired?: number;
+  currentStunHits?: number;
+  isEnraged?: boolean;
+  lairX?: number;
+  lairY?: number;
+  lairName?: string;
+  roarTimer?: number;
 }
 
 export interface BioSampleEntry {
@@ -158,6 +167,12 @@ export class LanderController {
   public landerAcidPools: LanderAcidPool[] = [];
   public isLanderDestroyed: boolean = false;
 
+  // Day 30: Continuous Surface Expeditions & Apex Titans
+  public stashedMineralsTotal: number = 0;
+  public stashedBioUnitsTotal: number = 0;
+  public currentZoom: number = 1.0;
+  public isNearBeacon: boolean = false;
+
   private lastStunFireTime: number = 0;
   private screenShakeTime: number = 0;
 
@@ -178,7 +193,13 @@ export class LanderController {
     document.getElementById('btn-close-lander')?.addEventListener('click', () => this.closeSurfaceLander());
     document.getElementById('btn-lander-ascend')?.addEventListener('click', () => this.closeSurfaceLander());
     document.getElementById('btn-lander-radar')?.addEventListener('click', () => this.fireSeismicRadarPing());
+    document.getElementById('btn-lander-stash-cargo')?.addEventListener('click', () => this.stashCargoToMothership());
     document.getElementById('btn-dock-terminal')?.addEventListener('click', () => {
+      if (this.landerState.isDocked && this.landerState.dockedSite) {
+        this.callbacks.openPrecursorTerminal(this.landerState.dockedSite);
+      }
+    });
+    document.getElementById('btn-open-precursor-terminal')?.addEventListener('click', () => {
       if (this.landerState.isDocked && this.landerState.dockedSite) {
         this.callbacks.openPrecursorTerminal(this.landerState.dockedSite);
       }
@@ -207,7 +228,9 @@ export class LanderController {
         this.fireSeismicRadarPing();
       }
       if (e.key === 'e' || e.key === 'E') {
-        if (this.landerState.isDocked && this.landerState.dockedSite) {
+        if (this.isNearBeacon && (this.landerState.cargo > 0 || this.landerBioSamples.length > 0)) {
+          this.stashCargoToMothership();
+        } else if (this.landerState.isDocked && this.landerState.dockedSite) {
           this.callbacks.openPrecursorTerminal(this.landerState.dockedSite);
         }
       }
@@ -280,6 +303,10 @@ export class LanderController {
     this.landerStunBolts = [];
     this.landerBioSamples = [];
     this.screenShakeTime = 0;
+    this.stashedMineralsTotal = 0;
+    this.stashedBioUnitsTotal = 0;
+    this.currentZoom = 1.0;
+    this.isNearBeacon = false;
 
     // Reset Atmospheric Hazards & Environmental Telemetry
     this.landerTemp = 0;
@@ -463,6 +490,85 @@ export class LanderController {
         discovered: false,
         changeDirTimer: 2.0 + Math.random() * 2.0,
         legPhase: Math.random() * Math.PI * 2,
+        isApex: false,
+        stunHitsRequired: 1,
+        currentStunHits: 0,
+        isEnraged: false,
+      });
+    });
+
+    // Day 30: Load Procedural Apex Titans & Anchored Planetary Lairs
+    let titanList: any[] = [];
+    try {
+      const titanRes = await fetch(`/api/planets/${planetId}/fauna/titans`);
+      if (titanRes.ok) {
+        const tData = await titanRes.json();
+        if (Array.isArray(tData.titans) && tData.titans.length > 0) {
+          titanList = tData.titans;
+        }
+      }
+    } catch {
+      // offline fallback
+    }
+
+    if (titanList.length === 0) {
+      titanList = [
+        {
+          id: `titan_${planetId}`,
+          species_name: 'Ancient Chitin Colossus',
+          species_class: 'CARNIVORE',
+          color: '#f59e0b',
+          base_hp: 280,
+          movement_speed: 42,
+          attack_damage: 28,
+          bio_unit_value: 75,
+          stun_duration_seconds: 16,
+          is_apex: true,
+          stun_hits_required: 3,
+          current_stun_hits: 0,
+          is_enraged: false,
+          lair_x: 310,
+          lair_y: -240,
+          lair_name: 'Obsidian Basalt Rift',
+        },
+      ];
+    }
+
+    titanList.forEach((titan, tIdx) => {
+      const canvasLairX = Math.max(80, Math.min(680, 380 + (titan.lair_x || 180) * 0.7));
+      const canvasLairY = Math.max(80, Math.min(400, 240 + (titan.lair_y || -120) * 0.7));
+
+      this.landerFauna.push({
+        id: `fauna_titan_${Date.now()}_${tIdx}`,
+        speciesId: titan.id,
+        name: titan.species_name,
+        speciesClass: 'CARNIVORE',
+        x: canvasLairX,
+        y: canvasLairY,
+        vx: 0,
+        vy: 0,
+        heading: Math.random() * Math.PI * 2,
+        speed: titan.movement_speed || 42,
+        color: titan.color || '#f59e0b',
+        hp: titan.base_hp || 280,
+        maxHp: titan.base_hp || 280,
+        attackDamage: titan.attack_damage || 28,
+        state: 'WANDER',
+        stunTimer: 0,
+        stunDuration: titan.stun_duration_seconds || 16,
+        bioYield: 10,
+        unitValue: titan.bio_unit_value || 75,
+        collected: false,
+        discovered: false,
+        changeDirTimer: 3.0,
+        legPhase: 0,
+        isApex: true,
+        stunHitsRequired: titan.stun_hits_required || 3,
+        currentStunHits: 0,
+        isEnraged: false,
+        lairX: canvasLairX,
+        lairY: canvasLairY,
+        lairName: titan.lair_name || 'Subterranean Caldera Lair',
       });
     });
 
@@ -620,6 +726,109 @@ export class LanderController {
   }
 
   /**
+   * Day 30: Stashes cargo at the Rendezvous Beacon, refuels lander (+25 Fuel), and continues surface expedition.
+   */
+  public async stashCargoToMothership(): Promise<void> {
+    if (!this.isLanderActive) return;
+    const activePlanet = this.callbacks.getActivePlanet();
+    const planetId = activePlanet?.data?.id || 'planet_sec1_aegis';
+
+    const uncommittedMinerals = this.landerNodes
+      .filter((n) => n.type === 'MINERAL' && n.collected && !n.stashed)
+      .map((n) => ({ name: n.name, quantity: n.amount || 5 }));
+
+    if (uncommittedMinerals.length === 0 && this.landerBioSamples.length === 0) {
+      this.callbacks.showApNotification('⚠️ CARGO EMPTY: Harvest minerals or tranquilize fauna to stash.', true);
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/planets/${planetId}/lander/stash-cargo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accountId: 'acc_sol_captain',
+          mineralsHarvested: uncommittedMinerals,
+          bioSamplesHarvested: this.landerBioSamples,
+          hullRemaining: Math.max(1, Math.round(this.landerState.hull)),
+          fuelRemaining: Math.max(0, Math.round(this.landerState.fuel)),
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const stashedMin = data.stashedMinerals || 0;
+        const stashedBio = data.stashedBioUnits || 0;
+
+        this.stashedMineralsTotal += stashedMin;
+        this.stashedBioUnitsTotal += stashedBio;
+
+        // Mark harvested mineral nodes as stashed
+        this.landerNodes
+          .filter((n) => n.type === 'MINERAL' && n.collected && !n.stashed)
+          .forEach((n) => (n.stashed = true));
+
+        // Clear carried bio-samples & reset carried cargo count
+        this.landerBioSamples = [];
+        this.landerState.cargo = 0;
+
+        // Apply +25 fuel bonus
+        this.landerState.fuel = Math.min(this.landerState.maxFuel, this.landerState.fuel + 25);
+
+        this.audio.playBeaconStashSound();
+        this.callbacks.showApNotification(
+          `📡 EXPEDITION STASH: Transferred ${stashedMin} minerals & ${stashedBio} bio-units! Lander refueled (+25 Fuel)! Sortie continues!`,
+          false
+        );
+
+        // Respawn fresh mineral deposits for continuous surface expedition
+        this.respawnExpeditionMinerals();
+
+        this.updateLanderTelemetryUI();
+        this.refreshLanderRadarList();
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        this.callbacks.showApNotification(`⚠️ Stash failed: ${errData.error || 'Server error'}`, true);
+      }
+    } catch (err) {
+      console.warn('[LANDER] Stash request error:', err);
+    }
+  }
+
+  /**
+   * Day 30: Respawns mineral deposits for deep continuous sorties across multiple cycles
+   */
+  public respawnExpeditionMinerals(): void {
+    const activeMinerals = this.landerNodes.filter((n) => n.type === 'MINERAL' && !n.collected);
+    if (activeMinerals.length <= 4) {
+      const mineralPool = [
+        { name: 'Plutonium Isotopes', color: '#fbbf24', amount: 8 },
+        { name: 'Rare Crystalline Matrix', color: '#38bdf8', amount: 10 },
+        { name: 'Superdense Titanium', color: '#e2e8f0', amount: 12 },
+        { name: 'Xenobiological Spores', color: '#4ade80', amount: 10 },
+      ];
+      for (let i = 0; i < 3; i++) {
+        const m = mineralPool[Math.floor(Math.random() * mineralPool.length)];
+        const rx = 100 + Math.random() * 560;
+        const ry = 80 + Math.random() * 320;
+        this.landerNodes.push({
+          id: `node_min_respawn_${Date.now()}_${i}`,
+          x: Math.round(rx),
+          y: Math.round(ry),
+          type: 'MINERAL',
+          name: m.name,
+          mineralType: m.name,
+          amount: m.amount,
+          collected: false,
+          stashed: false,
+          discovered: false,
+          color: m.color,
+        });
+      }
+    }
+  }
+
+  /**
    * Ascends back into synchronous orbit and transfers collected surface minerals into ship hold.
    */
   public closeSurfaceLander(): void {
@@ -647,7 +856,7 @@ export class LanderController {
     const activePlanet = this.callbacks.getActivePlanet();
     const planetId = activePlanet?.data?.id || 'planet_sec1_aegis';
     const collectedMinerals = this.landerNodes
-      .filter((n) => n.type === 'MINERAL' && n.collected)
+      .filter((n) => n.type === 'MINERAL' && n.collected && !n.stashed)
       .map((n) => ({ name: n.name, quantity: n.amount || 5 }));
 
     const hullVal = Math.max(0, Math.round(this.landerState.hull));
@@ -686,8 +895,10 @@ export class LanderController {
         .then((res) => res.json())
         .then((data) => {
           if (data.success) {
+            const finalMin = (data.totalMinerals || 0) + this.stashedMineralsTotal;
+            const finalBio = (data.totalBioUnits || 0) + this.stashedBioUnitsTotal;
             this.callbacks.showApNotification(
-              `🚀 Lander docked with ship! Secured ${data.totalMinerals} minerals and ${data.totalBioUnits} biological units!`,
+              `🚀 Lander docked with ship! Secured ${data.totalMinerals} minerals (${finalMin} total) and ${data.totalBioUnits} biological units (${finalBio} total)!`,
               false
             );
           }
@@ -699,6 +910,11 @@ export class LanderController {
             false
           );
         });
+    } else if (this.stashedMineralsTotal > 0 || this.stashedBioUnitsTotal > 0) {
+      this.callbacks.showApNotification(
+        `🚀 Lander docked with ship! Expedition sortie complete: ${this.stashedMineralsTotal} minerals & ${this.stashedBioUnitsTotal} biological units secured in ship hold!`,
+        false
+      );
     }
   }
 
@@ -998,30 +1214,89 @@ export class LanderController {
       let boltHit = false;
       for (const f of this.landerFauna) {
         if (!f.collected && f.state !== 'STUNNED') {
+          const hitRadius = f.isApex ? 32 : 22;
           const dist = Math.hypot(f.x - b.x, f.y - b.y);
-          if (dist <= 22) {
-            f.state = 'STUNNED';
-            f.stunTimer = f.stunDuration;
-            f.vx = 0;
-            f.vy = 0;
+          if (dist <= hitRadius) {
             boltHit = true;
 
-            // Spawn cyan electrical spark particles around tranquilized creature
-            for (let p = 0; p < 8; p++) {
-              const angle = Math.random() * Math.PI * 2;
-              const spd = 30 + Math.random() * 50;
-              this.landerParticles.push({
-                x: f.x,
-                y: f.y,
-                vx: Math.cos(angle) * spd * 0.016,
-                vy: Math.sin(angle) * spd * 0.016,
-                life: 0.8,
-                maxLife: 0.8,
-                color: Math.random() > 0.4 ? '#38bdf8' : '#a855f7',
-                size: 2.5 + Math.random() * 2,
-              });
+            if (f.isApex) {
+              // Day 30 Apex Titan: Multi-Hit Tranquilizer Buildup & Enrage Mechanics
+              f.currentStunHits = (f.currentStunHits || 0) + 1;
+              const reqHits = f.stunHitsRequired || 3;
+
+              // Notify backend API
+              const activePlanet = this.callbacks.getActivePlanet();
+              const pId = activePlanet?.data?.id || 'planet_sec1_aegis';
+              fetch(`/api/planets/${pId}/lander/titan-hit`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ accountId: 'acc_sol_captain', speciesId: f.speciesId }),
+              }).catch(() => {});
+
+              if (f.currentStunHits >= reqHits) {
+                // Fully subdued!
+                f.state = 'STUNNED';
+                f.stunTimer = f.stunDuration || 16.0;
+                f.isEnraged = false;
+                f.currentStunHits = 0;
+                f.vx = 0;
+                f.vy = 0;
+                this.screenShakeTime = 0.5;
+                this.callbacks.showApNotification(
+                  `👑 APEX TITAN SUBDUED! ${f.name} tranquilized for ${f.stunDuration}s!`,
+                  false
+                );
+              } else {
+                // Intermediate stun hit -> Trigger Enrage!
+                f.isEnraged = true;
+                f.state = 'CHARGE';
+                this.screenShakeTime = 0.4;
+                this.audio.playTitanRoarSound();
+                this.callbacks.showApNotification(
+                  `💥 TITAN STRUCK (${f.currentStunHits}/${reqHits} Hits)! ${f.name} ENRAGED! Speed & damage surged!`,
+                  true
+                );
+              }
+
+              // Titan impact spark particles
+              for (let p = 0; p < 12; p++) {
+                const angle = Math.random() * Math.PI * 2;
+                const spd = 40 + Math.random() * 60;
+                this.landerParticles.push({
+                  x: f.x,
+                  y: f.y,
+                  vx: Math.cos(angle) * spd * 0.016,
+                  vy: Math.sin(angle) * spd * 0.016,
+                  life: 0.9,
+                  maxLife: 0.9,
+                  color: f.isEnraged ? '#ef4444' : '#38bdf8',
+                  size: 3 + Math.random() * 3,
+                });
+              }
+            } else {
+              // Standard fauna: 1-shot tranquilization
+              f.state = 'STUNNED';
+              f.stunTimer = f.stunDuration;
+              f.vx = 0;
+              f.vy = 0;
+
+              for (let p = 0; p < 8; p++) {
+                const angle = Math.random() * Math.PI * 2;
+                const spd = 30 + Math.random() * 50;
+                this.landerParticles.push({
+                  x: f.x,
+                  y: f.y,
+                  vx: Math.cos(angle) * spd * 0.016,
+                  vy: Math.sin(angle) * spd * 0.016,
+                  life: 0.8,
+                  maxLife: 0.8,
+                  color: Math.random() > 0.4 ? '#38bdf8' : '#a855f7',
+                  size: 2.5 + Math.random() * 2,
+                });
+              }
+              this.callbacks.showApNotification(`⚡ ${f.name} tranquilized for ${f.stunDuration}s!`, false);
             }
-            this.callbacks.showApNotification(`⚡ ${f.name} tranquilized for ${f.stunDuration}s!`, false);
+
             this.refreshLanderRadarList();
             break;
           }
@@ -1033,7 +1308,7 @@ export class LanderController {
       }
     }
 
-    // Alien Fauna AI Ecosystem (Grazers flee, Carnivores hunt/ram, Stunned harvest)
+    // Alien Fauna AI Ecosystem (Grazers flee, Carnivores hunt/ram, Titans defend Lairs, Stunned harvest)
     for (const f of this.landerFauna) {
       if (f.collected) continue;
 
@@ -1047,7 +1322,8 @@ export class LanderController {
 
         // Lander drives over stunned creature to harvest bio-specimen
         const distToLander = Math.hypot(f.x - s.x, f.y - s.y);
-        if (distToLander <= 26 && s.cargo < s.maxCargo) {
+        const harvestDist = f.isApex ? 34 : 26;
+        if (distToLander <= harvestDist && s.cargo < s.maxCargo) {
           f.collected = true;
           const existingSample = this.landerBioSamples.find((bs) => bs.speciesId === f.speciesId);
           if (existingSample) {
@@ -1066,23 +1342,24 @@ export class LanderController {
           this.audio.playMineralPickupSound();
 
           // Spawn harvest burst particles
-          for (let p = 0; p < 10; p++) {
+          for (let p = 0; p < (f.isApex ? 18 : 10); p++) {
             const angle = Math.random() * Math.PI * 2;
-            const spd = 40 + Math.random() * 60;
+            const spd = 40 + Math.random() * 70;
             this.landerParticles.push({
               x: f.x,
               y: f.y,
               vx: Math.cos(angle) * spd * 0.016,
               vy: Math.sin(angle) * spd * 0.016,
-              life: 1.0,
-              maxLife: 1.0,
-              color: '#c084fc',
-              size: 3 + Math.random() * 2,
+              life: 1.2,
+              maxLife: 1.2,
+              color: f.isApex ? '#ec4899' : '#c084fc',
+              size: 3.5 + Math.random() * 2.5,
             });
           }
 
+          const prefix = f.isApex ? '👑 Captured APEX TITAN' : '🧬 Captured';
           this.callbacks.showApNotification(
-            `🧬 Captured ${f.name} specimen! (+${f.unitValue} Bio-Units, +${f.bioYield} Cargo)`,
+            `${prefix} ${f.name} specimen! (+${f.unitValue} Bio-Units, +${f.bioYield} Cargo)`,
             false
           );
           this.refreshLanderRadarList();
@@ -1093,7 +1370,80 @@ export class LanderController {
         f.legPhase += 0.15;
         const distToLander = Math.hypot(s.x - f.x, s.y - f.y);
 
-        if (f.speciesClass === 'GRAZER') {
+        if (f.isApex) {
+          // Day 30 Apex Titan AI: Lair patrol, territorial aggro, enrage frenzy
+          const aggroThreshold = f.isEnraged ? 240 : 180;
+          const speedMult = f.isEnraged ? 1.55 : 1.15;
+          const currentSpeed = (f.speed || 42) * speedMult;
+
+          if (distToLander < aggroThreshold) {
+            f.state = 'CHARGE';
+            f.heading = Math.atan2(s.y - f.y, s.x - f.x);
+            f.vx = Math.cos(f.heading) * currentSpeed;
+            f.vy = Math.sin(f.heading) * currentSpeed;
+
+            // Titan Ram / Melee Strike
+            if (distToLander <= 28) {
+              const effectiveDmg = Math.round((f.attackDamage || 28) * (f.isEnraged ? 1.5 : 1.0));
+              s.hull = Math.max(0, s.hull - effectiveDmg);
+              this.screenShakeTime = f.isEnraged ? 0.6 : 0.4;
+              this.audio.playShieldDeflection();
+              if (f.isEnraged) this.audio.playTitanRoarSound();
+
+              this.callbacks.showApNotification(
+                `⚠️ TITAN STRIKE! ${f.name} slammed lander chassis (-${effectiveDmg} HP)!`,
+                true
+              );
+
+              // Heavy Knockback bounce
+              f.vx = -Math.cos(f.heading) * (currentSpeed * 1.4);
+              f.vy = -Math.sin(f.heading) * (currentSpeed * 1.4);
+              f.x += f.vx * 0.06;
+              f.y += f.vy * 0.06;
+
+              s.vx += Math.cos(f.heading) * 4.5;
+              s.vy += Math.sin(f.heading) * 4.5;
+
+              // Heavy Red impact sparks
+              for (let p = 0; p < 12; p++) {
+                const a = Math.random() * Math.PI * 2;
+                this.landerParticles.push({
+                  x: s.x,
+                  y: s.y,
+                  vx: Math.cos(a) * (40 + Math.random() * 50) * 0.016,
+                  vy: Math.sin(a) * (40 + Math.random() * 50) * 0.016,
+                  life: 0.7,
+                  maxLife: 0.7,
+                  color: '#ef4444',
+                  size: 3.5,
+                });
+              }
+
+              this.updateLanderTelemetryUI();
+            }
+          } else {
+            // Outside player aggro -> Patrol anchored Lair coordinates
+            const lairX = f.lairX != null ? f.lairX : 380;
+            const lairY = f.lairY != null ? f.lairY : 240;
+            const distToLair = Math.hypot(f.x - lairX, f.y - lairY);
+
+            if (distToLair > 130) {
+              // Return towards anchored lair
+              f.heading = Math.atan2(lairY - f.y, lairX - f.x);
+              f.vx = Math.cos(f.heading) * (f.speed * 0.8);
+              f.vy = Math.sin(f.heading) * (f.speed * 0.8);
+            } else {
+              f.state = 'WANDER';
+              f.changeDirTimer -= 0.016;
+              if (f.changeDirTimer <= 0) {
+                f.heading += (Math.random() - 0.5) * 1.6;
+                f.changeDirTimer = 2.5 + Math.random() * 2.5;
+              }
+              f.vx = Math.cos(f.heading) * (f.speed * 0.6);
+              f.vy = Math.sin(f.heading) * (f.speed * 0.6);
+            }
+          }
+        } else if (f.speciesClass === 'GRAZER') {
           if (distToLander < 110) {
             f.state = 'FLEE';
             f.heading = Math.atan2(f.y - s.y, f.x - s.x);
@@ -1192,6 +1542,16 @@ export class LanderController {
       }
     });
 
+    // Day 30: Orbital Rendezvous Beacon Proximity & Stash Banner Handling
+    const distToBeacon = Math.hypot(s.x - 380, s.y - 240);
+    this.isNearBeacon = distToBeacon <= 60;
+    const stashBanner = document.getElementById('rendezvous-stash-banner');
+    if (this.isNearBeacon && (s.cargo > 0 || this.landerBioSamples.length > 0)) {
+      if (stashBanner) stashBanner.classList.remove('hidden');
+    } else {
+      if (stashBanner) stashBanner.classList.add('hidden');
+    }
+
     // Precursor Megastructure Proximity Check
     const megastructures = this.landerNodes.filter((n) => n.type === 'MEGASTRUCTURE');
     let nearSite: any = null;
@@ -1262,16 +1622,24 @@ export class LanderController {
 
     const faunaHtml = discoveredFauna.map((f) => {
       const dist = Math.round(Math.hypot(f.x - this.landerState.x, f.y - this.landerState.y));
-      const icon = f.speciesClass === 'CARNIVORE' ? '🦂' : '🦕';
+      let icon = f.speciesClass === 'CARNIVORE' ? '🦂' : '🦕';
+      if (f.isApex) icon = f.isEnraged ? '🔥' : '👑';
+
       let stateLabel = `[${f.state}]`;
       if (f.collected) stateLabel = '(CAPTURED)';
       else if (f.state === 'STUNNED') stateLabel = `(STUNNED ${Math.ceil(f.stunTimer)}s)`;
+      else if (f.isEnraged) stateLabel = '(ENRAGED)';
 
-      const cssClass = `target-card-item fauna ${f.speciesClass.toLowerCase()} ${f.state === 'STUNNED' ? 'stunned' : ''} ${f.collected ? 'collected' : ''}`;
+      let apexMeta = '';
+      if (f.isApex) {
+        apexMeta = ` // LAIR: ${f.lairName || 'UNKNOWN'} // STUN: ${f.currentStunHits || 0}/${f.stunHitsRequired || 3}`;
+      }
+
+      const cssClass = `target-card-item fauna ${f.speciesClass.toLowerCase()} ${f.isApex ? 'titan' : ''} ${f.isEnraged ? 'enraged' : ''} ${f.state === 'STUNNED' ? 'stunned' : ''} ${f.collected ? 'collected' : ''}`;
       return `
         <div class="${cssClass}">
           <div class="target-title">${icon} ${f.name} ${stateLabel}</div>
-          <div class="target-meta">${f.speciesClass} // DIST: ${dist}m // VALUE: ${f.unitValue}u // YIELD: ${f.bioYield} cargo</div>
+          <div class="target-meta">${f.speciesClass} // DIST: ${dist}m // VALUE: ${f.unitValue}u // YIELD: ${f.bioYield} cargo${apexMeta}</div>
         </div>
       `;
     }).join('');
@@ -1315,6 +1683,7 @@ export class LanderController {
     const valCargo = document.getElementById('val-lander-cargo');
     const valBio = document.getElementById('val-lander-bio');
     const valTemp = document.getElementById('val-lander-temp');
+    const valStashed = document.getElementById('val-lander-stashed-total');
     const fillHull = document.getElementById('lander-hull-fill');
     const fillFuel = document.getElementById('lander-fuel-fill');
     const fillCargo = document.getElementById('lander-cargo-fill');
@@ -1328,6 +1697,10 @@ export class LanderController {
     const totalBioUnits = this.landerBioSamples.reduce((sum, b) => sum + b.bioUnits, 0);
     const totalSpecimens = this.landerBioSamples.reduce((sum, b) => sum + b.quantity, 0);
     if (valBio) valBio.textContent = `${totalSpecimens} Specimens (${totalBioUnits} Units)`;
+
+    if (valStashed) {
+      valStashed.textContent = `${this.stashedMineralsTotal} Min / ${this.stashedBioUnitsTotal} Bio`;
+    }
 
     if (valTemp) {
       const degC = Math.round(this.landerTemp * 3.2 + 24);
@@ -1364,13 +1737,26 @@ export class LanderController {
     const w = this.landerCanvas.width;
     const h = this.landerCanvas.height;
 
-    // Apply Screen Shake if Carnivore struck hull
+    // Apply Screen Shake if Carnivore or Titan struck hull
     ctx.save();
     if (this.screenShakeTime > 0) {
       this.screenShakeTime = Math.max(0, this.screenShakeTime - 0.016);
-      const shakeAmt = 6;
+      const shakeAmt = 7;
       ctx.translate((Math.random() - 0.5) * shakeAmt, (Math.random() - 0.5) * shakeAmt);
     }
+
+    const s = this.landerState;
+
+    // Day 30: Velocity-Scaled Dynamic Camera Zoom
+    const spd = Math.hypot(s.vx, s.vy);
+    const targetZoom = Math.max(0.78, Math.min(1.15, 1.15 - (spd / 8.0) * 0.37));
+    this.currentZoom = this.currentZoom * 0.92 + targetZoom * 0.08;
+
+    // Apply Camera Zoom centered on player lander
+    ctx.save();
+    ctx.translate(s.x, s.y);
+    ctx.scale(this.currentZoom, this.currentZoom);
+    ctx.translate(-s.x, -s.y);
 
     // 1. Dark CRT topographical background
     const bgGrad = ctx.createRadialGradient(w / 2, h / 2, 40, w / 2, h / 2, w / 2);
@@ -1417,6 +1803,46 @@ export class LanderController {
     ctx.stroke();
 
     ctx.setLineDash([]);
+    ctx.restore();
+
+    // 3.1 Day 30: Orbital Rendezvous Beacon Landing Pad (380, 240)
+    ctx.save();
+    const beaconPulse = Math.sin(Date.now() * 0.004) * 4;
+    ctx.beginPath();
+    ctx.arc(380, 240, 34 + beaconPulse, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(14, 165, 233, 0.35)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(380, 240, 20, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(14, 165, 233, 0.18)';
+    ctx.fill();
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Transporter glyph
+    ctx.fillStyle = '#38bdf8';
+    ctx.font = '14px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('📡', 380, 245);
+
+    ctx.font = 'bold 8px monospace';
+    ctx.fillStyle = '#7dd3fc';
+    ctx.fillText('ORBITAL BEACON', 380, 268);
+
+    // If lander is near beacon, draw active transporter energy beam
+    if (this.isNearBeacon) {
+      ctx.beginPath();
+      ctx.moveTo(380, 240);
+      ctx.lineTo(s.x, s.y);
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.75)';
+      ctx.lineWidth = 2.5;
+      ctx.setLineDash([4, 4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
     ctx.restore();
 
     // 4. Render Sonar Radar Waves
@@ -1522,6 +1948,52 @@ export class LanderController {
       ctx.restore();
     });
 
+    // 4.3 Day 30: Render Anchored Titan Planetary Lairs
+    this.landerFauna.forEach((f) => {
+      if (f.isApex && f.lairX != null && f.lairY != null) {
+        ctx.save();
+        const lx = f.lairX;
+        const ly = f.lairY;
+
+        // Dark subterranean caldera chasm
+        const lairGrad = ctx.createRadialGradient(lx, ly, 6, lx, ly, 38);
+        lairGrad.addColorStop(0, '#450a0a');
+        lairGrad.addColorStop(0.7, '#1c1917');
+        lairGrad.addColorStop(1, 'rgba(12, 10, 9, 0.0)');
+        ctx.fillStyle = lairGrad;
+        ctx.beginPath();
+        ctx.arc(lx, ly, 38, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Ominous pulsing perimeter ring
+        const lPulse = Math.sin(Date.now() * 0.004) * 3;
+        ctx.beginPath();
+        ctx.arc(lx, ly, 28 + lPulse, 0, Math.PI * 2);
+        ctx.strokeStyle = f.isEnraged ? 'rgba(239, 68, 68, 0.7)' : 'rgba(236, 72, 153, 0.5)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([5, 3]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Jagged rocky crust spikes
+        ctx.strokeStyle = '#78716c';
+        ctx.lineWidth = 2;
+        for (let sAng = 0; sAng < Math.PI * 2; sAng += Math.PI / 4) {
+          ctx.beginPath();
+          ctx.moveTo(lx + Math.cos(sAng) * 22, ly + Math.sin(sAng) * 22);
+          ctx.lineTo(lx + Math.cos(sAng + 0.15) * 30, ly + Math.sin(sAng + 0.15) * 30);
+          ctx.stroke();
+        }
+
+        // Lair Title Label
+        ctx.fillStyle = '#f43f5e';
+        ctx.font = 'bold 8px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(`🌋 ${(f.lairName || 'TITAN LAIR').toUpperCase()}`, lx, ly + 44);
+        ctx.restore();
+      }
+    });
+
     // 5. Render Surface Nodes (Megastructures and Minerals)
     this.landerNodes.forEach((node) => {
       if (node.type === 'MEGASTRUCTURE') {
@@ -1553,7 +2025,6 @@ export class LanderController {
           ctx.fillText(node.name.toUpperCase(), node.x, node.y + 24);
           ctx.restore();
         } else {
-          // Faint radar shadow blip before scan
           ctx.save();
           ctx.beginPath();
           ctx.arc(node.x, node.y, 8, 0, Math.PI * 2);
@@ -1608,13 +2079,13 @@ export class LanderController {
       ctx.restore();
     });
 
-    // 5.2 Render Alien Fauna
+    // 5.2 Render Alien Fauna & Procedural Apex Titans
     this.landerFauna.forEach((f) => {
       if (f.collected) return;
       if (!f.discovered) {
-        // Auto-discover if within lander headlight range (85px)
         const d = Math.hypot(f.x - this.landerState.x, f.y - this.landerState.y);
-        if (d > 85) return;
+        const discoverRadius = f.isApex ? 140 : 85;
+        if (d > discoverRadius) return;
         f.discovered = true;
       }
 
@@ -1624,9 +2095,10 @@ export class LanderController {
       // Render Stun Effect Ring & Countdown
       if (f.state === 'STUNNED') {
         const pulse = Math.sin(Date.now() * 0.015) * 3;
+        const sRingR = f.isApex ? 28 : 18;
         ctx.save();
         ctx.beginPath();
-        ctx.arc(0, 0, 18 + pulse, 0, Math.PI * 2);
+        ctx.arc(0, 0, sRingR + pulse, 0, Math.PI * 2);
         ctx.strokeStyle = 'rgba(0, 240, 255, 0.85)';
         ctx.lineWidth = 2;
         ctx.setLineDash([4, 4]);
@@ -1638,32 +2110,86 @@ export class LanderController {
         ctx.fillStyle = '#38bdf8';
         ctx.font = 'bold 9px monospace';
         ctx.textAlign = 'center';
-        ctx.fillText(`⚡ STUNNED (${Math.ceil(f.stunTimer)}s)`, 0, -22);
+        ctx.fillText(`⚡ STUNNED (${Math.ceil(f.stunTimer)}s)`, 0, -(sRingR + 6));
+        ctx.restore();
+      }
+
+      // Render Enraged Aura for Apex Titan
+      if (f.isApex && f.isEnraged && f.state !== 'STUNNED') {
+        ctx.save();
+        const fPulse = Math.sin(Date.now() * 0.02) * 5;
+        ctx.beginPath();
+        ctx.arc(0, 0, 32 + fPulse, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.2)';
+        ctx.fill();
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 2;
+        ctx.stroke();
         ctx.restore();
       }
 
       ctx.rotate(f.heading);
 
-      if (f.speciesClass === 'GRAZER') {
-        // Docile Grazer: Green bio-pod with undulating legs and spore sac
+      if (f.isApex) {
+        // Day 30 Apex Titan: Giant Behemoth with twin mandibles, heavy dorsal carapace, glowing spines
+        const titanScale = 1.8;
+        ctx.save();
+        ctx.scale(titanScale, titanScale);
+
+        // Chitin Carapace Segments
+        ctx.fillStyle = f.color;
+        ctx.strokeStyle = f.isEnraged ? '#ef4444' : '#fbbf24';
+        ctx.lineWidth = 1.8;
+
+        ctx.beginPath();
+        ctx.moveTo(14, 0);
+        ctx.lineTo(-6, -11);
+        ctx.lineTo(-16, -6);
+        ctx.lineTo(-18, 0);
+        ctx.lineTo(-16, 6);
+        ctx.lineTo(-6, 11);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Heavy Snapping Mandibles
+        const bitePulse = f.state === 'CHARGE' ? Math.sin(Date.now() * 0.025) * 4 : 0;
+        ctx.strokeStyle = f.isEnraged ? '#f87171' : '#f59e0b';
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        ctx.moveTo(12, -5);
+        ctx.lineTo(22, -8 + bitePulse);
+        ctx.lineTo(19, 0);
+        ctx.moveTo(12, 5);
+        ctx.lineTo(22, 8 - bitePulse);
+        ctx.lineTo(19, 0);
+        ctx.stroke();
+
+        // Glowing Bioluminescent Eyes
+        ctx.fillStyle = f.isEnraged ? '#ff0000' : '#38bdf8';
+        ctx.beginPath();
+        ctx.arc(8, -4, 2, 0, Math.PI * 2);
+        ctx.arc(8, 4, 2, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+      } else if (f.speciesClass === 'GRAZER') {
+        // Docile Grazer
         const legOff1 = Math.sin(f.legPhase) * 4;
         const legOff2 = Math.cos(f.legPhase) * 4;
         ctx.strokeStyle = '#22c55e';
         ctx.lineWidth = 2;
-        // Front legs
         ctx.beginPath();
         ctx.moveTo(4, -6);
         ctx.lineTo(8 + legOff1, -12);
         ctx.moveTo(4, 6);
         ctx.lineTo(8 + legOff2, 12);
-        // Back legs
         ctx.moveTo(-6, -6);
         ctx.lineTo(-10 - legOff2, -12);
         ctx.moveTo(-6, 6);
         ctx.lineTo(-10 - legOff1, 12);
         ctx.stroke();
 
-        // Pod Body
         ctx.save();
         ctx.fillStyle = f.color;
         ctx.beginPath();
@@ -1673,20 +2199,18 @@ export class LanderController {
         ctx.lineWidth = 1.2;
         ctx.stroke();
 
-        // Bio-spore cluster
         ctx.fillStyle = '#d9f99d';
         ctx.beginPath();
         ctx.arc(2, 0, 3, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
       } else {
-        // Carnivore: Chitinous predator with snapping mandibles and amber eyes
+        // Standard Carnivore
         ctx.save();
         ctx.fillStyle = f.color;
         ctx.strokeStyle = '#fda4af';
         ctx.lineWidth = 1.5;
 
-        // Abdomen / Carapace
         ctx.beginPath();
         ctx.moveTo(10, 0);
         ctx.lineTo(-4, -8);
@@ -1698,7 +2222,6 @@ export class LanderController {
         ctx.fill();
         ctx.stroke();
 
-        // Snapping Mandibles
         const bitePulse = f.state === 'CHARGE' ? Math.sin(Date.now() * 0.02) * 3 : 0;
         ctx.strokeStyle = '#f87171';
         ctx.lineWidth = 2;
@@ -1709,7 +2232,6 @@ export class LanderController {
         ctx.lineTo(16, 6 - bitePulse);
         ctx.stroke();
 
-        // Glowing Amber Eyes
         ctx.fillStyle = '#fbbf24';
         ctx.beginPath();
         ctx.arc(6, -3, 1.5, 0, Math.PI * 2);
@@ -1720,12 +2242,26 @@ export class LanderController {
 
       ctx.restore();
 
-      // Species Nameplate
+      // Species Nameplate & Multi-Hit Stun Resistance Meter
       ctx.save();
-      ctx.fillStyle = f.speciesClass === 'CARNIVORE' ? '#f87171' : '#4ade80';
-      ctx.font = '8px monospace';
+      const nameY = f.isApex ? f.y + 26 : f.y + 18;
+      ctx.fillStyle = f.isApex ? '#ec4899' : (f.speciesClass === 'CARNIVORE' ? '#f87171' : '#4ade80');
+      ctx.font = f.isApex ? 'bold 9px monospace' : '8px monospace';
       ctx.textAlign = 'center';
-      ctx.fillText(f.name.toUpperCase(), f.x, f.y + 18);
+      const crown = f.isApex ? '👑 ' : '';
+      ctx.fillText(`${crown}${f.name.toUpperCase()}`, f.x, nameY);
+
+      if (f.isApex && f.state !== 'STUNNED') {
+        const req = f.stunHitsRequired || 3;
+        const cur = f.currentStunHits || 0;
+        let pips = '';
+        for (let i = 0; i < req; i++) {
+          pips += i < cur ? '● ' : '○ ';
+        }
+        ctx.font = '8px monospace';
+        ctx.fillStyle = f.isEnraged ? '#ef4444' : '#38bdf8';
+        ctx.fillText(`STUN RESIST: [ ${pips}]`, f.x, nameY + 11);
+      }
       ctx.restore();
     });
 
@@ -1741,7 +2277,6 @@ export class LanderController {
     });
 
     // 7. Render Star Control II Surface Lander Craft
-    const s = this.landerState;
     ctx.save();
     ctx.translate(s.x, s.y);
     ctx.rotate(s.heading);
@@ -1796,12 +2331,16 @@ export class LanderController {
     }
     ctx.restore();
 
-    // 8. Topography Scanner HUD Coordinates & Hazard Telemetry
+    // End Camera-Zoomed World Context
+    ctx.restore();
+
+    // 8. Screen-Space HUD: Topography Scanner Coordinates & Dynamic Zoom
     ctx.save();
     ctx.fillStyle = 'rgba(0, 240, 255, 0.7)';
     ctx.font = '10px monospace';
     const hdgDeg = Math.round(((s.heading * 180) / Math.PI + 360) % 360);
-    ctx.fillText(`HDG: ${hdgDeg}° // VEL: ${Math.hypot(s.vx, s.vy).toFixed(1)} m/s // TOPOGRAPHY MK-IV`, 16, 22);
+    const zoomPct = Math.round(this.currentZoom * 100);
+    ctx.fillText(`HDG: ${hdgDeg}° // VEL: ${spd.toFixed(1)} m/s // ZOOM: ${zoomPct}% // EXPEDITION MK-IV`, 16, 22);
 
     if (this.isLanderFlamedOut) {
       ctx.fillStyle = '#ef4444';
@@ -1809,6 +2348,126 @@ export class LanderController {
       ctx.textAlign = 'center';
       ctx.fillText('⚠️ ENGINE FLAMEOUT // CORE TEMPERATURE CRITICAL // RESTARTING...', w / 2, 22);
     }
+    ctx.restore();
+
+    // 9. Day 30: Screen-Space Surface Tactical Mini-Radar HUD (Top Right Corner)
+    const radarCx = w - 62;
+    const radarCy = 62;
+    const radarR = 46;
+    const radarWorldRange = 420;
+
+    ctx.save();
+    // Dark CRT Radar Screen
+    ctx.beginPath();
+    ctx.arc(radarCx, radarCy, radarR, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(4, 13, 26, 0.88)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0, 240, 255, 0.65)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Inner Range Ring
+    ctx.beginPath();
+    ctx.arc(radarCx, radarCy, radarR * 0.5, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(0, 240, 255, 0.22)';
+    ctx.stroke();
+
+    // Crosshairs
+    ctx.strokeStyle = 'rgba(0, 240, 255, 0.16)';
+    ctx.beginPath();
+    ctx.moveTo(radarCx - radarR, radarCy);
+    ctx.lineTo(radarCx + radarR, radarCy);
+    ctx.moveTo(radarCx, radarCy - radarR);
+    ctx.lineTo(radarCx, radarCy + radarR);
+    ctx.stroke();
+
+    // Sweeping Radar Beam
+    const sweepAngle = (Date.now() * 0.003) % (Math.PI * 2);
+    ctx.strokeStyle = 'rgba(0, 240, 255, 0.45)';
+    ctx.beginPath();
+    ctx.moveTo(radarCx, radarCy);
+    ctx.lineTo(radarCx + Math.cos(sweepAngle) * radarR, radarCy + Math.sin(sweepAngle) * radarR);
+    ctx.stroke();
+
+    // Blip Plotter
+    const plotBlip = (wx: number, wy: number, color: string, radius: number = 2.5, isDiamond: boolean = false) => {
+      const dx = wx - s.x;
+      const dy = wy - s.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist <= radarWorldRange) {
+        const factor = radarR / radarWorldRange;
+        const bx = radarCx + dx * factor;
+        const by = radarCy + dy * factor;
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        if (isDiamond) {
+          ctx.moveTo(bx, by - 3.5);
+          ctx.lineTo(bx + 3.5, by);
+          ctx.lineTo(bx, by + 3.5);
+          ctx.lineTo(bx - 3.5, by);
+          ctx.closePath();
+        } else {
+          ctx.arc(bx, by, radius, 0, Math.PI * 2);
+        }
+        ctx.fill();
+      }
+    };
+
+    // Plot Rendezvous Stash Beacon (landing origin 380, 240)
+    plotBlip(380, 240, '#38bdf8', 3.5, true);
+
+    // Plot Minerals
+    this.landerNodes.forEach((node) => {
+      if (node.type === 'MINERAL' && !node.collected && node.discovered) {
+        plotBlip(node.x, node.y, '#fbbf24', 2.0);
+      }
+    });
+
+    // Plot Megastructures
+    this.landerNodes.forEach((node) => {
+      if (node.type === 'MEGASTRUCTURE') {
+        plotBlip(node.x, node.y, '#00f0ff', 3.0, true);
+      }
+    });
+
+    // Plot Geological Hazards
+    this.landerLavaGeysers.forEach((g) => plotBlip(g.x, g.y, '#f97316', 2.5));
+    this.landerAcidPools.forEach((a) => plotBlip(a.x, a.y, '#84cc16', 2.5));
+    this.landerIonStorms.forEach((i) => plotBlip(i.x, i.y, '#c084fc', 3.0));
+
+    // Plot Fauna & Titans
+    this.landerFauna.forEach((f) => {
+      if (f.collected) return;
+      if (f.isApex) {
+        plotBlip(f.x, f.y, f.isEnraged ? '#ef4444' : '#ec4899', 4.5, true);
+        if (f.lairX != null && f.lairY != null) {
+          plotBlip(f.lairX, f.lairY, '#f43f5e', 3.0, true);
+        }
+      } else if (f.speciesClass === 'CARNIVORE') {
+        plotBlip(f.x, f.y, '#f87171', 2.5);
+      } else {
+        plotBlip(f.x, f.y, '#4ade80', 2.5);
+      }
+    });
+
+    // Center player lander indicator (white arrow pointing heading)
+    ctx.save();
+    ctx.translate(radarCx, radarCy);
+    ctx.rotate(s.heading);
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.moveTo(5, 0);
+    ctx.lineTo(-3.5, -3);
+    ctx.lineTo(-3.5, 3);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    // Radar Header Label
+    ctx.fillStyle = '#38bdf8';
+    ctx.font = '8px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('MINI-RADAR', radarCx, radarCy - radarR - 4);
     ctx.restore();
 
     // Restore shake translation

@@ -1572,6 +1572,68 @@ export class AudioEngine {
     osc1.start(now);
     osc1.stop(now + 0.35);
   }
+
+  /**
+   * Day 30: Titan Enrage Roar / Screech (deep guttural subterranean rumble)
+   */
+  public playTitanRoarSound(): void {
+    this.initContext();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    const filter = this.ctx.createBiquadFilter();
+
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(95, now);
+    osc.frequency.linearRampToValueAtTime(160, now + 0.2);
+    osc.frequency.exponentialRampToValueAtTime(45, now + 0.7);
+
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(320, now);
+    filter.frequency.exponentialRampToValueAtTime(80, now + 0.7);
+
+    gain.gain.setValueAtTime(0.01, now);
+    gain.gain.linearRampToValueAtTime(0.35, now + 0.1);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.75);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.75);
+  }
+
+  /**
+   * Day 30: Rendezvous Beacon Mid-Mission Cargo Stash & Refuel Chime
+   */
+  public playBeaconStashSound(): void {
+    this.initContext();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+
+    // Harmonic sweep upwards
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(440, now);
+    osc.frequency.setValueAtTime(554.37, now + 0.08); // C#5
+    osc.frequency.setValueAtTime(659.25, now + 0.16); // E5
+    osc.frequency.setValueAtTime(880, now + 0.24);    // A5
+
+    gain.gain.setValueAtTime(0.01, now);
+    gain.gain.linearRampToValueAtTime(0.25, now + 0.04);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.55);
+  }
 }
 
 

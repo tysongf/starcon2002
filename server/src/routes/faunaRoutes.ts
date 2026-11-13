@@ -5,9 +5,13 @@ import {
   PlanetParamSchema,
   DeployLanderBodySchema,
   RecoverLanderBodySchema,
+  StashCargoBodySchema,
+  TitanHitBodySchema,
   type PlanetParam,
   type DeployLanderBody,
   type RecoverLanderBody,
+  type StashCargoBody,
+  type TitanHitBody,
 } from '../schemas/faunaSchemas';
 
 export const faunaRoutes: FastifyPluginAsync = async (server) => {
@@ -41,6 +45,22 @@ export const faunaRoutes: FastifyPluginAsync = async (server) => {
     }
   );
 
+  // 1.2 Get Planetary Apex Titans
+  server.get<{ Params: PlanetParam }>(
+    '/:id/fauna/titans',
+    { schema: { params: PlanetParamSchema } },
+    async (req, reply) => {
+      const planetId = req.params.id;
+      const titans = await planetaryFaunaService.getPlanetTitans(planetId);
+      reply.send({
+        success: true,
+        planetId,
+        count: titans.length,
+        titans,
+      });
+    }
+  );
+
   // 2. Deploy Surface Lander from Orbit
   server.post<{ Params: PlanetParam; Body: DeployLanderBody }>(
     '/:id/lander/deploy',
@@ -49,6 +69,35 @@ export const faunaRoutes: FastifyPluginAsync = async (server) => {
       const planetId = req.params.id;
       const { accountId } = req.body;
       const result = await planetaryFaunaService.deployLander(accountId, planetId);
+      if (!result.success) {
+        return reply.status(400).send(result);
+      }
+      reply.send(result);
+    }
+  );
+
+  // 2.1 Mid-Mission Stash Lander Cargo at Rendezvous Beacon
+  server.post<{ Params: PlanetParam; Body: StashCargoBody }>(
+    '/:id/lander/stash-cargo',
+    { schema: { params: PlanetParamSchema, body: StashCargoBodySchema } },
+    async (req, reply) => {
+      const planetId = req.params.id;
+      const result = await planetaryFaunaService.stashLanderCargo(planetId, req.body);
+      if (!result.success) {
+        return reply.status(400).send(result);
+      }
+      reply.send(result);
+    }
+  );
+
+  // 2.2 Record Titan Stun Hit & Manage Enrage State
+  server.post<{ Params: PlanetParam; Body: TitanHitBody }>(
+    '/:id/lander/titan-hit',
+    { schema: { params: PlanetParamSchema, body: TitanHitBodySchema } },
+    async (req, reply) => {
+      const planetId = req.params.id;
+      const { speciesId } = req.body;
+      const result = await planetaryFaunaService.recordTitanStunHit(planetId, speciesId);
       if (!result.success) {
         return reply.status(400).send(result);
       }

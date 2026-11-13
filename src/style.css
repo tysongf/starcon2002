@@ -5920,6 +5920,24 @@ kbd {
   border-left-color: #f87171;
 }
 
+.target-card-item.fauna.titan {
+  border-left-color: #ec4899;
+  background: rgba(80, 7, 36, 0.6);
+  font-weight: 700;
+  box-shadow: 0 0 8px rgba(236, 72, 153, 0.3);
+}
+
+.target-card-item.fauna.enraged {
+  border-left-color: #ef4444;
+  background: rgba(127, 29, 29, 0.7);
+  animation: pulse-border-red 0.8s infinite alternate;
+}
+
+@keyframes pulse-border-red {
+  from { box-shadow: 0 0 4px rgba(239, 68, 68, 0.4); }
+  to { box-shadow: 0 0 14px rgba(239, 68, 68, 0.9); }
+}
+
 .target-card-item.fauna.stunned {
   border-left-color: #38bdf8;
   animation: pulse-border-cyan 1.5s infinite alternate;
@@ -5949,6 +5967,39 @@ kbd {
 @keyframes pulse-border-cyan {
   from { box-shadow: 0 0 4px rgba(56, 189, 248, 0.3); }
   to { box-shadow: 0 0 12px rgba(56, 189, 248, 0.7); }
+}
+
+/* Rendezvous Beacon Stash Banner (Day 30 Continuous Expeditions) */
+.rendezvous-stash-banner {
+  background: rgba(14, 165, 233, 0.15);
+  border: 1px solid #0284c7;
+  border-radius: 8px;
+  padding: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  animation: pulse-border-blue 1.5s infinite;
+}
+
+@keyframes pulse-border-blue {
+  0% { box-shadow: 0 0 4px rgba(14, 165, 233, 0.3); }
+  50% { box-shadow: 0 0 14px rgba(14, 165, 233, 0.8); }
+  100% { box-shadow: 0 0 4px rgba(14, 165, 233, 0.3); }
+}
+
+.stash-banner-title {
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  font-weight: 800;
+  color: #38bdf8;
+  letter-spacing: 0.05em;
+}
+
+.stash-banner-desc {
+  font-size: 0.72rem;
+  color: #f8fafc;
+  line-height: 1.4;
+  margin: 0;
 }
 
 /* Megastructure Docking Banner */

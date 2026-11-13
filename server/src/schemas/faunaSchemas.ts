@@ -33,3 +33,12 @@ export const RecoverLanderBodySchema = Type.Object({
 });
 export type RecoverLanderBody = Static<typeof RecoverLanderBodySchema>;
 
+export const StashCargoBodySchema = RecoverLanderBodySchema;
+export type StashCargoBody = RecoverLanderBody;
+
+export const TitanHitBodySchema = Type.Object({
+  accountId: Type.String({ minLength: 1 }),
+  speciesId: Type.String({ minLength: 1 }),
+});
+export type TitanHitBody = Static<typeof TitanHitBodySchema>;
+
