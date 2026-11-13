@@ -1613,6 +1613,8 @@ class GameEngine {
       showApNotification: (msg: string, isErr?: boolean) => this.showApNotification(msg, !!isErr),
       getCurrentSectorId: () => this.currentSectorId,
       refreshPlayerHold: () => this.refreshPlayerHold(),
+      getTarget: () => this.combatClient?.primaryDroneTarget || null,
+      getPlayerPosition: () => this.flightController?.position || null,
     });
 
     this.precursorTerminalController = new PrecursorTerminalController({
@@ -1687,6 +1689,7 @@ class GameEngine {
         if (this.elTelemetryCredits) this.elTelemetryCredits.textContent = `${this.playerCredits.toLocaleString()} Cr`;
         if (this.elContractsPlayerCredits) this.elContractsPlayerCredits.textContent = `${this.playerCredits.toLocaleString()} Cr`;
       },
+      closeComms: () => this.commsController.closeAlienComms(),
     });
   }
 

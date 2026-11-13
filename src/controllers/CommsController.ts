@@ -5,6 +5,8 @@ export interface CommsCallbacks {
   showApNotification: (msg: string, isError: boolean) => void;
   getCurrentSectorId: () => number;
   refreshPlayerHold: () => Promise<void>;
+  getTarget?: () => any;
+  getPlayerPosition?: () => any;
   onCommsClosed?: () => void;
 }
 
@@ -42,6 +44,8 @@ export class CommsController {
 
   // State
   public currentAlienNpcId: string | null = null;
+  public isConvoyComms: boolean = false;
+  public currentConvoyId: string | null = null;
   public currentAlienSpecies: string = 'VAELIC';
   public currentAlienMood: string = 'AGGRESSIVE';
   public alienPortraitAnimId: number | null = null;
@@ -172,6 +176,28 @@ export class CommsController {
   }
 
   public hailCurrentTargetOrEnvoy(): void {
+    const target = this.callbacks.getTarget?.();
+    const playerPos = this.callbacks.getPlayerPosition?.();
+
+    if (target) {
+      if (playerPos) {
+        const dx = (target.x ?? 0) - (playerPos.x ?? 0);
+        const dz = (target.z ?? 0) - (playerPos.z ?? 0);
+        const dist = Math.sqrt(dx * dx + dz * dz);
+        if (dist > 80.0) {
+          this.callbacks.showApNotification(`📡 TARGET OUT OF HAILING RANGE (${Math.round(dist)}u > 80u)`, true);
+          this.audio.playApWarningSound();
+          return;
+        }
+      }
+
+      if (target.isConvoyHauler || target.type === 'HAULER' || target.convoyId) {
+        const convoyId = target.convoyId || target.id;
+        this.openConvoyComms(convoyId);
+        return;
+      }
+    }
+
     const targetName = document.getElementById('reticle-name')?.textContent || '';
     if (targetName.includes('INTERDICTOR') || targetName.includes('HEGEMONY') || targetName.includes('DRONE')) {
       this.openAlienComms('npc_vorash');
@@ -184,7 +210,53 @@ export class CommsController {
     }
   }
 
+  public async openConvoyComms(convoyId: string): Promise<void> {
+    this.isConvoyComms = true;
+    this.currentConvoyId = convoyId;
+    this.currentAlienNpcId = null;
+
+    if (this.elAlienCommsModal) {
+      this.elAlienCommsModal.classList.remove('hidden');
+    }
+    this.audio.playCommsHailingChime();
+
+    const sectorId = this.callbacks.getCurrentSectorId();
+    try {
+      await fetch('/api/dialog/convoy/stand-down', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sectorId,
+          isStandDown: true,
+        }),
+      });
+    } catch (e) {
+      console.warn('[Convoy Comms] Failed to notify stand-down:', e);
+    }
+
+    try {
+      const res = await fetch(`/api/dialog/convoy/${convoyId}?accountId=acc_sol_captain&sectorId=${sectorId}`);
+      if (!res.ok) {
+        this.callbacks.showApNotification('⚠️ CONVOY COMMS FREQUENCY UNRESPONSIVE', true);
+        this.closeAlienComms();
+        return;
+      }
+      const data = await res.json();
+      if (!data.dialog) {
+        this.closeAlienComms();
+        return;
+      }
+
+      this.renderAlienDialogNode(data.dialog);
+    } catch (err) {
+      console.error('[Convoy Comms] Error fetching dialog node:', err);
+      this.closeAlienComms();
+    }
+  }
+
   public async openAlienComms(npcId: string): Promise<void> {
+    this.isConvoyComms = false;
+    this.currentConvoyId = null;
     this.currentAlienNpcId = npcId;
     if (this.elAlienCommsModal) {
       this.elAlienCommsModal.classList.remove('hidden');
@@ -249,7 +321,25 @@ export class CommsController {
 
     // Populate response options
     if (this.elAlienCommsOptionsList) {
-      this.elAlienCommsOptionsList.innerHTML = dialog.options.map((opt: any, idx: number) => {
+      let manifestHtml = '';
+      if (this.isConvoyComms && dialog.manifest && dialog.manifest.length > 0) {
+        const items = dialog.manifest.map((item: any) => `
+          <div class="manifest-item-pill">
+            <span style="color: #f1f5f9; font-weight: 600;">${item.name || item.commodityId}</span>
+            <span style="color: #38bdf8;">${item.quantity}u</span>
+            <span style="color: #10b981;">~${Math.round((item.unitValue || 60) * 0.85)} CR</span>
+          </div>
+        `).join('');
+
+        manifestHtml = `
+          <div class="convoy-barter-manifest-card">
+            <div class="manifest-card-title">📦 IN-FLIGHT HAULER CARGO MANIFEST (15% BULK DISCOUNT):</div>
+            <div class="manifest-items-grid">${items}</div>
+          </div>
+        `;
+      }
+
+      this.elAlienCommsOptionsList.innerHTML = manifestHtml + dialog.options.map((opt: any, idx: number) => {
         return `
           <button class="comms-option-btn" data-index="${idx}">
             <span class="option-num-badge">[${idx + 1}]</span>
@@ -300,10 +390,43 @@ export class CommsController {
   }
 
   public async selectAlienDialogOption(optionIndex: number): Promise<void> {
-    if (!this.currentAlienNpcId) return;
+    if (!this.currentAlienNpcId && !this.isConvoyComms) return;
 
     this.audio.playUiBlip();
     try {
+      if (this.isConvoyComms && this.currentConvoyId) {
+        const sectorId = this.callbacks.getCurrentSectorId();
+        const res = await fetch('/api/dialog/convoy/respond', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            accountId: 'acc_sol_captain',
+            sectorId,
+            convoyId: this.currentConvoyId,
+            optionIndex,
+          }),
+        });
+
+        if (!res.ok) return;
+        const data = await res.json();
+
+        if (data.actionMessage) {
+          this.callbacks.showApNotification(data.actionMessage, false);
+          this.callbacks.refreshPlayerHold();
+          if (data.actionMessage.includes('ceasefire') || data.actionMessage.includes('Safe transit') || data.actionMessage.includes('Truce') || data.actionMessage.includes('registered with fleet command')) {
+            this.startTruceCountdown(300);
+          }
+          this.refreshFactionStandings();
+        }
+
+        if (data.nextNode) {
+          this.renderAlienDialogNode(data.nextNode);
+        } else {
+          this.closeAlienComms();
+        }
+        return;
+      }
+
       const res = await fetch('/api/dialog/respond', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -473,6 +596,18 @@ export class CommsController {
   }
 
   public closeAlienComms(): void {
+    if (this.isConvoyComms) {
+      const sectorId = this.callbacks.getCurrentSectorId();
+      fetch('/api/dialog/convoy/stand-down', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sectorId,
+          isStandDown: false,
+        }),
+      }).catch((e) => console.warn('[Convoy Comms] Error resetting stand-down:', e));
+    }
+
     if (this.elAlienCommsModal) {
       this.elAlienCommsModal.classList.add('hidden');
     }
@@ -490,6 +625,8 @@ export class CommsController {
     }
     this.isAlienSpeaking = false;
     this.currentAlienNpcId = null;
+    this.isConvoyComms = false;
+    this.currentConvoyId = null;
     this.audio.playCommsCloseSound();
 
     this.callbacks.onCommsClosed?.();

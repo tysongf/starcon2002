@@ -1,5 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { dialogService, DIALOG_TREES } from '../services/DialogService';
+import { convoyDialogService } from '../services/ConvoyDialogService';
+import { combatManager } from '../services/SectorCombatManager';
 
 export const dialogRoutes: FastifyPluginAsync = async (server) => {
   server.get('/npcs', async (_req, reply) => {
@@ -55,5 +57,52 @@ export const dialogRoutes: FastifyPluginAsync = async (server) => {
     } catch (err: any) {
       reply.status(400).send({ success: false, error: err.message });
     }
+  });
+
+  // Day 24: In-Flight Convoy Hailing, Dialogue & Surrender Endpoints
+  server.get('/convoy/:convoyId', async (req, reply) => {
+    const params = req.params as { convoyId: string };
+    const query = (req.query || {}) as { accountId?: string; sectorId?: string };
+    const accountId = query.accountId || 'acc_sol_captain';
+    const sectorId = parseInt(query.sectorId || '2', 10);
+
+    try {
+      const dialog = await convoyDialogService.getConvoyDialog(accountId, sectorId, params.convoyId);
+      reply.send({ success: true, dialog });
+    } catch (err: any) {
+      reply.status(400).send({ success: false, error: err.message });
+    }
+  });
+
+  server.post('/convoy/respond', async (req, reply) => {
+    const body = (req.body || {}) as {
+      accountId?: string;
+      sectorId?: number;
+      convoyId: string;
+      optionIndex: number;
+      actionPayload?: any;
+    };
+    const accountId = body.accountId || 'acc_sol_captain';
+    const sectorId = body.sectorId || 2;
+
+    try {
+      const result = await convoyDialogService.respondConvoyDialog(
+        accountId,
+        sectorId,
+        body.convoyId,
+        body.optionIndex,
+        body.actionPayload
+      );
+      reply.send(result);
+    } catch (err: any) {
+      reply.status(400).send({ success: false, error: err.message });
+    }
+  });
+
+  server.post('/convoy/stand-down', async (req, reply) => {
+    const body = (req.body || {}) as { sectorId?: number; isStandDown: boolean };
+    const sectorId = body.sectorId || 2;
+    combatManager.setCommsStandDown(sectorId, body.isStandDown !== false);
+    reply.send({ success: true, isStandDown: body.isStandDown !== false });
   });
 };

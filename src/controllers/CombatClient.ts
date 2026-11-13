@@ -33,6 +33,7 @@ export interface CombatClientCallbacks {
   setActiveTruceExpiresAt: (time: number | null) => void;
   getPlayerCredits?: () => number;
   setPlayerCredits?: (cr: number) => void;
+  closeComms?: () => void;
 }
 
 export class CombatClient {
@@ -934,6 +935,13 @@ export class CombatClient {
           this.callbacks.showApNotification('⚠️ CONVOY WARP DRIVE DISRUPTED // SHIELDS COMPROMISED', false);
         } else if (ev.type === 'WARP_JUMP_SUCCESS') {
           this.callbacks.showApNotification('🌌 CONVOY ESCAPED VIA HYPERSPACE WARP JUMP', false);
+        } else if (ev.type === 'COMMS_ABORTED') {
+          this.audio.playCommsCloseSound();
+          this.callbacks.showApNotification('⚠️ COMMS ABORTED // WEAPONS FIRE DETECTED', true);
+          this.callbacks.closeComms?.();
+        } else if (ev.type === 'CONVOY_SURRENDERED') {
+          this.audio.playLootPickupSound();
+          this.callbacks.showApNotification('🚨 CONVOY SURRENDERED! Cargo pods jettisoned into sector space!', false);
         } else if (ev.type === 'TRUCE_DECLARED') {
           this.callbacks.startTruceCountdown(Math.floor((ev.data?.durationMs || 300000) / 1000));
           this.callbacks.showApNotification('🕊️ CEASEFIRE TRUCE CONFIRMED // PATROLS DISARMED', false);

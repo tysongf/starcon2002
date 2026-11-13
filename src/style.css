@@ -2050,6 +2050,57 @@ kbd {
   display: none;
 }
 
+/* Day 24 In-Flight Convoy Barter Manifest Card */
+.convoy-barter-manifest-card {
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.manifest-card-title {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #38bdf8;
+  letter-spacing: 0.05em;
+}
+
+.manifest-items-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.manifest-item-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+}
+
+.manifest-qty {
+  color: #facc15;
+  font-weight: 700;
+}
+
+.manifest-name {
+  color: #f8fafc;
+}
+
+.manifest-rate {
+  color: #34d399;
+}
+
 /* ==========================================================================
    BOTTOM-CENTER COMMAND CONSOLE & ABILITY HOTBAR
    ========================================================================== */

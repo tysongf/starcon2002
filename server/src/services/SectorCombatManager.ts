@@ -119,7 +119,7 @@ export interface Projectile {
 }
 
 export interface CombatEvent {
-  type: 'HIT' | 'SHIELD_BREAK' | 'DESTROYED' | 'LOOT_SPAWNED' | 'LOOT_COLLECTED' | 'POD_EJECTED' | 'CONTAINER_SCOOPED' | 'WRECK_SPAWNED' | 'TOW_ATTACHED' | 'TOW_RELEASED' | 'SALVAGE_BEAM_TICK' | 'WRECK_DISINTEGRATED' | 'TRUCE_DECLARED' | 'TRUCE_BROKEN' | 'LIFE_SUPPORT_EXHAUSTED' | 'WARP_SPOOL_STARTED' | 'WARP_SPOOL_INTERRUPTED' | 'WARP_JUMP_SUCCESS';
+  type: 'HIT' | 'SHIELD_BREAK' | 'DESTROYED' | 'LOOT_SPAWNED' | 'LOOT_COLLECTED' | 'POD_EJECTED' | 'CONTAINER_SCOOPED' | 'WRECK_SPAWNED' | 'TOW_ATTACHED' | 'TOW_RELEASED' | 'SALVAGE_BEAM_TICK' | 'WRECK_DISINTEGRATED' | 'TRUCE_DECLARED' | 'TRUCE_BROKEN' | 'LIFE_SUPPORT_EXHAUSTED' | 'WARP_SPOOL_STARTED' | 'WARP_SPOOL_INTERRUPTED' | 'WARP_JUMP_SUCCESS' | 'CONVOY_SURRENDERED' | 'COMMS_ABORTED';
 
   sourceId?: string;
   targetId?: string;
@@ -238,6 +238,112 @@ export class SectorRoom {
   private tickCount: number = 0;
   private projectileSeq: number = 0;
   private activeTruces: Map<string, number> = new Map(); // `${playerId}:${factionId}` -> expiryTimestamp
+  public isCommsStandDown: boolean = false;
+
+  public setCommsStandDown(isStandDown: boolean): void {
+    this.isCommsStandDown = isStandDown;
+  }
+
+  public notifyTruce(playerId: string, factionId: string, durationMs: number = 300000): void {
+    this.setTruce(playerId, factionId, durationMs);
+  }
+
+  public surrenderConvoy(convoyId: string, accountId: string): { droppedContainers: number; totalUnits: number } {
+    let hauler: SectorEntity | undefined;
+    for (const e of this.entities.values()) {
+      if ((e.convoyId === convoyId || e.id === convoyId) && e.isConvoyHauler) {
+        hauler = e;
+        break;
+      }
+    }
+    if (!hauler || hauler.state === 'DESTROYED') {
+      return { droppedContainers: 0, totalUnits: 0 };
+    }
+
+    hauler.state = 'FLEE';
+    hauler.isWarpSpooling = false;
+    hauler.inputs.forward = true;
+    hauler.inputs.turnLeft = false;
+    hauler.inputs.turnRight = false;
+
+    // Escorts also flee
+    if (hauler.escortIds) {
+      for (const escId of hauler.escortIds) {
+        const esc = this.entities.get(escId);
+        if (esc && esc.state !== 'DESTROYED') {
+          esc.state = 'FLEE';
+          esc.inputs.firePrimary = false;
+          esc.inputs.fireTactical = false;
+        }
+      }
+    }
+
+    // Jettison 50-75% of cargo manifest into 20Hz sector space as SectorLootContainer
+    const manifest = hauler.cargoManifest || [];
+    let droppedContainers = 0;
+    let totalUnits = 0;
+
+    for (let i = 0; i < manifest.length; i++) {
+      const item = manifest[i];
+      const dropQuantity = Math.max(1, Math.round((item.quantity || 10) * 0.65));
+      totalUnits += dropQuantity;
+      item.quantity = Math.max(0, (item.quantity || dropQuantity) - dropQuantity);
+
+      const angle = (i / Math.max(1, manifest.length)) * Math.PI * 2;
+      const dist = 5.0 + (i % 2) * 3.0;
+      const cId = `container_convoy_${Date.now()}_${i}`;
+
+      const container: SectorLootContainer = {
+        id: cId,
+        x: hauler.x + Math.sin(angle) * dist,
+        z: hauler.z + Math.cos(angle) * dist,
+        title: `Jettisoned ${item.name || item.commodityId}`,
+        rarity: 'UNCOMMON',
+        items: [{
+          id: `loot_${item.commodityId}_${Date.now()}_${i}`,
+          name: item.name || item.commodityId,
+          category: 'COMMODITY',
+          commodityId: item.commodityId,
+          quantity: dropQuantity,
+          unitValue: item.unitValue || 50,
+          rarity: 'UNCOMMON',
+        }],
+        createdAt: Date.now(),
+      };
+
+      this.containers.push(container);
+      droppedContainers++;
+
+      this.pendingEvents.push({
+        type: 'LOOT_SPAWNED',
+        sourceId: hauler.id,
+        targetId: container.id,
+        x: container.x,
+        z: container.z,
+        data: {
+          containerId: container.id,
+          title: container.title,
+          rarity: container.rarity,
+          items: container.items,
+        },
+      });
+    }
+
+    this.pendingEvents.push({
+      type: 'CONVOY_SURRENDERED',
+      sourceId: accountId,
+      targetId: hauler.id,
+      x: hauler.x,
+      z: hauler.z,
+      data: {
+        convoyId,
+        droppedContainers,
+        totalUnits,
+      },
+    });
+
+    return { droppedContainers, totalUnits };
+  }
 
   public setTruce(playerId: string, factionId: string, durationMs: number = 300000): void {
     const normalized = factionId === 'FACTION_VAELIC' ? 'FACTION_HEGEMONY' : factionId;
@@ -785,6 +891,16 @@ export class SectorRoom {
         continue;
       }
 
+      // If player activates fire while comms stand-down is active, abort comms and resume battle
+      if ((entity.inputs.firePrimary || entity.inputs.fireTactical) && entity.type === 'PLAYER' && this.isCommsStandDown) {
+        this.isCommsStandDown = false;
+        this.pendingEvents.push({
+          type: 'COMMS_ABORTED',
+          sourceId: entity.id,
+          data: { reason: 'PLAYER_FIRED' },
+        });
+      }
+
       if (entity.inputs.firePrimary && entity.fireCooldown <= 0 && entity.energy >= 10) {
         this.dischargePrimaryWeapon(entity);
       }
@@ -1097,6 +1213,14 @@ export class SectorRoom {
 
     for (const drone of this.entities.values()) {
       if (drone.type !== 'DRONE' || drone.state === 'DESTROYED') continue;
+
+      // Day 24: Comms Stand-Down Protocol (escorts hold fire while comms transmission is open)
+      if (this.isCommsStandDown) {
+        drone.state = 'TRUCE';
+        drone.inputs.firePrimary = false;
+        drone.inputs.fireTactical = false;
+        continue;
+      }
 
       // Day 23: Escort Wingman Formation AI
       if (drone.leaderId) {
@@ -2006,6 +2130,13 @@ export class SectorCombatManager {
     const room = this.rooms.get(sectorId);
     if (room) {
       room.reseedEntities();
+    }
+  }
+
+  public setCommsStandDown(sectorId: number, isStandDown: boolean): void {
+    const room = this.rooms.get(sectorId);
+    if (room) {
+      room.setCommsStandDown(isStandDown);
     }
   }
 
