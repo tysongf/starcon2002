@@ -1413,12 +1413,16 @@ class GameEngine {
         if (data.convoys && data.convoys.length > 0) {
           html += data.convoys.map((convoy: any) => {
             const manifestSummary = convoy.cargo_manifest.map((m: any) => `${m.quantity}x ${m.name}`).join(', ');
+            const progressPercent = Math.min(100, Math.max(0, Math.round((convoy.transitProgress || 0) * 100)));
             return `
               <div class="radar-convoy-card">
-                <div class="radar-route-info">
+                <div class="radar-route-info" style="flex: 1; margin-right: 0.75rem;">
                   <span class="radar-route-title">${convoy.name}</span>
                   <span class="radar-route-path">SEC-0${convoy.current_sector_id} ➔ Target: SEC-0${convoy.target_sector_id || convoy.current_sector_id} (Shield: ${convoy.escort_count}x Escorts)</span>
                   <span class="convoy-manifest-summary">📦 Cargo: ${manifestSummary} (~${convoy.totalCargoValue} Cr)</span>
+                  <div class="radar-eta-container">
+                    <div class="radar-eta-bar" style="width: ${progressPercent}%;"></div>
+                  </div>
                 </div>
                 <div class="radar-route-profit">
                   <span class="convoy-badge-transit">ETA ${convoy.etaSeconds}s</span>
@@ -1431,10 +1435,77 @@ class GameEngine {
           html += `<div class="radar-loading">No active faction convoys detected in local sectors.</div>`;
         }
         this.navRadarRoutes.innerHTML = html;
+
+        // Dynamic Map Topology Decoration (Milestone 0.6 Capstone UX Polish)
+        this.updateTopologyRadarDecorations(data.convoys || [], data.skirmishes || []);
       }
     } catch {
       this.navRadarRoutes.innerHTML = `<div class="radar-loading">Subspace traffic relay offline.</div>`;
     }
+  }
+
+  private updateTopologyRadarDecorations(convoys: any[], skirmishes: any[]): void {
+    // 1. Skirmish indicators on topology nodes
+    [1, 2, 3].forEach((sectorId) => {
+      const node = document.getElementById(`node-sec-${sectorId}`);
+      if (node) {
+        node.classList.remove('has-skirmish');
+        const existingBadge = node.querySelector('.skirmish-node-badge');
+        if (existingBadge) existingBadge.remove();
+      }
+    });
+
+    skirmishes.forEach((sk: any) => {
+      const node = document.getElementById(`node-sec-${sk.sector_id}`);
+      if (node) {
+        node.classList.add('has-skirmish');
+        if (!node.querySelector('.skirmish-node-badge')) {
+          const badge = document.createElement('div');
+          badge.className = 'skirmish-node-badge';
+          badge.textContent = '⚔️ CONTESTED';
+          node.appendChild(badge);
+        }
+      }
+    });
+
+    // 2. Clear existing convoy pips
+    document.querySelectorAll('.convoy-pip').forEach((pip) => pip.remove());
+
+    // 3. Render convoy pips along lanes or nodes
+    convoys.forEach((convoy: any) => {
+      const cur = convoy.current_sector_id;
+      const tgt = convoy.target_sector_id;
+      const progress = typeof convoy.transitProgress === 'number' ? convoy.transitProgress : 0.5;
+
+      let targetEl: HTMLElement | null = null;
+      let pipLeft = 50;
+
+      if ((cur === 1 && tgt === 2) || (cur === 2 && tgt === 1)) {
+        targetEl = document.getElementById('lane-1-2');
+        const normalized = cur === 1 ? progress : (1 - progress);
+        pipLeft = Math.min(85, Math.max(15, normalized * 100));
+      } else if ((cur === 2 && tgt === 3) || (cur === 3 && tgt === 2)) {
+        targetEl = document.getElementById('lane-2-3');
+        const normalized = cur === 2 ? progress : (1 - progress);
+        pipLeft = Math.min(85, Math.max(15, normalized * 100));
+      } else {
+        targetEl = document.getElementById(`node-sec-${cur}`);
+      }
+
+      if (targetEl) {
+        const pip = document.createElement('div');
+        pip.className = 'convoy-pip';
+        pip.textContent = '🚛';
+        pip.setAttribute('data-tooltip', `${convoy.name} (ETA ${convoy.etaSeconds}s)`);
+        if (targetEl.classList.contains('lane-connector')) {
+          pip.style.left = `${pipLeft}%`;
+        } else {
+          pip.style.top = '-14px';
+          pip.style.right = '-6px';
+        }
+        targetEl.appendChild(pip);
+      }
+    });
   }
 
   public closeNavModal(): void {
