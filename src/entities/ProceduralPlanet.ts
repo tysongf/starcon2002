@@ -1,10 +1,43 @@
 import * as THREE from 'three';
 
+export interface PlanetPaletteData {
+  base: string;
+  band1: string;
+  band2: string;
+  accent: string;
+  glow: string;
+  atmosphere: string;
+  patternStyle:
+    | 'ARCHIPELAGO'
+    | 'BANDED'
+    | 'CRATERED'
+    | 'MAGMA_FISSURE'
+    | 'CRYSTAL_FACETS'
+    | 'MYCELIAL_WEB'
+    | 'CYBER_GRID'
+    | 'PRECURSOR_GLYPH';
+  hasRings: boolean;
+  hasClouds: boolean;
+  emissiveStrength: number;
+}
+
 export interface PlanetData {
   id: string;
   sectorId: number;
   name: string;
   archetype: 'TERRESTRIAL' | 'VOLCANIC' | 'BARREN' | 'GAS_GIANT' | 'PRECURSOR_RUIN';
+  mainClass?: string;
+  mainClassLabel?: string;
+  subtype?: string;
+  abundanceRating?: number;
+  tectonicsRating?: number;
+  atmosphereRating?: number;
+  densityRating?: number;
+  orbitIndex?: number;
+  primaryResource?: string;
+  exoticResource?: string;
+  planetPalette?: PlanetPaletteData;
+  lifeformsCount?: number;
   radius: number;
   posX: number;
   posY: number;
@@ -39,12 +72,17 @@ export class ProceduralPlanet {
 
     const radius = data.radius || 22.0;
 
+    const palette = data.planetPalette;
+    const emissiveStr = palette?.emissiveStrength ?? (data.archetype === 'VOLCANIC' ? 0.35 : 0);
+
     // 1. Surface Texture & Material
     const surfaceTexture = this.generateProceduralTexture(data);
     const surfaceMat = new THREE.MeshStandardMaterial({
       map: surfaceTexture,
-      roughness: data.archetype === 'GAS_GIANT' ? 0.3 : 0.8,
-      metalness: data.archetype === 'BARREN' ? 0.4 : 0.1,
+      roughness: data.archetype === 'GAS_GIANT' ? 0.3 : palette?.patternStyle === 'CRYSTAL_FACETS' ? 0.25 : 0.78,
+      metalness: data.archetype === 'BARREN' ? 0.42 : palette?.patternStyle === 'CYBER_GRID' ? 0.55 : 0.12,
+      emissive: emissiveStr > 0.2 ? new THREE.Color(palette?.glow || data.atmosphereColor) : new THREE.Color(0x000000),
+      emissiveIntensity: emissiveStr * 0.28,
       flatShading: false,
     });
 
@@ -90,13 +128,13 @@ export class ProceduralPlanet {
       this.group.add(this.atmosphereMesh);
     }
 
-    // 3. Clouds Layer for Terrestrial Biomes
-    if (data.archetype === 'TERRESTRIAL') {
+    // 3. Clouds Layer
+    if (palette?.hasClouds || data.archetype === 'TERRESTRIAL') {
       const cloudGeo = new THREE.SphereGeometry(radius * 1.02, 36, 28);
       const cloudMat = new THREE.MeshStandardMaterial({
-        color: 0xffffff,
+        color: palette ? new THREE.Color(palette.accent) : 0xffffff,
         transparent: true,
-        opacity: 0.35,
+        opacity: 0.28,
         roughness: 1.0,
         wireframe: false,
       });
@@ -104,15 +142,15 @@ export class ProceduralPlanet {
       this.group.add(this.cloudsMesh);
     }
 
-    // 4. Cryo-Rings for Gas Giants
-    if (data.archetype === 'GAS_GIANT') {
-      const ringGeo = new THREE.RingGeometry(radius * 1.4, radius * 2.4, 64);
+    // 4. Planetary Rings
+    if (palette?.hasRings || data.archetype === 'GAS_GIANT') {
+      const ringGeo = new THREE.RingGeometry(radius * 1.4, radius * 2.35, 64);
       const ringMat = new THREE.MeshStandardMaterial({
-        color: 0x93c5fd,
+        color: palette ? new THREE.Color(palette.glow) : 0x93c5fd,
         side: THREE.DoubleSide,
         transparent: true,
-        opacity: 0.55,
-        roughness: 0.7,
+        opacity: 0.52,
+        roughness: 0.65,
       });
       this.ringsMesh = new THREE.Mesh(ringGeo, ringMat);
       this.ringsMesh.rotation.x = Math.PI / 2.3;
@@ -152,52 +190,143 @@ export class ProceduralPlanet {
 
     const seed = data.textureSeed || 101;
     const archetype = data.archetype;
+    const pal = data.planetPalette;
 
-    // Palette base
-    let baseColor = '#334155';
-    let bandColor1 = '#1e293b';
-    let bandColor2 = '#475569';
-    let accentColor = '#94a3b8';
+    let baseColor = pal?.base || '#334155';
+    let bandColor1 = pal?.band1 || '#1e293b';
+    let bandColor2 = pal?.band2 || '#475569';
+    let accentColor = pal?.accent || '#94a3b8';
+    const glowColor = pal?.glow || accentColor;
+    const patternStyle = pal?.patternStyle || (
+      archetype === 'VOLCANIC' ? 'MAGMA_FISSURE' :
+      archetype === 'GAS_GIANT' ? 'BANDED' :
+      archetype === 'TERRESTRIAL' ? 'ARCHIPELAGO' :
+      archetype === 'PRECURSOR_RUIN' ? 'PRECURSOR_GLYPH' : 'CRATERED'
+    );
 
-    if (archetype === 'VOLCANIC') {
-      baseColor = '#450a0a';
-      bandColor1 = '#7f1d1d';
-      bandColor2 = '#991b1b';
-      accentColor = '#f97316';
-    } else if (archetype === 'TERRESTRIAL') {
-      baseColor = '#065f46';
-      bandColor1 = '#047857';
-      bandColor2 = '#15803d';
-      accentColor = '#3b82f6';
-    } else if (archetype === 'GAS_GIANT') {
-      baseColor = '#1e3a8a';
-      bandColor1 = '#0284c7';
-      bandColor2 = '#38bdf8';
-      accentColor = '#bae6fd';
-    } else if (archetype === 'PRECURSOR_RUIN') {
-      baseColor = '#3b0764';
-      bandColor1 = '#581c87';
-      bandColor2 = '#701a75';
-      accentColor = '#f472b6';
+    if (!pal) {
+      if (archetype === 'VOLCANIC') {
+        baseColor = '#450a0a';
+        bandColor1 = '#7f1d1d';
+        bandColor2 = '#991b1b';
+        accentColor = '#f97316';
+      } else if (archetype === 'TERRESTRIAL') {
+        baseColor = '#065f46';
+        bandColor1 = '#047857';
+        bandColor2 = '#15803d';
+        accentColor = '#3b82f6';
+      } else if (archetype === 'GAS_GIANT') {
+        baseColor = '#1e3a8a';
+        bandColor1 = '#0284c7';
+        bandColor2 = '#38bdf8';
+        accentColor = '#bae6fd';
+      } else if (archetype === 'PRECURSOR_RUIN') {
+        baseColor = '#3b0764';
+        bandColor1 = '#581c87';
+        bandColor2 = '#701a75';
+        accentColor = '#f472b6';
+      }
     }
 
     // Fill base
     ctx.fillStyle = baseColor;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Horizontal latitude bands (especially for Gas Giants and Barren strata)
-    const bands = archetype === 'GAS_GIANT' ? 18 : 10;
+    // Subtle latitude bands
+    const bands = patternStyle === 'BANDED' ? 20 : 8;
     for (let i = 0; i < bands; i++) {
       const y = (canvas.height / bands) * i;
       const h = canvas.height / bands;
       ctx.fillStyle = (i + seed) % 2 === 0 ? bandColor1 : bandColor2;
-      ctx.globalAlpha = 0.65;
+      ctx.globalAlpha = patternStyle === 'BANDED' ? 0.72 : 0.35;
       ctx.fillRect(0, y, canvas.width, h);
     }
 
-    // Procedural noise patches
-    ctx.globalAlpha = 0.35;
-    for (let i = 0; i < 40; i++) {
+    // Specialized procedural terrain/pattern synthesis
+    if (patternStyle === 'MAGMA_FISSURE') {
+      ctx.globalAlpha = 0.85;
+      ctx.strokeStyle = glowColor;
+      ctx.lineWidth = 2.2;
+      for (let i = 0; i < 24; i++) {
+        let cx = ((seed * (i + 3) * 41) % canvas.width);
+        let cy = ((seed * (i + 5) * 29) % canvas.height);
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        for (let s = 0; s < 5; s++) {
+          cx += (((seed + i * 7 + s * 13) % 36) - 18);
+          cy += (((seed + i * 11 + s * 19) % 28) - 14);
+          ctx.lineTo(cx, cy);
+        }
+        ctx.stroke();
+      }
+    } else if (patternStyle === 'CRYSTAL_FACETS') {
+      for (let i = 0; i < 42; i++) {
+        const cx = (seed * (i + 1) * 53) % canvas.width;
+        const cy = (seed * (i + 1) * 31) % canvas.height;
+        const r = 10 + ((seed + i * 17) % 24);
+        ctx.globalAlpha = 0.55;
+        ctx.fillStyle = i % 2 === 0 ? accentColor : glowColor;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - r);
+        ctx.lineTo(cx + r * 0.8, cy);
+        ctx.lineTo(cx, cy + r);
+        ctx.lineTo(cx - r * 0.8, cy);
+        ctx.closePath();
+        ctx.fill();
+      }
+    } else if (patternStyle === 'MYCELIAL_WEB') {
+      ctx.globalAlpha = 0.75;
+      ctx.strokeStyle = glowColor;
+      ctx.lineWidth = 1.4;
+      for (let i = 0; i < 30; i++) {
+        const cx = (seed * (i + 2) * 47) % canvas.width;
+        const cy = (seed * (i + 3) * 61) % canvas.height;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 4 + (i % 7), 0, Math.PI * 2);
+        ctx.fillStyle = accentColor;
+        ctx.fill();
+        const nx = (seed * (i + 5) * 47) % canvas.width;
+        const ny = (seed * (i + 6) * 61) % canvas.height;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(nx, ny);
+        ctx.stroke();
+      }
+    } else if (patternStyle === 'CYBER_GRID' || patternStyle === 'PRECURSOR_GLYPH') {
+      ctx.globalAlpha = 0.7;
+      ctx.strokeStyle = glowColor;
+      ctx.lineWidth = 1.6;
+      for (let i = 0; i < 22; i++) {
+        const x = ((seed * (i + 1) * 59) % (canvas.width - 36)) + 8;
+        const y = ((seed * (i + 2) * 43) % (canvas.height - 36)) + 8;
+        const w = 14 + ((seed + i * 9) % 28);
+        const h = 10 + ((seed + i * 13) % 22);
+        ctx.strokeRect(x, y, w, h);
+        if (patternStyle === 'PRECURSOR_GLYPH') {
+          ctx.beginPath();
+          ctx.arc(x + w / 2, y + h / 2, Math.min(w, h) * 0.35, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+    } else if (patternStyle === 'CRATERED') {
+      for (let i = 0; i < 34; i++) {
+        const px = (seed * (i + 1) * 37) % canvas.width;
+        const py = (seed * (i + 1) * 73) % canvas.height;
+        const pr = 6 + ((seed * (i + 1)) % 20);
+        ctx.globalAlpha = 0.45;
+        ctx.fillStyle = bandColor1;
+        ctx.beginPath();
+        ctx.arc(px, py, pr, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = accentColor;
+        ctx.lineWidth = 1.1;
+        ctx.stroke();
+      }
+    }
+
+    // Procedural atmosphere / biome noise patches
+    ctx.globalAlpha = 0.32;
+    for (let i = 0; i < 36; i++) {
       const px = ((seed * (i + 1) * 37) % canvas.width);
       const py = ((seed * (i + 1) * 73) % canvas.height);
       const pr = 15 + ((seed * (i + 1)) % 35);
@@ -210,7 +339,6 @@ export class ProceduralPlanet {
       ctx.fill();
     }
 
-    // Reset alpha
     ctx.globalAlpha = 1.0;
 
     const texture = new THREE.CanvasTexture(canvas);

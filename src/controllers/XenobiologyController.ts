@@ -10,9 +10,13 @@ export class XenobiologyController {
   public tabBtnSequencer: HTMLElement | null = null;
   public tabBtnColony: HTMLElement | null = null;
   public tabBtnSynthesis: HTMLElement | null = null;
+  public tabBtnXenodex: HTMLElement | null = null;
   public viewTabSequencer: HTMLElement | null = null;
   public viewTabColony: HTMLElement | null = null;
   public viewTabSynthesis: HTMLElement | null = null;
+  public viewTabXenodex: HTMLElement | null = null;
+  public xenodexSpeciesGrid: HTMLElement | null = null;
+  public xenodexCountBadge: HTMLElement | null = null;
 
   public labBioDataPoints: HTMLElement | null = null;
   public labCargoSpecimens: HTMLElement | null = null;
@@ -41,7 +45,7 @@ export class XenobiologyController {
   public labData: any = null;
   public activeStimTimeRemaining: number = 0;
   public hasRegenCoating: boolean = false;
-  public activeTab: 'sequencer' | 'colony' | 'synthesis' = 'sequencer';
+  public activeTab: 'sequencer' | 'colony' | 'synthesis' | 'xenodex' = 'sequencer';
 
   constructor(ctx: XenobiologyContext) {
     this.ctx = ctx;
@@ -53,9 +57,13 @@ export class XenobiologyController {
     this.tabBtnSequencer = document.getElementById('tab-lab-sequencer');
     this.tabBtnColony = document.getElementById('tab-lab-colony');
     this.tabBtnSynthesis = document.getElementById('tab-lab-synthesis');
+    this.tabBtnXenodex = document.getElementById('tab-lab-xenodex');
     this.viewTabSequencer = document.getElementById('view-lab-sequencer');
     this.viewTabColony = document.getElementById('view-lab-colony');
     this.viewTabSynthesis = document.getElementById('view-lab-synthesis');
+    this.viewTabXenodex = document.getElementById('view-lab-xenodex');
+    this.xenodexSpeciesGrid = document.getElementById('xenodex-species-grid');
+    this.xenodexCountBadge = document.getElementById('xenodex-count-badge');
 
     this.labBioDataPoints = document.getElementById('lab-bio-data-points');
     this.labCargoSpecimens = document.getElementById('lab-cargo-specimens');
@@ -85,6 +93,7 @@ export class XenobiologyController {
     this.tabBtnSequencer?.addEventListener('click', () => this.switchTab('sequencer'));
     this.tabBtnColony?.addEventListener('click', () => this.switchTab('colony'));
     this.tabBtnSynthesis?.addEventListener('click', () => this.switchTab('synthesis'));
+    this.tabBtnXenodex?.addEventListener('click', () => this.switchTab('xenodex'));
 
     document.getElementById('btn-close-xenobiology-lab')?.addEventListener('click', () => this.closeLab());
     document.getElementById('btn-dock-xenobiology')?.addEventListener('click', () => this.openLab());
@@ -121,15 +130,56 @@ export class XenobiologyController {
     }
   }
 
-  public switchTab(tab: 'sequencer' | 'colony' | 'synthesis'): void {
+  public switchTab(tab: 'sequencer' | 'colony' | 'synthesis' | 'xenodex'): void {
     this.activeTab = tab;
     this.tabBtnSequencer?.classList.toggle('active', tab === 'sequencer');
     this.tabBtnColony?.classList.toggle('active', tab === 'colony');
     this.tabBtnSynthesis?.classList.toggle('active', tab === 'synthesis');
+    this.tabBtnXenodex?.classList.toggle('active', tab === 'xenodex');
 
     this.viewTabSequencer?.classList.toggle('hidden', tab !== 'sequencer');
     this.viewTabColony?.classList.toggle('hidden', tab !== 'colony');
     this.viewTabSynthesis?.classList.toggle('hidden', tab !== 'synthesis');
+    this.viewTabXenodex?.classList.toggle('hidden', tab !== 'xenodex');
+
+    if (tab === 'xenodex') {
+      this.fetchXenodex();
+    }
+  }
+
+  public async fetchXenodex(): Promise<void> {
+    if (!this.xenodexSpeciesGrid) return;
+    try {
+      const accountId = this.ctx.getAccountId();
+      const res = await fetch(`http://127.0.0.1:3000/api/xenobiology/xenodex?accountId=${accountId}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const entries = data.entries || [];
+      if (this.xenodexCountBadge) {
+        this.xenodexCountBadge.textContent = `${entries.length} SPECIES LOGGED`;
+      }
+      this.xenodexSpeciesGrid.innerHTML = '';
+      if (entries.length === 0) {
+        this.xenodexSpeciesGrid.innerHTML = '<div class="xeno-desc">No alien species logged yet. Perform Orbital BIO Sweeps [2] over any planetary world to catalog endemic xenobiology.</div>';
+        return;
+      }
+      for (const sp of entries) {
+        const card = document.createElement('div');
+        card.className = 'mastery-card tier-2';
+        card.innerHTML = `
+          <div class="mastery-card-header">
+            <span class="mastery-species-name">🧬 ${sp.commonName} <em style="opacity:0.75;">(${sp.scientificName})</em></span>
+            <span class="mastery-tier-badge" style="color: #38bdf8;">${sp.kingdom} • ${sp.rarityTier}</span>
+          </div>
+          <div class="mastery-perk-text">
+            World: <strong>${sp.planetName}</strong> (${sp.planetSubtype}) // ${sp.covering}, ${sp.sizeMeters}m // ${sp.trophicRole} // Trait: ${sp.adaptationTrait}
+          </div>
+        `;
+        this.xenodexSpeciesGrid.appendChild(card);
+      }
+    } catch (err) {
+      console.error('[XenobiologyController] Error loading Xenodex:', err);
+    }
   }
 
   public async fetchLabStatus(): Promise<void> {

@@ -7,6 +7,40 @@ export const outfittingRoutes: FastifyPluginAsync = async (server) => {
     reply.send({ catalog });
   });
 
+  server.get('/taxonomy', async (_req, reply) => {
+    reply.send({
+      success: true,
+      ...outfittingService.getModuleTaxonomy(),
+    });
+  });
+
+  server.get('/shop', async (req, reply) => {
+    const query = (req.query || {}) as { sectorId?: string; epoch?: string };
+    const sectorId = parseInt(query.sectorId || '1', 10) || 1;
+    const epoch = parseInt(query.epoch || '1', 10) || 1;
+    const stock = await outfittingService.getStationShopStock(sectorId, epoch);
+    reply.send({ success: true, ...stock });
+  });
+
+  server.post('/shop/buy', async (req, reply) => {
+    const body = (req.body || {}) as {
+      playerId?: string;
+      sectorId?: number;
+      slotIndex?: number;
+      epoch?: number;
+    };
+    const playerId = body.playerId || 'acc_sol_captain';
+    const sectorId = Number(body.sectorId || 1);
+    const slotIndex = Number(body.slotIndex ?? 0);
+    const epoch = Number(body.epoch || 1);
+    try {
+      const result = await outfittingService.buyShopModule(playerId, sectorId, slotIndex, epoch);
+      reply.send(result);
+    } catch (err: any) {
+      reply.status(400).send({ success: false, error: err.message });
+    }
+  });
+
   server.get('/player', async (req, reply) => {
     const query = (req.query || {}) as { playerId?: string };
     const playerId = query.playerId || 'acc_sol_captain';

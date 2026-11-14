@@ -1,4 +1,5 @@
 import { db } from '../db/Database';
+import { generatePlanetEcosystem, type ProceduralLifeform } from '../procgen/XenobiologyEngine';
 
 export interface PlanetFauna {
   id: string;
@@ -20,6 +21,15 @@ export interface PlanetFauna {
   lair_y?: number;
   lair_name?: string;
   created_at?: string;
+  // Milestone 1.0 Pure Xenobiology descriptors
+  scientificName?: string;
+  kingdom?: string;
+  bodyPlan?: string;
+  covering?: string;
+  sizeMeters?: number;
+  trophicRole?: string;
+  adaptationTrait?: string;
+  glowColor?: string;
 }
 
 export interface PlayerLander {
@@ -68,7 +78,21 @@ export class PlanetaryFaunaService {
     const { rows } = await db.query<any>(query, [planetId]);
 
     if (rows.length > 0) {
-      return rows.map((r) => this.formatFauna(r));
+      const { rows: pRows } = await db.query<any>(
+        `SELECT id, name, subtype, archetype, texture_seed FROM planets WHERE id = $1`,
+        [planetId]
+      );
+      const p = pRows[0];
+      const eco = p
+        ? generatePlanetEcosystem({
+            id: p.id,
+            name: p.name,
+            subtype: p.subtype,
+            archetype: p.archetype,
+            textureSeed: Number(p.texture_seed || 101),
+          })
+        : undefined;
+      return rows.map((r, idx) => this.formatFauna(r, eco, idx));
     }
 
     // Procedural generation fallback if planet not seeded yet
@@ -564,9 +588,13 @@ export class PlanetaryFaunaService {
   }
 
   /**
-   * Formats raw SQL row into typed PlanetFauna
+   * Formats raw SQL row into typed PlanetFauna, attaching deterministic xenobiology visuals
    */
-  private formatFauna(r: any): PlanetFauna {
+  private formatFauna(r: any, ecoList?: ProceduralLifeform[], indexFallback: number = 0): PlanetFauna {
+    const eco = ecoList && ecoList.length > 0
+      ? (ecoList.find((e) => e.speciesUid === r.id || e.commonName === r.species_name) || ecoList[indexFallback % ecoList.length])
+      : undefined;
+
     return {
       id: r.id,
       planet_id: r.planet_id,
@@ -587,31 +615,68 @@ export class PlanetaryFaunaService {
       lair_y: r.lair_y != null ? parseFloat(r.lair_y) : undefined,
       lair_name: r.lair_name || undefined,
       created_at: r.created_at,
+      scientificName: eco?.scientificName,
+      kingdom: eco?.kingdom,
+      bodyPlan: eco?.bodyPlan,
+      covering: eco?.covering,
+      sizeMeters: eco?.sizeMeters,
+      trophicRole: eco?.trophicRole,
+      adaptationTrait: eco?.adaptationTrait,
+      glowColor: eco?.glowColor,
     };
   }
 
   /**
-   * Generates procedural fauna for uncatalogued planets
+   * Generates pure xenobiological procedural fauna for uncatalogued planets
    */
   private async generateProceduralFauna(planetId: string): Promise<PlanetFauna[]> {
-    const { rows: pRows } = await db.query<any>(`SELECT id FROM planets WHERE id = $1`, [planetId]);
+    const { rows: pRows } = await db.query<any>(
+      `SELECT id, name, subtype, archetype, texture_seed FROM planets WHERE id = $1`,
+      [planetId]
+    );
     if (pRows.length === 0) {
       return [];
     }
+    const p = pRows[0];
+    const ecosystem = generatePlanetEcosystem({
+      id: p.id,
+      name: p.name,
+      subtype: p.subtype,
+      archetype: p.archetype,
+      textureSeed: Number(p.texture_seed || 101),
+    });
 
-    const grazerId = `fauna_${planetId}_grazer`;
-    const carnivoreId = `fauna_${planetId}_carnivore`;
+    for (const sp of ecosystem) {
+      await db.query(
+        `INSERT INTO planet_fauna (
+          id, planet_id, species_name, species_class, color, base_hp, movement_speed,
+          aggro_range, attack_damage, bio_unit_value, stun_duration_seconds,
+          is_apex, stun_hits_required, current_stun_hits, is_enraged
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7,
+          $8, $9, $10, 12.0,
+          FALSE, 1, 0, FALSE
+        ) ON CONFLICT (id) DO NOTHING`,
+        [
+          sp.speciesUid,
+          planetId,
+          sp.commonName,
+          sp.speciesClass,
+          sp.primaryColor,
+          sp.baseHp,
+          sp.movementSpeed,
+          sp.aggroRange,
+          sp.attackDamage,
+          sp.bioUnitValue,
+        ]
+      );
+    }
 
-    await db.query(`
-      INSERT INTO planet_fauna (id, planet_id, species_name, species_class, color, base_hp, movement_speed, aggro_range, attack_damage, bio_unit_value, stun_duration_seconds, is_apex, stun_hits_required, current_stun_hits, is_enraged)
-      VALUES
-      ($1, $2, 'Indigenous Spore Grazer', 'GRAZER', '#4ade80', 45, 30.0, 0.0, 0, 12, 12.0, FALSE, 1, 0, FALSE),
-      ($3, $2, 'Apex Dune Stalker', 'CARNIVORE', '#ef4444', 70, 48.0, 140.0, 18, 30, 12.0, FALSE, 1, 0, FALSE)
-      ON CONFLICT (id) DO NOTHING
-    `, [grazerId, planetId, carnivoreId]);
-
-    const { rows } = await db.query<any>(`SELECT * FROM planet_fauna WHERE planet_id = $1 AND (is_apex = FALSE OR is_apex IS NULL)`, [planetId]);
-    return rows.map((r) => this.formatFauna(r));
+    const { rows } = await db.query<any>(
+      `SELECT * FROM planet_fauna WHERE planet_id = $1 AND (is_apex = FALSE OR is_apex IS NULL) ORDER BY species_class ASC, species_name ASC`,
+      [planetId]
+    );
+    return rows.map((r, idx) => this.formatFauna(r, ecosystem, idx));
   }
 
   /**

@@ -35,8 +35,10 @@ export class SurveyController {
   private audio: AudioEngine;
 
   // Orbit & Planet State
+  public sectorPlanets: ProceduralPlanet[] = [];
   public activePlanet: ProceduralPlanet | null = null;
   public activePlanetDetail: any | null = null;
+  public activePlanetLifeforms: any[] = [];
   public isInOrbit: boolean = false;
   public activeAirspaceClearance: any | null = null;
 
@@ -87,7 +89,7 @@ export class SurveyController {
   }
 
   /**
-   * Fetches sector planets from backend and spawns 3D ProceduralPlanet in the sector.
+   * Fetches all sector planets from backend and spawns 3D ProceduralPlanets in the sector.
    */
   public async loadSectorPlanet(sectorId: number): Promise<void> {
     try {
@@ -95,19 +97,25 @@ export class SurveyController {
       if (!res.ok) return;
       const data = await res.json();
       if (data.success && Array.isArray(data.planets) && data.planets.length > 0) {
-        const pData: PlanetData = data.planets[0];
         const scene = this.callbacks.getScene();
-        if (this.activePlanet) {
-          scene.remove(this.activePlanet.group);
-          this.activePlanet = null;
+        for (const existing of this.sectorPlanets) {
+          scene.remove(existing.group);
         }
-        this.activePlanet = new ProceduralPlanet(pData);
-        scene.add(this.activePlanet.group);
-        this.activePlanetDetail = pData;
-        console.log(`[SurveyController] Spawned 3D Planet: ${pData.name} at (${pData.posX}, ${pData.posZ})`);
+        this.sectorPlanets = [];
+        this.activePlanet = null;
 
-        // Check for founded colonies in sector planet
-        await this.callbacks.getColonyController().fetchPlanetColonies(pData.id);
+        for (const pData of data.planets as PlanetData[]) {
+          const planetObj = new ProceduralPlanet(pData);
+          scene.add(planetObj.group);
+          this.sectorPlanets.push(planetObj);
+        }
+
+        this.activePlanet = this.sectorPlanets[0];
+        this.activePlanetDetail = data.planets[0];
+        console.log(`[SurveyController] Spawned ${this.sectorPlanets.length} 3D Planets in Sector ${sectorId}`);
+
+        // Check for founded colonies in primary sector planet
+        await this.callbacks.getColonyController().fetchPlanetColonies(data.planets[0].id);
       }
     } catch (err) {
       console.warn('[SurveyController] Failed to load sector planets:', err);
@@ -115,17 +123,39 @@ export class SurveyController {
   }
 
   /**
-   * Updates distance to sector planet and toggles HUD orbital guidance banner.
+   * Updates distance to nearest sector planet and toggles HUD orbital guidance banner.
    */
   public updatePlanetaryGuidance(deltaSec: number): void {
-    if (!this.activePlanet) {
+    if (this.sectorPlanets.length === 0 && !this.activePlanet) {
       if (this.elOrbitalBanner) this.elOrbitalBanner.classList.add('hidden');
       return;
     }
 
-    this.activePlanet.update(deltaSec);
     const flightController = this.callbacks.getFlightController();
-    const dist = this.activePlanet.getDistanceTo(flightController.position);
+    let nearest: ProceduralPlanet | null = this.activePlanet;
+    let nearestDist = Infinity;
+
+    for (const p of this.sectorPlanets) {
+      p.update(deltaSec);
+      const d = p.getDistanceTo(flightController.position);
+      if (d < nearestDist) {
+        nearestDist = d;
+        nearest = p;
+      }
+    }
+
+    if (this.sectorPlanets.length === 0 && this.activePlanet) {
+      this.activePlanet.update(deltaSec);
+      nearestDist = this.activePlanet.getDistanceTo(flightController.position);
+    }
+
+    if (!this.isInOrbit && nearest && nearest !== this.activePlanet) {
+      this.activePlanet = nearest;
+      this.activePlanetDetail = nearest.data;
+    }
+
+    if (!this.activePlanet) return;
+    const dist = nearestDist;
 
     if (this.elOrbitalBanner && this.elOrbitalMsg) {
       if (dist <= 65.0) {
@@ -133,13 +163,14 @@ export class SurveyController {
         const col = this.callbacks.getColonyController().activeColony;
         const siloPct = col ? Math.min(100, Math.round((col.stockpiled_amount / col.silo_capacity) * 100)) : 0;
         const colBadge = col ? `[🏛️ ${col.name.toUpperCase()}: ${siloPct}% SILO] ` : '';
+        const typeLabel = this.activePlanet.data.subtype ? ` (${this.activePlanet.data.subtype})` : '';
 
         if (dist <= this.activePlanet.orbitalRadius) {
-          this.elOrbitalMsg.textContent = `SYNCHRONOUS ORBIT READY // ${colBadge}DIST: ${dist.toFixed(1)}u [O]`;
+          this.elOrbitalMsg.textContent = `SYNCHRONOUS ORBIT READY: ${this.activePlanet.data.name}${typeLabel} // ${colBadge}DIST: ${dist.toFixed(1)}u [O]`;
           this.elOrbitalBanner.style.borderColor = siloPct >= 100 ? '#f59e0b' : '#10b981';
           this.elOrbitalBanner.style.color = siloPct >= 100 ? '#fbbf24' : '#10b981';
         } else {
-          this.elOrbitalMsg.textContent = `APPROACHING ${this.activePlanet.data.name} // ${colBadge}DIST: ${dist.toFixed(1)}u`;
+          this.elOrbitalMsg.textContent = `APPROACHING ${this.activePlanet.data.name}${typeLabel} // ${colBadge}DIST: ${dist.toFixed(1)}u`;
           this.elOrbitalBanner.style.borderColor = siloPct >= 100 ? '#f59e0b' : '#38bdf8';
           this.elOrbitalBanner.style.color = siloPct >= 100 ? '#fbbf24' : '#38bdf8';
         }
@@ -196,7 +227,9 @@ export class SurveyController {
     const elAp = document.getElementById('survey-player-ap');
 
     if (elName) elName.textContent = p.name.toUpperCase();
-    if (elArch) elArch.textContent = `${p.archetype} CELESTIAL WORLD // SECTOR 0${p.sectorId}`;
+    const subTag = p.subtype ? `${p.subtype.toUpperCase()} [${(p.mainClassLabel || p.archetype).toUpperCase()}]` : `${p.archetype} CELESTIAL WORLD`;
+    const geoStats = p.abundanceRating != null ? ` // ABUND ${p.abundanceRating} • TECT ${p.tectonicsRating ?? 3} • DENS ${p.densityRating ?? 5}` : '';
+    if (elArch) elArch.textContent = `${subTag} // SECTOR ${String(p.sectorId).padStart(2, '0')}${geoStats}`;
     if (elHab) elHab.textContent = `${p.habitabilityRating}%`;
     if (elTemp) elTemp.textContent = `${p.surfaceTempK} K`;
     if (elDensity) elDensity.textContent = `${p.atmosphereDensity.toFixed(2)} Bar`;
@@ -213,12 +246,20 @@ export class SurveyController {
     this.startGlobeRender();
 
     // Fetch authoritative survey state
+    this.activePlanetLifeforms = [];
     try {
       const res = await fetch(`http://localhost:3000/api/planets/${p.id}`);
       if (res.ok) {
         const data = await res.json();
         if (data.success && data.planet) {
           this.activePlanetDetail = data.planet;
+          if (data.planet.survey?.scannedBio) {
+            const lfRes = await fetch(`http://localhost:3000/api/planets/${p.id}/lifeforms`);
+            if (lfRes.ok) {
+              const lfJson = await lfRes.json();
+              this.activePlanetLifeforms = lfJson.lifeforms || [];
+            }
+          }
         }
       }
     } catch (err) {
@@ -973,6 +1014,23 @@ export class SurveyController {
       `;
     }
 
+    if (this.activePlanetDetail?.survey?.scannedBio && this.activePlanetLifeforms.length > 0) {
+      for (const sp of this.activePlanetLifeforms) {
+        html += `
+          <div class="hotspot-card" style="border-color: ${sp.primaryColor || '#10b981'};">
+            <div class="hotspot-card-left">
+              <span class="hotspot-dot" style="color: ${sp.primaryColor || '#10b981'};"></span>
+              <div class="hotspot-card-info">
+                <span class="hotspot-name">🧬 ${sp.commonName} <em style="opacity:0.75;">(${sp.scientificName})</em></span>
+                <span class="hotspot-coords">${sp.kingdom} // ${sp.covering}, ${sp.sizeMeters}m // ${sp.adaptationTrait}</span>
+              </div>
+            </div>
+            <span class="hotspot-yield">${sp.rarityTier} • ${sp.bioUnitValue}u</span>
+          </div>
+        `;
+      }
+    }
+
     list.innerHTML = html;
   }
 
@@ -1008,6 +1066,9 @@ export class SurveyController {
       }
 
       this.activePlanetDetail.survey = data.survey;
+      if (Array.isArray(data.lifeformsDiscovered)) {
+        this.activePlanetLifeforms = data.lifeformsDiscovered;
+      }
       this.callbacks.fetchPlayerAP();
       this.updateSurveyConsoleUI();
       this.callbacks.showApNotification(`📡 ${data.message}`, false);

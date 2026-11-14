@@ -1,6 +1,8 @@
 import { db } from '../db/Database';
 import { apService } from './ActionPointService';
 import { reputationService } from './ReputationService';
+import { getPlanetSubtypeDef, type PlanetPalette } from '../procgen/PlanetTaxonomyCatalog';
+import { generatePlanetEcosystem, type ProceduralLifeform } from '../procgen/XenobiologyEngine';
 
 export type PlanetArchetype = 'TERRESTRIAL' | 'VOLCANIC' | 'BARREN' | 'GAS_GIANT' | 'PRECURSOR_RUIN';
 export type ScanBand = 'MINERALS' | 'BIO' | 'ANOMALIES';
@@ -39,6 +41,18 @@ export interface PlanetDetail {
   sectorId: number;
   name: string;
   archetype: PlanetArchetype;
+  mainClass: string;
+  mainClassLabel: string;
+  subtype: string;
+  abundanceRating: number;
+  tectonicsRating: number;
+  atmosphereRating: number;
+  densityRating: number;
+  orbitIndex: number;
+  primaryResource: string;
+  exoticResource: string;
+  planetPalette: PlanetPalette;
+  lifeformsCount: number;
   radius: number;
   posX: number;
   posY: number;
@@ -176,7 +190,7 @@ export class PlanetaryService {
    */
   public async getSectorPlanets(sectorId: number, accountId: string = 'acc_sol_captain'): Promise<PlanetDetail[]> {
     const { rows: planetRows } = await db.query<any>(
-      `SELECT * FROM planets WHERE sector_id = $1 ORDER BY id ASC`,
+      `SELECT * FROM planets WHERE sector_id = $1 ORDER BY COALESCE(orbit_index, 1) ASC, id ASC`,
       [sectorId]
     );
 
@@ -247,11 +261,35 @@ export class PlanetaryService {
       createdAt: b.created_at,
     }));
 
+    const subtypeDef = getPlanetSubtypeDef(p.subtype, p.archetype);
+    const parsedPalette: PlanetPalette = p.planet_palette
+      ? (typeof p.planet_palette === 'string' ? JSON.parse(p.planet_palette) : p.planet_palette)
+      : subtypeDef.palette;
+    const lifeforms = generatePlanetEcosystem({
+      id: p.id,
+      name: p.name,
+      subtype: p.subtype || subtypeDef.subtype,
+      archetype: p.archetype,
+      textureSeed: Number(p.texture_seed || 101),
+    });
+
     return {
       id: p.id,
       sectorId: p.sector_id,
       name: p.name,
       archetype: p.archetype,
+      mainClass: p.main_class || subtypeDef.mainClass,
+      mainClassLabel: subtypeDef.mainClassLabel,
+      subtype: p.subtype || subtypeDef.subtype,
+      abundanceRating: p.abundance_rating != null ? Number(p.abundance_rating) : subtypeDef.abundanceRating,
+      tectonicsRating: p.tectonics_rating != null ? Number(p.tectonics_rating) : subtypeDef.tectonicsRating,
+      atmosphereRating: p.atmosphere_rating != null ? Number(p.atmosphere_rating) : subtypeDef.atmosphereRating,
+      densityRating: p.density_rating != null ? Number(p.density_rating) : subtypeDef.densityRating,
+      orbitIndex: p.orbit_index != null ? Number(p.orbit_index) : 1,
+      primaryResource: subtypeDef.primaryResource,
+      exoticResource: subtypeDef.exoticResource,
+      planetPalette: parsedPalette,
+      lifeformsCount: lifeforms.length,
       radius: Number(p.radius),
       posX: Number(p.pos_x),
       posY: Number(p.pos_y),
@@ -270,6 +308,52 @@ export class PlanetaryService {
   }
 
   /**
+   * Returns deterministic lazy-seeded procedural lifeforms for a planet.
+   */
+  public async getPlanetLifeforms(planetId: string): Promise<{ planet: PlanetDetail; lifeforms: ProceduralLifeform[] }> {
+    const planet = await this.getPlanetDetail(planetId);
+    const lifeforms = generatePlanetEcosystem({
+      id: planet.id,
+      name: planet.name,
+      subtype: planet.subtype,
+      archetype: planet.archetype,
+      textureSeed: planet.textureSeed,
+    });
+    return { planet, lifeforms };
+  }
+
+  /**
+   * Records discovered lazy-seeded species into the Galactic Xenodex without DB bloat.
+   */
+  public async recordDiscoveredSpecies(accountId: string, lifeform: ProceduralLifeform): Promise<void> {
+    const rowId = `${accountId}__${lifeform.speciesUid}`;
+    await db.query(
+      `INSERT INTO discovered_species (
+        id, account_id, species_uid, planet_id, common_name, scientific_name,
+        kingdom, species_class, covering, size_meters, trophic_role,
+        adaptation_trait, rarity_tier, genotype_json
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb)
+      ON CONFLICT (account_id, species_uid) DO NOTHING`,
+      [
+        rowId,
+        accountId,
+        lifeform.speciesUid,
+        lifeform.planetId,
+        lifeform.commonName,
+        lifeform.scientificName,
+        lifeform.kingdom,
+        lifeform.speciesClass,
+        lifeform.covering,
+        lifeform.sizeMeters,
+        lifeform.trophicRole,
+        lifeform.adaptationTrait,
+        lifeform.rarityTier,
+        JSON.stringify(lifeform),
+      ]
+    );
+  }
+
+  /**
    * Performs an orbital scanner sweep on a chosen sensor band.
    * Consumes 2 AP. Reveals matching hotspots and updates completion percentage.
    */
@@ -281,6 +365,7 @@ export class PlanetaryService {
     success: boolean;
     scanBand: ScanBand;
     newlyDiscovered: PlanetHotspot[];
+    lifeformsDiscovered?: ProceduralLifeform[];
     totalCompletion: number;
     message: string;
     survey: PlanetSurveyState;
@@ -338,13 +423,29 @@ export class PlanetaryService {
       ]
     );
 
+    let lifeformsDiscovered: ProceduralLifeform[] | undefined;
+    if (scanBand === 'BIO') {
+      lifeformsDiscovered = generatePlanetEcosystem({
+        id: planet.id,
+        name: planet.name,
+        subtype: planet.subtype,
+        archetype: planet.archetype,
+        textureSeed: planet.textureSeed,
+      });
+      for (const sp of lifeformsDiscovered) {
+        await this.recordDiscoveredSpecies(accountId, sp);
+      }
+    }
+
     const bandName = scanBand === 'MINERALS' ? 'Mineral & Geological Strata' : scanBand === 'BIO' ? 'Biological & Atmosphere' : 'Precursor Energy Resonance';
-    const message = `${bandName} sweep complete. Detected ${bandHotspots.length} orbital signatures. Survey completion: ${survey.surveyCompletion}%.`;
+    const lifeNote = lifeformsDiscovered ? ` Indexed ${lifeformsDiscovered.length} endemic species in Xenodex.` : '';
+    const message = `${bandName} sweep complete. Detected ${bandHotspots.length} orbital signatures.${lifeNote} Survey completion: ${survey.surveyCompletion}%.`;
 
     return {
       success: true,
       scanBand,
       newlyDiscovered,
+      lifeformsDiscovered,
       totalCompletion: survey.surveyCompletion,
       message,
       survey,

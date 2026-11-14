@@ -36,6 +36,7 @@ const testFiles = [
   'server/test-milestone-0.7.ts',
   'server/test-milestone-0.8.ts',
   'server/test-milestone-0.9.ts',
+  'server/test-milestone-1.0.ts',
 ];
 
 console.log('================================================================================');

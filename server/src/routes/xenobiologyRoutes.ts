@@ -94,6 +94,14 @@ export const xenobiologyRoutes: FastifyPluginAsync = async (server) => {
     }
   );
 
+  // 6.1 Galactic Xenodex Catalog
+  server.get('/xenodex', async (req, reply) => {
+    const query = req.query as { accountId?: string };
+    const accountId = query?.accountId || 'acc_sol_captain';
+    const xenodex = await xenobiologyService.getXenodex(accountId);
+    reply.send(xenodex);
+  });
+
   // 7. Debug Reset Endpoint
   server.post<{ Body: DebugResetBody }>(
     '/debug-reset',

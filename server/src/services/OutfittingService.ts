@@ -1,5 +1,12 @@
 import { db } from '../db/Database';
 import { LootGenerator, DroppedModule } from './LootGenerator';
+import {
+  MODULE_SUBTYPE_CATALOG,
+  TECH_PREFIXES,
+  generateStationShopStock,
+  mapBlueprintToTaxonomy,
+  type ProceduralDroppedModule,
+} from '../procgen/ProceduralModuleCatalog';
 
 export interface FittedModule {
   id: string;
@@ -8,6 +15,10 @@ export interface FittedModule {
   customName: string;
   slotType: 'HIGH' | 'MID' | 'LOW';
   category: string;
+  mainCategory?: string;
+  subtype?: string;
+  techPrefix?: string;
+  techSuffix?: string;
   manufacturer: string;
   rarity: 'COMMON' | 'UNCOMMON' | 'RARE' | 'EPIC' | 'LEGENDARY';
   powerGridCost: number;
@@ -56,6 +67,10 @@ export class OutfittingService {
         pi.custom_name as "customName",
         eb.slot_type as "slotType",
         eb.category,
+        COALESCE(pi.main_category, eb.main_category) as "mainCategory",
+        COALESCE(pi.subtype, eb.subtype) as "subtype",
+        pi.tech_prefix as "techPrefix",
+        pi.tech_suffix as "techSuffix",
         eb.manufacturer,
         pi.rarity,
         eb.power_grid_cost as "powerGridCost",
@@ -214,11 +229,15 @@ export class OutfittingService {
     // Generate rolled item
     const drop = LootGenerator.generateDrop([bp], bp.base_rarity);
 
+    const mapped = mapBlueprintToTaxonomy(bp.name || '', bp.slot_type || 'HIGH', bp.category || 'WEAPON');
+    const mainCat = bp.main_category || mapped.mainCategory;
+    const sub = bp.subtype || mapped.subtype;
+
     const insertRes = await db.query(
-      `INSERT INTO player_inventory (account_id, blueprint_id, custom_name, rarity, affixes, is_fitted, fit_slot)
-       VALUES ($1, $2, $3, $4, $5, false, NULL)
+      `INSERT INTO player_inventory (account_id, blueprint_id, custom_name, rarity, affixes, main_category, subtype, tech_prefix, tech_suffix, is_fitted, fit_slot)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, false, NULL)
        RETURNING *`,
-      [accountId, bp.id, drop.customName, drop.rarity, JSON.stringify(drop.affixes)]
+      [accountId, bp.id, drop.customName, drop.rarity, JSON.stringify(drop.affixes), mainCat, sub, drop.techPrefix || null, drop.techSuffix || null]
     );
 
     return {
@@ -230,13 +249,83 @@ export class OutfittingService {
   }
 
   public async addLootToPlayer(accountId: string, dropped: DroppedModule): Promise<any> {
+    const mapped = mapBlueprintToTaxonomy(dropped.name || '', dropped.slotType || 'HIGH', dropped.category || 'WEAPON');
     const res = await db.query(
-      `INSERT INTO player_inventory (account_id, blueprint_id, custom_name, rarity, affixes, is_fitted, fit_slot)
-       VALUES ($1, $2, $3, $4, $5, false, NULL)
+      `INSERT INTO player_inventory (account_id, blueprint_id, custom_name, rarity, affixes, main_category, subtype, tech_prefix, tech_suffix, is_fitted, fit_slot)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, false, NULL)
        RETURNING *`,
-      [accountId, dropped.blueprintId, dropped.customName, dropped.rarity, JSON.stringify(dropped.affixes)]
+      [
+        accountId,
+        dropped.blueprintId,
+        dropped.customName,
+        dropped.rarity,
+        JSON.stringify(dropped.affixes),
+        dropped.mainCategory || mapped.mainCategory,
+        dropped.subtype || mapped.subtype,
+        dropped.techPrefix || null,
+        dropped.techSuffix || null,
+      ]
     );
     return res.rows[0];
+  }
+
+  public getModuleTaxonomy() {
+    return {
+      mainCategories: ['OFFENSE', 'DEFENSE', 'TRAVEL', 'COMMERCE', 'UTILITY_DRONE'],
+      subtypes: MODULE_SUBTYPE_CATALOG,
+      prefixes: TECH_PREFIXES,
+    };
+  }
+
+  public async getStationShopStock(sectorId: number, epochBucket: number = 1): Promise<{
+    sectorId: number;
+    controllingFaction: string;
+    epochBucket: number;
+    stock: Array<ProceduralDroppedModule & { slotIndex: number }>;
+  }> {
+    const { rows } = await db.query<any>(
+      `SELECT controlling_faction FROM sectors WHERE id = $1 LIMIT 1`,
+      [sectorId]
+    );
+    const faction = rows[0]?.controlling_faction || 'FACTION_SOL';
+    const rawStock = generateStationShopStock(sectorId, faction, epochBucket);
+    return {
+      sectorId,
+      controllingFaction: faction,
+      epochBucket,
+      stock: rawStock.map((item, slotIndex) => ({ ...item, slotIndex })),
+    };
+  }
+
+  public async buyShopModule(
+    accountId: string,
+    sectorId: number,
+    slotIndex: number,
+    epochBucket: number = 1
+  ): Promise<{ success: boolean; item: any; module: ProceduralDroppedModule; remainingCredits: number; credits: number }> {
+    const shop = await this.getStationShopStock(sectorId, epochBucket);
+    const selected = shop.stock[slotIndex];
+    if (!selected) {
+      throw new Error(`Shop slotIndex ${slotIndex} out of range (0-${shop.stock.length - 1}).`);
+    }
+
+    const accRes = await db.query('SELECT credits FROM accounts WHERE id = $1', [accountId]);
+    const credits = Number(accRes.rows[0]?.credits || 0);
+    if (credits < selected.basePrice) {
+      throw new Error(`Insufficient credits. Required: ${selected.basePrice} Cr, available: ${credits} Cr.`);
+    }
+
+    const newCredits = credits - selected.basePrice;
+    await db.query('UPDATE accounts SET credits = $1 WHERE id = $2', [newCredits, accountId]);
+
+    const inserted = await this.addLootToPlayer(accountId, selected);
+    return {
+      success: true,
+      item: inserted,
+      module: selected,
+      remainingCredits: newCredits,
+      credits: newCredits,
+    };
   }
 }
 

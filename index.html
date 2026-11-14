@@ -808,6 +808,15 @@
               <span class="pill-value" id="armory-player-credits">2,500 Cr</span>
             </div>
           </div>
+          <div class="armory-header">
+            <div class="armory-titles">
+              <h4>⚡ PROCEDURAL STATION MARKET (TECH-PREFIX HARDWARE)</h4>
+              <span class="col-subtext">SECTOR-ROTATING PREFIX & SUBTYPE MODULES</span>
+            </div>
+          </div>
+          <div class="armory-catalog-grid" id="armory-procedural-shop-grid" style="margin-bottom: 1.25rem;">
+            <!-- Dynamically populated procedural station stock -->
+          </div>
           <div class="armory-catalog-grid" id="armory-catalog-grid">
             <!-- Dynamically populated blueprint catalog cards -->
           </div>
@@ -1990,6 +1999,9 @@
           <button id="tab-lab-synthesis" class="station-tab-btn" data-xeno-tab="synthesis">
             ⚡ BIO-SYNTHESIS WORKBENCH
           </button>
+          <button id="tab-lab-xenodex" class="station-tab-btn" data-xeno-tab="xenodex">
+            🪐 GALACTIC XENODEX
+          </button>
         </div>
 
         <div id="xeno-lab-toast" class="market-toast hidden"></div>
@@ -2062,6 +2074,22 @@
             </p>
             <div class="synthesis-catalog-grid" id="synthesis-catalog-grid">
               <!-- Dynamically populated synthesis cards -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 4: Galactic Xenodex -->
+        <div id="view-lab-xenodex" class="station-tab-content xeno-tab-content hidden">
+          <div class="service-card xeno-card">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.6rem;">
+              <h4 style="margin:0;">🪐 GALACTIC XENODEX — DISCOVERED PURE XENOBIOLOGY</h4>
+              <span class="biosphere-badge" id="xenodex-count-badge">0 SPECIES LOGGED</span>
+            </div>
+            <p class="xeno-desc">
+              Endemic organisms scanned during orbital BIO sweeps or sampled by surface landers. Pure xenotaxonomic records across all charted planetary biomes.
+            </p>
+            <div class="species-mastery-list" id="xenodex-species-grid" style="max-height:320px; overflow-y:auto;">
+              <!-- Populated dynamically -->
             </div>
           </div>
         </div>

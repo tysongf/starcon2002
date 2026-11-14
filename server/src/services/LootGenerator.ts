@@ -18,7 +18,18 @@ export interface DroppedModule {
   baseStats: Record<string, any>;
   affixes: LootAffix[];
   description: string;
+  mainCategory?: string;
+  subtype?: string;
+  techPrefix?: string;
+  techSuffix?: string;
 }
+
+import {
+  TECH_PREFIXES,
+  getModuleSubtypeDef,
+  mapBlueprintToTaxonomy,
+  generateProceduralModule,
+} from '../procgen/ProceduralModuleCatalog';
 
 export class LootGenerator {
   private static readonly RARITY_WEIGHTS = [
@@ -68,14 +79,39 @@ export class LootGenerator {
     const bp = blueprints[Math.floor(Math.random() * blueprints.length)];
     const rarity = preferredRarity || this.rollRarity();
 
-    const prefixList = this.PREFIXES[rarity] || this.PREFIXES.COMMON;
-    const prefix = prefixList[Math.floor(Math.random() * prefixList.length)];
-    const suffix = rarity === 'COMMON' ? '' : ` ${this.SUFFIXES[Math.floor(Math.random() * this.SUFFIXES.length)]}`;
+    // Map blueprint onto Milestone 1.0 Main Category & Subtype + Semantic Tech Prefix/Suffix
+    const mapped = bp.main_category && bp.subtype
+      ? { mainCategory: bp.main_category, subtype: bp.subtype }
+      : mapBlueprintToTaxonomy(bp.name || '', bp.slot_type || 'HIGH', bp.category || 'WEAPON');
+    const subDef = getModuleSubtypeDef(mapped.subtype);
 
-    const customName = `${prefix} ${bp.name}${suffix}`.trim();
+    const rarityOrder = ['COMMON', 'UNCOMMON', 'RARE', 'EPIC', 'LEGENDARY'];
+    const rIdx = rarityOrder.indexOf(rarity);
+    const eligiblePrefixes = TECH_PREFIXES.filter((p) => (p.minRarity ? rarityOrder.indexOf(p.minRarity) <= rIdx : true));
+    const chosenPrefix = eligiblePrefixes[Math.floor(Math.random() * eligiblePrefixes.length)] || TECH_PREFIXES[0];
+    const suffixes = subDef?.compatibleSuffixes || ['Emitter', 'Matrix', 'Processor', 'Generator'];
+    const techSuffix = suffixes[Math.floor(Math.random() * suffixes.length)];
+
+    const customName = `${chosenPrefix.prefix} ${mapped.subtype} ${techSuffix}`.trim();
     const affixes: LootAffix[] = [];
 
-    // Affix count based on rarity
+    // Primary prefix-driven mechanical affix + rarity bonus affixes
+    let powerGridMultiplier = 1.0;
+    let cpuMultiplier = 1.0;
+    const scale = rarity === 'COMMON' ? 0.65 : rarity === 'UNCOMMON' ? 1.0 : rarity === 'RARE' ? 1.35 : rarity === 'EPIC' ? 1.75 : 2.25;
+    const rawDelta = chosenPrefix.primaryBonusMin + Math.random() * (chosenPrefix.primaryBonusMax - chosenPrefix.primaryBonusMin);
+    const pMult = Math.max(0.55, Math.round((1 + rawDelta * scale) * 100) / 100);
+    if (pMult !== 1.0) {
+      const pct = Math.round((pMult - 1) * 100);
+      affixes.push({
+        stat: chosenPrefix.primaryStat,
+        multiplier: pMult,
+        label: `${pct >= 0 ? '+' : ''}${pct}% ${chosenPrefix.primaryStat.toUpperCase()}`,
+      });
+      if (chosenPrefix.primaryStat === 'powerGridCost') powerGridMultiplier *= pMult;
+      if (chosenPrefix.primaryStat === 'cpuCost') cpuMultiplier *= pMult;
+    }
+
     const affixCount = rarity === 'COMMON' ? 0 : rarity === 'UNCOMMON' ? 1 : rarity === 'RARE' ? 2 : rarity === 'EPIC' ? 3 : 4;
     const possibleStats: Array<'damage' | 'muzzleSpeed' | 'shieldCapacity' | 'energyCost' | 'powerGridCost' | 'cpuCost'> = [
       'damage',
@@ -85,9 +121,6 @@ export class LootGenerator {
       'powerGridCost',
       'cpuCost',
     ];
-
-    let powerGridMultiplier = 1.0;
-    let cpuMultiplier = 1.0;
 
     for (let i = 0; i < affixCount; i++) {
       const stat = possibleStats[Math.floor(Math.random() * possibleStats.length)];
@@ -102,7 +135,6 @@ export class LootGenerator {
         mult = Math.round((1 + bonusPct) * 100) / 100;
         label = `+${Math.round(bonusPct * 100)}% ${stat.toUpperCase()}`;
       } else {
-        // Cost reduction
         const redPct = 0.08 + Math.random() * 0.15;
         mult = Math.round((1 - redPct) * 100) / 100;
         label = `-${Math.round(redPct * 100)}% ${stat.toUpperCase()}`;
@@ -134,7 +166,15 @@ export class LootGenerator {
       basePrice: price,
       baseStats: stats,
       affixes,
-      description: bp.description || '',
+      description: `${bp.description || ''} [${chosenPrefix.prefix}: ${chosenPrefix.flavor}]`.trim(),
+      mainCategory: mapped.mainCategory,
+      subtype: mapped.subtype,
+      techPrefix: chosenPrefix.prefix,
+      techSuffix,
     };
+  }
+
+  public static generateProcedural(opts?: Parameters<typeof generateProceduralModule>[0]) {
+    return generateProceduralModule(opts);
   }
 }

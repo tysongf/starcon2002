@@ -239,6 +239,7 @@ class GameEngine {
   private playerLoadout: any = null;
 
   private elArmoryCatalogGrid: HTMLElement | null = null;
+  private elArmoryProceduralShopGrid: HTMLElement | null = null;
   private elArmoryPlayerCredits: HTMLElement | null = null;
   private equipmentCatalog: any[] = [];
 
@@ -723,6 +724,7 @@ class GameEngine {
     this.lockerItemCount = document.getElementById('locker-item-count');
 
     this.elArmoryCatalogGrid = document.getElementById('armory-catalog-grid');
+    this.elArmoryProceduralShopGrid = document.getElementById('armory-procedural-shop-grid');
     this.elArmoryPlayerCredits = document.getElementById('armory-player-credits');
 
     if (this.hudSector) {
@@ -2918,9 +2920,10 @@ class GameEngine {
             const rarity = item.rarity ? item.rarity.toLowerCase() : 'common';
             card.className = `paperdoll-slot-card rarity-${rarity}`;
             const mfg = item.manufacturer ? `<span class="mfg-badge">${item.manufacturer}</span>` : '';
+            const subTag = item.subtype ? `<span class="mfg-badge" style="border-color:#38bdf8;color:#7dd3fc;">${item.mainCategory || ''} • ${item.subtype}</span>` : '';
             let affixesText = '';
             if (item.affixes && item.affixes.length > 0) {
-              affixesText = item.affixes.map((a: any) => a.description || `${a.stat}: x${a.multiplier}`).join(' • ');
+              affixesText = item.affixes.map((a: any) => a.label || a.description || `${a.stat}: x${a.multiplier}`).join(' • ');
             }
 
             const pgCost = item.powerGridCost ?? item.power_grid_cost ?? 0;
@@ -2929,7 +2932,7 @@ class GameEngine {
             card.innerHTML = `
               <div class="slot-tag-badge ${catClass}">[${s.slot}]</div>
               <div class="slot-info-block">
-                <div class="slot-item-name">${item.customName || item.name} ${mfg}</div>
+                <div class="slot-item-name">${item.customName || item.name} ${subTag} ${mfg}</div>
                 <div class="slot-item-sub">
                   <span>⚡ ${pgCost} MW</span>
                   <span>🧠 ${cpuCost} tf</span>
@@ -2969,10 +2972,11 @@ class GameEngine {
             card.className = `locker-module-card rarity-${rarity}`;
 
             const mfg = mod.manufacturer ? `<span class="mfg-badge">${mod.manufacturer}</span>` : '';
+            const subTag = mod.subtype ? `<span class="mfg-badge" style="border-color:#38bdf8;color:#7dd3fc;">${mod.mainCategory || ''} • ${mod.subtype}</span>` : '';
             const cat = mod.slotType || mod.slot_type || mod.category || 'HIGH';
             let affixesText = '';
             if (mod.affixes && mod.affixes.length > 0) {
-              affixesText = mod.affixes.map((a: any) => a.description || `${a.stat}: x${a.multiplier}`).join(' • ');
+              affixesText = mod.affixes.map((a: any) => a.label || a.description || `${a.stat}: x${a.multiplier}`).join(' • ');
             }
 
             const pgCost = mod.powerGridCost ?? mod.power_grid_cost ?? 0;
@@ -3001,6 +3005,7 @@ class GameEngine {
                 <span class="locker-item-title">
                   <span class="rarity-pill rarity-${rarity}">${mod.rarity || 'COMMON'}</span>
                   <span>${mod.customName || mod.name}</span>
+                  ${subTag}
                   ${mfg}
                 </span>
                 <span class="slot-tag-badge ${cat.toLowerCase()}">${cat}</span>
@@ -3099,6 +3104,50 @@ class GameEngine {
         this.elArmoryPlayerCredits.textContent = `${this.playerCredits.toLocaleString()} Cr`;
       }
 
+      // Milestone 1.0: Load rotating Procedural Station Market Stock
+      if (this.elArmoryProceduralShopGrid) {
+        try {
+          const shopRes = await fetch(`/api/outfitting/shop?sectorId=${this.currentSectorId}`);
+          if (shopRes.ok) {
+            const shopJson = await shopRes.json();
+            const stock = shopJson.stock || [];
+            this.elArmoryProceduralShopGrid.innerHTML = '';
+            for (const item of stock) {
+              const card = document.createElement('div');
+              const cat = item.slotType || 'HIGH';
+              const rarity = (item.rarity || 'COMMON').toLowerCase();
+              card.className = `armory-card rarity-${rarity}`;
+              const affixText = (item.affixes || []).map((a: any) => a.label || `${a.stat} x${a.multiplier}`).join(' • ');
+              card.innerHTML = `
+                <div class="armory-card-header">
+                  <span class="slot-tag-badge ${cat.toLowerCase()}">${cat} • ${item.mainCategory}</span>
+                  <span class="armory-price-pill">${Number(item.basePrice).toLocaleString()} Cr</span>
+                </div>
+                <div class="armory-item-title">
+                  <span class="rarity-pill rarity-${rarity}">${item.rarity}</span>
+                  ${item.customName}
+                </div>
+                <div class="locker-card-specs">
+                  <span>⚡ ${item.powerGridCost} MW</span>
+                  <span>🧠 ${item.cpuCost} tf</span>
+                  <span>📦 ${item.subtype}</span>
+                </div>
+                ${affixText ? `<div class="locker-card-affixes">${affixText}</div>` : ''}
+                <button class="hud-btn primary fit-btn-small" style="margin-top: 0.4rem;">
+                  PURCHASE PROCEDURAL HARDWARE 🛒
+                </button>
+              `;
+              card.querySelector('button')?.addEventListener('click', () => {
+                this.buyProceduralShopModule(item.slotIndex);
+              });
+              this.elArmoryProceduralShopGrid.appendChild(card);
+            }
+          }
+        } catch (shopErr) {
+          console.warn('[ARMORY] Procedural shop load skipped:', shopErr);
+        }
+      }
+
       if (this.elArmoryCatalogGrid) {
         this.elArmoryCatalogGrid.innerHTML = '';
         for (const bp of blueprints) {
@@ -3169,6 +3218,35 @@ class GameEngine {
       await this.loadArmoryData();
     } catch (err) {
       console.error('[ARMORY] Buy error:', err);
+    }
+  }
+
+  public async buyProceduralShopModule(slotIndex: number): Promise<void> {
+    try {
+      const res = await fetch('/api/outfitting/shop/buy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          playerId: 'acc_sol_captain',
+          sectorId: this.currentSectorId,
+          slotIndex,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        this.audio.playApWarningSound();
+        this.showApNotification(`REQUISITION FAILED: ${data.error || 'Check funds'}`, true);
+        return;
+      }
+      this.audio.playTradeBuySound();
+      this.playerCredits = data.credits;
+      if (this.modalMarketPlayerCredits) this.modalMarketPlayerCredits.textContent = `${this.playerCredits.toLocaleString()} Cr`;
+      if (this.elTelemetryCredits) this.elTelemetryCredits.textContent = `${this.playerCredits.toLocaleString()} Cr`;
+      if (this.elArmoryPlayerCredits) this.elArmoryPlayerCredits.textContent = `${this.playerCredits.toLocaleString()} Cr`;
+      this.showApNotification(`🛒 ACQUIRED ${data.module?.customName || 'PROCEDURAL HARDWARE'}`, false);
+      await this.loadArmoryData();
+    } catch (err) {
+      console.error('[ARMORY] Procedural buy error:', err);
     }
   }
 

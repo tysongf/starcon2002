@@ -1,8 +1,20 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { planetaryService } from '../services/PlanetaryService';
 import { reputationService } from '../services/ReputationService';
+import { getAllPlanetSubtypes, getDistinctMainClasses } from '../procgen/PlanetTaxonomyCatalog';
 
 export const surveyRoutes: FastifyPluginAsync = async (server) => {
+  // Planet Taxonomy Catalog (15 Main Classes x 3 Subtypes = 45 Types)
+  server.get('/taxonomy', async (_req, reply) => {
+    reply.send({
+      success: true,
+      mainClassCount: getDistinctMainClasses().length,
+      subtypeCount: getAllPlanetSubtypes().length,
+      mainClasses: getDistinctMainClasses(),
+      subtypes: getAllPlanetSubtypes(),
+    });
+  });
+
   // Sector Planets
   server.get('/sector/:sectorId', async (req, reply) => {
     const { sectorId } = req.params as { sectorId: string };
@@ -13,6 +25,24 @@ export const surveyRoutes: FastifyPluginAsync = async (server) => {
       reply.send({ success: true, planets });
     } catch (err: any) {
       reply.status(500).send({ success: false, error: err.message });
+    }
+  });
+
+  // Planetary Procedural Lifeforms (Lazy-Seeded Pure Xenobiology)
+  server.get('/:planetId/lifeforms', async (req, reply) => {
+    const { planetId } = req.params as { planetId: string };
+    try {
+      const data = await planetaryService.getPlanetLifeforms(planetId);
+      reply.send({
+        success: true,
+        planetId,
+        subtype: data.planet.subtype,
+        mainClass: data.planet.mainClassLabel,
+        count: data.lifeforms.length,
+        lifeforms: data.lifeforms,
+      });
+    } catch (err: any) {
+      reply.status(404).send({ success: false, error: err.message });
     }
   });
 

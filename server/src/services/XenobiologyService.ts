@@ -525,6 +525,46 @@ export class XenobiologyService {
   }
 
   /**
+   * Retrieves Galactic Xenodex discovered species catalog for a pilot
+   */
+  public async getXenodex(accountId: string = 'acc_sol_captain'): Promise<{
+    success: boolean;
+    discoveredCount: number;
+    entries: any[];
+  }> {
+    const { rows } = await db.query<any>(
+      `SELECT ds.*, pl.name as planet_name, pl.subtype as planet_subtype
+       FROM discovered_species ds
+       LEFT JOIN planets pl ON pl.id = ds.planet_id
+       WHERE ds.account_id = $1
+       ORDER BY ds.discovered_at DESC`,
+      [accountId]
+    );
+    return {
+      success: true,
+      discoveredCount: rows.length,
+      entries: rows.map((r) => ({
+        id: r.id,
+        speciesUid: r.species_uid,
+        planetId: r.planet_id,
+        planetName: r.planet_name || r.planet_id,
+        planetSubtype: r.planet_subtype || 'Unknown',
+        commonName: r.common_name,
+        scientificName: r.scientific_name,
+        kingdom: r.kingdom,
+        speciesClass: r.species_class,
+        covering: r.covering,
+        sizeMeters: Number(r.size_meters || 1.5),
+        trophicRole: r.trophic_role,
+        adaptationTrait: r.adaptation_trait,
+        rarityTier: r.rarity_tier,
+        genotype: typeof r.genotype_json === 'string' ? JSON.parse(r.genotype_json) : (r.genotype_json || {}),
+        discoveredAt: r.discovered_at,
+      })),
+    };
+  }
+
+  /**
    * Debug reset helper for testing
    */
   public async debugReset(accountId: string = 'acc_sol_captain'): Promise<void> {

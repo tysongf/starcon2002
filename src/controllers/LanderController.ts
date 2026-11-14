@@ -57,6 +57,14 @@ export interface LanderFaunaEntity {
   lairY?: number;
   lairName?: string;
   roarTimer?: number;
+  scientificName?: string;
+  kingdom?: string;
+  bodyPlan?: string;
+  covering?: string;
+  sizeMeters?: number;
+  trophicRole?: string;
+  adaptationTrait?: string;
+  glowColor?: string;
 }
 
 export interface BioSampleEntry {
@@ -494,6 +502,14 @@ export class LanderController {
         stunHitsRequired: 1,
         currentStunHits: 0,
         isEnraged: false,
+        scientificName: spec.scientificName,
+        kingdom: spec.kingdom,
+        bodyPlan: spec.bodyPlan,
+        covering: spec.covering,
+        sizeMeters: spec.sizeMeters,
+        trophicRole: spec.trophicRole,
+        adaptationTrait: spec.adaptationTrait,
+        glowColor: spec.glowColor,
       });
     });
 
@@ -1635,11 +1651,14 @@ export class LanderController {
         apexMeta = ` // LAIR: ${f.lairName || 'UNKNOWN'} // STUN: ${f.currentStunHits || 0}/${f.stunHitsRequired || 3}`;
       }
 
+      const bioDetails = f.scientificName
+        ? ` // <em>${f.scientificName}</em> (${f.covering || 'xeno-hide'}, ${f.sizeMeters || 2.0}m)`
+        : '';
       const cssClass = `target-card-item fauna ${f.speciesClass.toLowerCase()} ${f.isApex ? 'titan' : ''} ${f.isEnraged ? 'enraged' : ''} ${f.state === 'STUNNED' ? 'stunned' : ''} ${f.collected ? 'collected' : ''}`;
       return `
         <div class="${cssClass}">
           <div class="target-title">${icon} ${f.name} ${stateLabel}</div>
-          <div class="target-meta">${f.speciesClass} // DIST: ${dist}m // VALUE: ${f.unitValue}u // YIELD: ${f.bioYield} cargo${apexMeta}</div>
+          <div class="target-meta">${f.kingdom || f.speciesClass}${bioDetails} // DIST: ${dist}m // VALUE: ${f.unitValue}u // YIELD: ${f.bioYield} cargo${apexMeta}</div>
         </div>
       `;
     }).join('');
@@ -2172,6 +2191,62 @@ export class LanderController {
         ctx.arc(8, 4, 2, 0, Math.PI * 2);
         ctx.fill();
 
+        ctx.restore();
+      } else if (f.bodyPlan === 'CRYSTAL_SHARD') {
+        // Crystalline Litho-Morph Polygon
+        ctx.save();
+        ctx.fillStyle = f.color;
+        ctx.strokeStyle = f.glowColor || '#67e8f9';
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.moveTo(13, 0);
+        ctx.lineTo(3, -9);
+        ctx.lineTo(-10, -5);
+        ctx.lineTo(-13, 0);
+        ctx.lineTo(-10, 5);
+        ctx.lineTo(3, 9);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(0, 0, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      } else if (f.bodyPlan === 'EXOTHERMIC_POD' || f.bodyPlan === 'SOLAR_FROND') {
+        // Exothermic Flora Cluster / Frond
+        const pulse = Math.sin(Date.now() * 0.005) * 1.5;
+        ctx.save();
+        ctx.strokeStyle = f.glowColor || '#4ade80';
+        ctx.lineWidth = 2;
+        for (let a = 0; a < 5; a++) {
+          const ang = (a / 5) * Math.PI * 2;
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.lineTo(Math.cos(ang) * (10 + pulse), Math.sin(ang) * (10 + pulse));
+          ctx.stroke();
+        }
+        ctx.fillStyle = f.color;
+        ctx.beginPath();
+        ctx.arc(0, 0, 6.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      } else if (f.bodyPlan === 'RADIAL_POLYPOID' || f.bodyPlan === 'PLASMA_FILAMENT') {
+        // Floating Polypoid / Plasma Ribbon
+        ctx.save();
+        ctx.strokeStyle = f.glowColor || f.color;
+        ctx.lineWidth = 1.8;
+        for (let t = -1; t <= 1; t++) {
+          const wave = Math.sin(f.legPhase + t) * 4;
+          ctx.beginPath();
+          ctx.moveTo(-4, t * 4);
+          ctx.quadraticCurveTo(-11, t * 6 + wave, -17, t * 4 - wave);
+          ctx.stroke();
+        }
+        ctx.fillStyle = f.color;
+        ctx.beginPath();
+        ctx.arc(2, 0, 8, 0, Math.PI * 2);
+        ctx.fill();
         ctx.restore();
       } else if (f.speciesClass === 'GRAZER') {
         // Docile Grazer

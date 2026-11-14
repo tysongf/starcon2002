@@ -3,6 +3,7 @@ import { PGlite } from '@electric-sql/pglite';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { buildGalaxyCompanionPlanets } from '../procgen/PlanetTaxonomyCatalog';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -122,6 +123,84 @@ export class DatabaseManager {
           await this.seedFile(seedFile);
         }
       }
+    }
+
+    // 4. Milestone 1.0: Ensure all 60 star systems are populated with the 45-subtype galaxy worlds
+    await this.ensureGalaxyPlanetsPopulated();
+  }
+
+  private async ensureGalaxyPlanetsPopulated(): Promise<void> {
+    try {
+      const { rows: countRows } = await this.query<{ count: string }>('SELECT COUNT(*) as count FROM planets');
+      const existingCount = parseInt(countRows[0]?.count || '0', 10);
+      if (existingCount >= 100) {
+        return;
+      }
+
+      const { rows: sectorRows } = await this.query<{ id: number; name: string; controlling_faction: string }>(
+        'SELECT id, name, controlling_faction FROM sectors ORDER BY id ASC'
+      );
+      if (sectorRows.length === 0) return;
+
+      const generated = buildGalaxyCompanionPlanets(
+        sectorRows.map((s) => ({
+          id: Number(s.id),
+          name: s.name,
+          controllingFaction: s.controlling_faction || 'FACTION_SOL',
+        }))
+      );
+
+      for (const p of generated) {
+        await this.query(
+          `INSERT INTO planets (
+            id, sector_id, name, archetype, main_class, subtype, radius,
+            pos_x, pos_y, pos_z, texture_seed, orbit_index,
+            atmosphere_color, atmosphere_density, surface_temp_k, hazard_class, habitability_rating,
+            hazard_thermal_level, hazard_ion_level, hazard_caustic_level,
+            abundance_rating, tectonics_rating, atmosphere_rating, density_rating,
+            controlling_faction, planet_palette, description
+          ) VALUES (
+            $1, $2, $3, $4, $5, $6, $7,
+            $8, $9, $10, $11, $12,
+            $13, $14, $15, $16, $17,
+            $18, $19, $20,
+            $21, $22, $23, $24,
+            $25, $26::jsonb, $27
+          ) ON CONFLICT (id) DO NOTHING`,
+          [
+            p.id,
+            p.sectorId,
+            p.name,
+            p.archetype,
+            p.mainClass,
+            p.subtype,
+            p.radius,
+            p.posX,
+            p.posY,
+            p.posZ,
+            p.textureSeed,
+            p.orbitIndex,
+            p.atmosphereColor,
+            p.atmosphereDensity,
+            p.surfaceTempK,
+            p.hazardClass,
+            p.habitabilityRating,
+            p.hazardThermalLevel,
+            p.hazardIonLevel,
+            p.hazardCausticLevel,
+            p.abundanceRating,
+            p.tectonicsRating,
+            p.atmosphereRating,
+            p.densityRating,
+            p.controllingFaction,
+            JSON.stringify(p.palette),
+            p.description,
+          ]
+        );
+      }
+      console.log(`[DB] Milestone 1.0: Populated ${generated.length} planetary worlds across ${sectorRows.length} star systems.`);
+    } catch (err) {
+      console.warn('[DB] Galaxy planet population skipped or failed:', err);
     }
   }
 

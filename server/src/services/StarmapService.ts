@@ -321,12 +321,13 @@ export class StarmapService {
     const s = sysRows[0];
 
     const { rows: planetRows } = await db.query<any>(
-      `SELECT pl.id, pl.name, pl.archetype, pl.radius, pl.hazard_class, pl.pos_x, pl.pos_z,
+      `SELECT pl.id, pl.name, pl.archetype, pl.main_class, pl.subtype, pl.orbit_index,
+              pl.abundance_rating, pl.density_rating, pl.radius, pl.hazard_class, pl.pos_x, pl.pos_z,
               CASE WHEN c.id IS NOT NULL THEN true ELSE false END as has_colony
        FROM planets pl
        LEFT JOIN colonies c ON c.planet_id = pl.id
        WHERE pl.sector_id = $1
-       ORDER BY (pl.pos_x * pl.pos_x + pl.pos_z * pl.pos_z) ASC`,
+       ORDER BY COALESCE(pl.orbit_index, 1) ASC, (pl.pos_x * pl.pos_x + pl.pos_z * pl.pos_z) ASC`,
       [sectorId]
     );
 
@@ -354,6 +355,10 @@ export class StarmapService {
         id: p.id,
         name: p.name,
         type: p.archetype,
+        mainClass: p.main_class || undefined,
+        subtype: p.subtype || undefined,
+        abundanceRating: p.abundance_rating != null ? Number(p.abundance_rating) : undefined,
+        densityRating: p.density_rating != null ? Number(p.density_rating) : undefined,
         gravity: Number((p.radius / 20.0).toFixed(2)),
         hazardLevel: p.hazard_class === 'EXTREME' ? 3 : p.hazard_class === 'HIGH' ? 2 : p.hazard_class === 'MODERATE' ? 1 : 0,
         orbitDistance: Number(Math.hypot(p.pos_x, p.pos_z).toFixed(1)),

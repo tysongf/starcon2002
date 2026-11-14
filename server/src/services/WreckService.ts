@@ -1,4 +1,6 @@
 import { db } from '../db/Database';
+import { outfittingService } from './OutfittingService';
+import { generateProceduralModule } from '../procgen/ProceduralModuleCatalog';
 
 export interface SectorWreck {
   id: string;
@@ -146,6 +148,7 @@ export class WreckService {
     scrapRemaining: number;
     extracted: number;
     alloyUnitsAdded: number;
+    recoveredModule?: any;
     wreck: SectorWreck | null;
   }> {
     const wreck = await this.getWreckById(wreckId);
@@ -189,13 +192,33 @@ export class WreckService {
     }
 
     if (newScrapRemaining <= 0) {
-      // Wreck completely disintegrated
+      // Wreck completely disintegrated — award a procedural salvaged module
+      let recoveredModule: any = null;
+      try {
+        const procMod = generateProceduralModule({
+          seed: `wreck_salvage_${wreck.id}_${accountId}`,
+          rarity: wreck.shipClass.toLowerCase().includes('cruiser') || wreck.shipClass.toLowerCase().includes('vanguard') ? 'RARE' : 'UNCOMMON',
+          factionAffinity: wreck.faction?.toUpperCase().includes('HEGEMONY')
+            ? 'FACTION_HEGEMONY'
+            : wreck.faction?.toUpperCase().includes('LITHOS')
+            ? 'FACTION_LITHOS'
+            : wreck.faction?.toUpperCase().includes('PHORID')
+            ? 'FACTION_PHORID'
+            : 'FACTION_KRYLL',
+        });
+        await outfittingService.addLootToPlayer(accountId, procMod);
+        recoveredModule = procMod;
+      } catch (err) {
+        console.warn('[WRECK] Optional salvage module drop skipped:', err);
+      }
+
       await db.query('DELETE FROM wrecks WHERE id = $1', [wreckId]);
       return {
         destroyed: true,
         scrapRemaining: 0,
         extracted: actualExtract,
         alloyUnitsAdded: alloyUnits,
+        recoveredModule,
         wreck: null,
       };
     } else {
