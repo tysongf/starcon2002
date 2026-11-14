@@ -7,6 +7,12 @@ export interface Sector {
   system_seed: number;
   controlling_faction: string;
   connected_sectors: number[];
+  coordinates_x?: number;
+  coordinates_y?: number;
+  spectral_class?: string;
+  star_radius?: number;
+  hazard_level?: number;
+  description?: string;
 }
 
 export interface Port {
@@ -31,6 +37,7 @@ export interface PlayerShip {
   shield: number;
   max_shield: number;
   cargo_capacity: number;
+  nav_target_sector_id?: number | null;
 }
 
 export interface JumpResult {

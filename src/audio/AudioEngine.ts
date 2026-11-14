@@ -1920,6 +1920,67 @@ export class AudioEngine {
       osc.stop(now + idx * 0.12 + 0.65);
     });
   }
+
+  /**
+   * Day 37: CRT Starmap Open Radar Sweep Audio Stinger
+   */
+  public playStarmapOpen(): void {
+    this.initContext();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    const filter = this.ctx.createBiquadFilter();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(220, now);
+    osc.frequency.exponentialRampToValueAtTime(880, now + 0.15);
+
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(600, now);
+    filter.Q.setValueAtTime(4, now);
+
+    gain.gain.setValueAtTime(0.01, now);
+    gain.gain.linearRampToValueAtTime(0.2, now + 0.04);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.26);
+  }
+
+  /**
+   * Day 37: Autopilot Course Lock Harmonic Confirmation Chime
+   */
+  public playNavPlotTone(): void {
+    this.initContext();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+
+    const chords = [587.33, 739.99, 880.00]; // D5, F#5, A5 (Major triad)
+    chords.forEach((freq, i) => {
+      if (!this.ctx) return;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, now + i * 0.05);
+
+      gain.gain.setValueAtTime(0.01, now + i * 0.05);
+      gain.gain.linearRampToValueAtTime(0.22, now + i * 0.05 + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.05 + 0.45);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      osc.start(now + i * 0.05);
+      osc.stop(now + i * 0.05 + 0.5);
+    });
+  }
 }
 
 

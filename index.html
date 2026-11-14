@@ -438,6 +438,7 @@
 
       <footer class="hud-footer">
         <div class="hud-actions">
+          <button id="btn-open-starmap" class="hud-btn primary" title="Open CRT Galactic Starmap (M)">🌌 Starmap (M)</button>
           <button id="btn-open-nav" class="hud-btn primary" title="Open Hyperspace Nav Console (J)">🚀 Warp Nav (J)</button>
           <button id="btn-hud-orbit" class="hud-btn primary" title="Enter Planetary Orbit & Surface Survey (O)">🪐 Orbit Survey (O)</button>
           <button id="btn-toggle-cam" class="hud-btn" title="Toggle Camera (C)">Camera: Chase</button>
@@ -1814,6 +1815,75 @@
             DISMISS CONSOLE [ESC]
           </button>
         </footer>
+      </div>
+    </div>
+
+    <!-- Day 37: Milestone 0.9 CRT Galactic Starmap Modal -->
+    <div id="starmap-modal" class="fullscreen-crt-modal hidden" style="display: none;">
+      <div class="starmap-container">
+        <header class="starmap-header">
+          <div class="starmap-title-block">
+            <span class="starmap-badge">ASTRO-CARTOGRAPHY // CRT TACTICAL RADAR</span>
+            <h2 class="starmap-title">GALACTIC STARCHART // CHARTED EXPENSE (1000 x 1000 LY)</h2>
+            <span class="starmap-subtext">EUCLIDEAN WARP TOPOLOGY • REAL-TIME RADAR • 60 CHARTED STAR SYSTEMS</span>
+          </div>
+          
+          <div class="starmap-controls-bar">
+            <div class="starmap-search-box">
+              <span class="starmap-search-icon">🔍</span>
+              <input type="text" id="starmap-search" placeholder="Search Star System Name..." />
+            </div>
+
+            <div class="starmap-faction-box">
+              <label for="starmap-faction-filter">FACTION:</label>
+              <select id="starmap-faction-filter">
+                <option value="ALL">ALL SPHERES</option>
+                <option value="FACTION_SOL">SOL ALLIANCE</option>
+                <option value="FACTION_VAELIC">VAELIC HEGEMONY</option>
+                <option value="FACTION_KRYLL">KRYLL CARTEL</option>
+                <option value="FACTION_LITHOS">LITHOS AXIOM</option>
+                <option value="FACTION_PHORID">PHORID SWARM</option>
+              </select>
+            </div>
+
+            <button id="starmap-btn-center" class="hud-btn secondary" title="Center on current flagship coordinates">
+              🎯 RE-CENTER
+            </button>
+            <button id="starmap-btn-clear" class="hud-btn secondary" title="Clear active navigation waypoint">
+              ❌ CLEAR COURSE
+            </button>
+            <button id="starmap-btn-close" class="hud-btn primary" title="Close Starmap [M / ESC]">
+              ✕ CLOSE [M]
+            </button>
+          </div>
+        </header>
+
+        <div class="starmap-body">
+          <div class="starmap-canvas-wrapper">
+            <canvas id="starmap-canvas"></canvas>
+            <div class="starmap-crt-scanlines"></div>
+            <div class="starmap-legend">
+              <div class="legend-item"><span class="legend-dot spectral-blue"></span> O-Type Supergiant</div>
+              <div class="legend-item"><span class="legend-dot spectral-white"></span> A-Type Bright</div>
+              <div class="legend-item"><span class="legend-dot spectral-yellow"></span> G-Type Solar</div>
+              <div class="legend-item"><span class="legend-dot spectral-orange"></span> K-Type Industrial</div>
+              <div class="legend-item"><span class="legend-dot spectral-red"></span> M-Type Red Dwarf</div>
+              <div class="legend-item"><span class="legend-dot spectral-neutron"></span> Neutron / Relic</div>
+            </div>
+          </div>
+
+          <aside class="starmap-sidebar">
+            <div class="starmap-sidebar-title">TELEMETRY & COURSE PLOTTER</div>
+            <div id="starmap-selected-card" class="starmap-card">
+              <div class="starmap-empty-prompt">Select a star system to review telemetry & plot course</div>
+            </div>
+            <div class="starmap-sidebar-actions">
+              <button id="starmap-btn-lock" class="hud-btn primary large-btn" disabled>
+                LOCK AUTOPILOT COURSE
+              </button>
+            </div>
+          </aside>
+        </div>
       </div>
     </div>
 

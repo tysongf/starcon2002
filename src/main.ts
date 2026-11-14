@@ -19,6 +19,7 @@ import { CombatClient } from './controllers/CombatClient';
 import { XenobiologyController } from './controllers/XenobiologyController';
 import { FleetController } from './controllers/FleetController';
 import { TacticalCommandWheel } from './controllers/TacticalCommandWheel';
+import { StarmapController } from './controllers/StarmapController';
 
 class GameEngine {
   private canvas: HTMLCanvasElement;
@@ -46,6 +47,7 @@ class GameEngine {
   public xenobiologyController!: XenobiologyController;
   public fleetController!: FleetController;
   public tacticalCommandWheel!: TacticalCommandWheel;
+  public starmapController!: StarmapController;
 
   // Navigation & Sector Jump System (Day 8)
   private currentSectorId: number = 1;
@@ -1813,6 +1815,14 @@ class GameEngine {
     });
 
     this.tacticalCommandWheel = new TacticalCommandWheel(this.combatClient, this.audio);
+
+    this.starmapController = new StarmapController({
+      getAccountId: () => 'acc_sol_captain',
+      showNotification: (msg, isErr) => this.showApNotification(msg, isErr ?? false),
+      playUiBlip: () => this.audio.playUiBlip(),
+      playNavPlotTone: () => this.audio.playNavPlotTone(),
+      playStarmapOpen: () => this.audio.playStarmapOpen(),
+    });
   }
 
   private setupEventListeners(): void {
@@ -1932,7 +1942,11 @@ class GameEngine {
       this.spendAP('EXTRACTION', 8);
     });
 
-    // Navigation & Hyperspace Modal Triggers (Day 8)
+    // Navigation & Hyperspace Modal Triggers (Day 8 & Day 37)
+    document.getElementById('btn-open-starmap')?.addEventListener('click', () => {
+      this.starmapController.toggleStarmap();
+    });
+
     this.btnOpenNav?.addEventListener('click', () => {
       this.openNavModal();
     });
@@ -2084,6 +2098,11 @@ class GameEngine {
         }
       }
 
+      if (e.code === 'KeyM') {
+        this.starmapController.toggleStarmap();
+        return;
+      }
+
       if (e.code === 'KeyJ') {
         if (this.modalNav && !this.modalNav.classList.contains('hidden')) {
           this.closeNavModal();
@@ -2094,6 +2113,10 @@ class GameEngine {
       }
 
       if (e.code === 'Escape') {
+        if (this.starmapController?.isOpen) {
+          this.starmapController.closeStarmap();
+          return;
+        }
         if (this.tacticalCommandWheel?.isOpen) {
           this.tacticalCommandWheel.close();
           return;

@@ -21,6 +21,7 @@ import { faunaRoutes } from './routes/faunaRoutes';
 import { shipyardRoutes } from './routes/shipyardRoutes';
 import { xenobiologyRoutes } from './routes/xenobiologyRoutes';
 import { fleetRoutes } from './routes/fleetRoutes';
+import { starmapRoutes } from './routes/starmapRoutes';
 
 export async function buildApp(options: FastifyServerOptions = {}): Promise<FastifyInstance> {
   const startTime = Date.now();
@@ -106,6 +107,7 @@ export async function buildApp(options: FastifyServerOptions = {}): Promise<Fast
   await server.register(shipyardRoutes, { prefix: '/api/shipyard' });
   await server.register(xenobiologyRoutes, { prefix: '/api/xenobiology' });
   await server.register(fleetRoutes, { prefix: '/api/fleet' });
+  await server.register(starmapRoutes, { prefix: '/api/starmap' });
 
   return server;
 }
