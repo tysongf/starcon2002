@@ -8803,6 +8803,119 @@ kbd {
   100% { opacity: 1.0; transform: scale(1.01); box-shadow: 0 0 12px rgba(234, 179, 8, 0.5); }
 }
 
+/* =============================================================================
+   Day 39: Hyperspace Radar, Hunter AI & Tactical Decoy Controls
+   ============================================================================= */
+
+.hyper-hud-right {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  background: rgba(8, 2, 8, 0.88);
+  border: 1px solid rgba(168, 85, 247, 0.4);
+  box-shadow: 0 0 20px rgba(168, 85, 247, 0.25);
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  backdrop-filter: blur(6px);
+  min-width: 250px;
+}
+
+.hyper-radar-cluster {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.hyper-radar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.hyper-threat-badge {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 800;
+  padding: 0.2rem 0.6rem;
+  border-radius: 4px;
+  letter-spacing: 0.05em;
+  transition: all 0.2s ease;
+}
+
+.hyper-threat-badge.clear {
+  background: rgba(34, 197, 94, 0.2);
+  color: #22c55e;
+  border: 1px solid #22c55e;
+}
+
+.hyper-threat-badge.alert {
+  background: rgba(234, 179, 8, 0.25);
+  color: #facc15;
+  border: 1px solid #eab308;
+  animation: hyperPulse 1s infinite alternate;
+}
+
+.hyper-threat-badge.pursuit {
+  background: rgba(239, 68, 68, 0.35);
+  color: #f87171;
+  border: 1px solid #ef4444;
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.6);
+  animation: hyperThreatFlash 0.5s infinite alternate;
+}
+
+@keyframes hyperThreatFlash {
+  0% { transform: scale(0.96); opacity: 0.8; }
+  100% { transform: scale(1.04); opacity: 1.0; }
+}
+
+.hyper-tactical-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.hyper-decoy-btn {
+  background: linear-gradient(135deg, rgba(234, 179, 8, 0.25) 0%, rgba(180, 83, 9, 0.3) 100%);
+  border: 1px solid #f59e0b;
+  color: #fef08a;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 0.35rem 0.75rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.3);
+}
+
+.hyper-decoy-btn:hover {
+  background: linear-gradient(135deg, rgba(234, 179, 8, 0.45) 0%, rgba(217, 119, 6, 0.5) 100%);
+  box-shadow: 0 0 14px rgba(245, 158, 11, 0.6);
+  transform: translateY(-1px);
+}
+
+.hyper-decoy-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  border-color: #64748b;
+  color: #94a3b8;
+  box-shadow: none;
+}
+
+.hyper-stealth-pill {
+  background: rgba(56, 189, 248, 0.25);
+  border: 1px solid #38bdf8;
+  color: #7dd3fc;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 800;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  animation: hyperPulse 1.2s infinite alternate;
+}
+
 
 
 

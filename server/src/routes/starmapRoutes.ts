@@ -171,5 +171,120 @@ export const starmapRoutes: FastifyPluginAsync = async (server) => {
     }
     reply.send(result);
   });
+
+  // =========================================================================
+  // Day 39: Hyperspace Radar Blips, Hunter AI & Tactical Interceptions
+  // =========================================================================
+
+  // 9. Scan for Active Subspace Radar Blips & Hunter Pursuers
+  server.post('/hyperspace/blips', async (req, reply) => {
+    const body = (req.body || {}) as {
+      accountId?: string;
+      playerId?: string;
+      currentCoords: [number, number];
+      isBoosting?: boolean;
+    };
+    const accountId = body.accountId || body.playerId || 'acc_sol_captain';
+
+    if (!body.currentCoords || !Array.isArray(body.currentCoords) || body.currentCoords.length < 2) {
+      return reply.status(400).send({ success: false, error: 'currentCoords [x, y] is required.' });
+    }
+
+    const result = await starmapService.getHyperspaceRadarBlips(
+      accountId,
+      [Number(body.currentCoords[0]), Number(body.currentCoords[1])],
+      Boolean(body.isBoosting)
+    );
+    reply.send(result);
+  });
+
+  // 10. Deploy Subspace Thermal Decoy
+  server.post('/hyperspace/decoy', async (req, reply) => {
+    const body = (req.body || {}) as {
+      accountId?: string;
+      playerId?: string;
+      currentCoords: [number, number];
+    };
+    const accountId = body.accountId || body.playerId || 'acc_sol_captain';
+
+    if (!body.currentCoords || !Array.isArray(body.currentCoords) || body.currentCoords.length < 2) {
+      return reply.status(400).send({ success: false, error: 'currentCoords [x, y] is required.' });
+    }
+
+    const result = await starmapService.deployHyperspaceDecoy(
+      accountId,
+      [Number(body.currentCoords[0]), Number(body.currentCoords[1])]
+    );
+    if (!result.success) {
+      return reply.status(400).send(result);
+    }
+    reply.send(result);
+  });
+
+  // 11. Initiate Hyperspace Interception Handshake (Tier 1 Comms)
+  server.post('/hyperspace/intercept', async (req, reply) => {
+    const body = (req.body || {}) as {
+      accountId?: string;
+      playerId?: string;
+      blipId: string;
+      currentCoords?: [number, number];
+    };
+    const accountId = body.accountId || body.playerId || 'acc_sol_captain';
+
+    if (!body.blipId) {
+      return reply.status(400).send({ success: false, error: 'blipId is required.' });
+    }
+
+    const result = await starmapService.initiateHyperspaceInterception(
+      accountId,
+      body.blipId,
+      body.currentCoords
+    );
+    if (!result.success) {
+      return reply.status(400).send(result);
+    }
+    reply.send(result);
+  });
+
+  // 12. Resolve Comms Dialog Decision (Bribe, Bluff, Peaceful, Attack)
+  server.post('/hyperspace/comms-action', async (req, reply) => {
+    const body = (req.body || {}) as {
+      accountId?: string;
+      playerId?: string;
+      blipId: string;
+      actionId: string;
+    };
+    const accountId = body.accountId || body.playerId || 'acc_sol_captain';
+
+    if (!body.blipId || !body.actionId) {
+      return reply.status(400).send({ success: false, error: 'blipId and actionId are required.' });
+    }
+
+    const result = await starmapService.resolveInterceptionComms(
+      accountId,
+      body.blipId,
+      body.actionId
+    );
+    if (!result.success) {
+      return reply.status(400).send(result);
+    }
+    reply.send(result);
+  });
+
+  // 13. In-Situ Hyperspace Resumption Post-Combat/Comms with Warp Immunity
+  server.post('/hyperspace/resume', async (req, reply) => {
+    const body = (req.body || {}) as {
+      accountId?: string;
+      playerId?: string;
+      combatOutcome?: 'VICTORY' | 'FLED';
+    };
+    const accountId = body.accountId || body.playerId || 'acc_sol_captain';
+
+    const result = await starmapService.resumeHyperspaceFlight(
+      accountId,
+      body.combatOutcome || 'VICTORY'
+    );
+    reply.send(result);
+  });
 };
 

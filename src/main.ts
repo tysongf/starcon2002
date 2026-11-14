@@ -1837,6 +1837,21 @@ class GameEngine {
           this.loadSectorScene(newSectorId, 101 * newSectorId);
           this.loadShipAndSector();
         },
+        onInterception: (handshake) => {
+          this.commsController.openHyperspaceInterception(handshake, (res) => {
+            if (res.combatDropRequired) {
+              this.hyperspaceFlightController.dropOutOfHyperspaceToCombat(res.combatSetup);
+            } else {
+              this.hyperspaceFlightController.resumeFlightAfterComms(res);
+            }
+          });
+        },
+        onCombatDrop: (_combatSetup) => {
+          this.showApNotification('TACTICAL EMERGENCY: Dropping out of warp into combat arena!', true);
+          this.loadSectorScene(this.currentSectorId, 101 * this.currentSectorId);
+          this.loadShipAndSector();
+          this.combatClient.initCombatWebSocket(this.currentSectorId);
+        },
       },
       this.scene,
       this.camera

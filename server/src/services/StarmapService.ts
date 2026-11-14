@@ -63,6 +63,76 @@ export interface CoursePlotResult {
   error?: string;
 }
 
+export interface HyperspaceRadarBlip {
+  id: string;
+  name: string;
+  factionId: string;
+  factionName: string;
+  factionColor: string;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  state: 'PATROL' | 'ALERT' | 'PURSUING' | 'DISTRACTED';
+  speed: number;
+  detectionRadius: number;
+  shipCount: number;
+  shipClass: string;
+  isHostile: boolean;
+  distanceLY?: number;
+}
+
+export interface ActiveDecoy {
+  id: string;
+  x: number;
+  y: number;
+  expiresAt: number;
+  durationSeconds: number;
+}
+
+export interface InterceptionHandshake {
+  interceptionId: string;
+  blipId: string;
+  factionId: string;
+  factionName: string;
+  alienCommander: string;
+  portrait: string;
+  title: string;
+  hostility: 'FRIENDLY' | 'EXTORTIONIST' | 'HOSTILE' | 'NEUTRAL';
+  dialogueText: string;
+  audioCue: string;
+  bribeCostCredits?: number;
+  bribeCostFuel?: number;
+  options: Array<{
+    id: string;
+    label: string;
+    action: 'BRIBE_CREDITS' | 'BRIBE_FUEL' | 'BLUFF' | 'ATTACK' | 'PEACEFUL_PASS';
+    description: string;
+  }>;
+}
+
+export interface CommsResolutionResult {
+  success: boolean;
+  actionTaken: string;
+  resolvedPeacefully: boolean;
+  message: string;
+  immunityGrantedSeconds: number;
+  remainingCredits?: number;
+  remainingFuel?: number;
+  combatDropRequired: boolean;
+  combatSetup?: {
+    encounterId: string;
+    factionId: string;
+    enemySquadron: Array<{
+      type: string;
+      hull: number;
+      shield: number;
+      weapons: string[];
+    }>;
+  };
+  error?: string;
+}
+
 export class StarmapService {
   public static readonly CANONICAL_SPHERES: FactionSphere[] = [
     {
@@ -616,6 +686,746 @@ export class StarmapService {
       remainingFuel: fuelToCommit,
       coordinates: [starX, starY],
       system: detailedSystem,
+    };
+  }
+
+  // =========================================================================
+  // Day 39: Hyperspace Radar Blips, Hunter AI & Tactical Interceptions
+  // =========================================================================
+
+  private activeDecoys: Map<string, ActiveDecoy[]> = new Map();
+  private activeBlips: Map<string, Map<string, HyperspaceRadarBlip>> = new Map();
+  private lastBlipUpdateTime: Map<string, number> = new Map();
+
+  /**
+   * Helper to retrieve the governing faction sphere for galactic coordinates.
+   */
+  public getFactionSphereAtCoords(x: number, y: number): FactionSphere | null {
+    for (const sphere of StarmapService.CANONICAL_SPHERES) {
+      const dist = Math.hypot(x - sphere.centerX, y - sphere.centerY);
+      if (dist <= sphere.radius) {
+        return sphere;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Periodically updates and returns active radar contacts, pursuers, decoys, and immunity.
+   */
+  public async getHyperspaceRadarBlips(
+    accountId: string = 'acc_sol_captain',
+    coords: [number, number],
+    isBoosting: boolean = false
+  ): Promise<{
+    success: boolean;
+    blips: HyperspaceRadarBlip[];
+    activeDecoys: ActiveDecoy[];
+    immunityRemainingSeconds: number;
+    decoysRemaining: number;
+    threatLevel: 'CLEAR' | 'ALERT' | 'PURSUIT';
+    territory: string;
+  }> {
+    const now = Date.now();
+    const lastTime = this.lastBlipUpdateTime.get(accountId) || now;
+    const dt = Math.min(2.0, Math.max(0.05, (now - lastTime) / 1000));
+    this.lastBlipUpdateTime.set(accountId, now);
+
+    // 1. Fetch ship immunity & decoy inventory
+    const { rows: shipRows } = await db.query<any>(
+      'SELECT decoys_remaining, hyperspace_immunity_until FROM ships WHERE account_id = $1',
+      [accountId]
+    );
+    const ship = shipRows[0] || { decoys_remaining: 3, hyperspace_immunity_until: null };
+    const decoysRemaining = Number(ship.decoys_remaining ?? 3);
+
+    let immunityRemainingSeconds = 0;
+    if (ship.hyperspace_immunity_until) {
+      const immunityExpires = new Date(ship.hyperspace_immunity_until).getTime();
+      if (immunityExpires > now) {
+        immunityRemainingSeconds = Number(((immunityExpires - now) / 1000).toFixed(1));
+      }
+    }
+
+    // 2. Filter active decoys
+    const userDecoys = (this.activeDecoys.get(accountId) || []).filter((d) => d.expiresAt > now);
+    this.activeDecoys.set(accountId, userDecoys);
+
+    // 3. Retrieve or initialize blips map
+    let blipMap = this.activeBlips.get(accountId);
+    if (!blipMap) {
+      blipMap = new Map();
+      this.activeBlips.set(accountId, blipMap);
+    }
+
+    // 4. Prune blips out of radar envelope (> 120 LY)
+    for (const [id, blip] of blipMap.entries()) {
+      const dist = Math.hypot(blip.x - coords[0], blip.y - coords[1]);
+      if (dist > 120.0) {
+        blipMap.delete(id);
+      }
+    }
+
+    // 5. Determine local faction territory
+    const territorySphere = this.getFactionSphereAtCoords(coords[0], coords[1]);
+    const territoryName = territorySphere ? territorySphere.name : 'Unclaimed Deep Void Expanse';
+    const factionId = territorySphere ? territorySphere.factionId : 'FACTION_INDEPENDENT';
+
+    // 6. Spawn regional blips if population is sparse (< 3)
+    if (blipMap.size < 3) {
+      const blipIndex = blipMap.size + 1;
+      const angle = (Math.PI * 2 * Math.random());
+      const spawnDist = 25.0 + Math.random() * 20.0; // 25 - 45 LY away
+      const bx = Number((coords[0] + Math.cos(angle) * spawnDist).toFixed(1));
+      const by = Number((coords[1] + Math.sin(angle) * spawnDist).toFixed(1));
+
+      let blipData: Omit<HyperspaceRadarBlip, 'id' | 'x' | 'y' | 'vx' | 'vy' | 'state' | 'distanceLY'>;
+
+      if (factionId === 'FACTION_VAELIC') {
+        blipData = {
+          name: `Vaelic Interdictor Heavy ${blipIndex}`,
+          factionId: 'FACTION_VAELIC',
+          factionName: 'Vaelic Imperial Hegemony',
+          factionColor: '#ef4444',
+          speed: 26.0,
+          detectionRadius: 36.0,
+          shipCount: 2,
+          shipClass: 'War Cruiser',
+          isHostile: true,
+        };
+      } else if (factionId === 'FACTION_KRYLL') {
+        blipData = {
+          name: `Kryll Corsair Skiff ${blipIndex}`,
+          factionId: 'FACTION_KRYLL',
+          factionName: 'Kryll Freebooter Syndicate',
+          factionColor: '#10b981',
+          speed: 28.0,
+          detectionRadius: 32.0,
+          shipCount: 3,
+          shipClass: 'Raider',
+          isHostile: true,
+        };
+      } else if (factionId === 'FACTION_PHORID') {
+        blipData = {
+          name: `Phorid Hive Drone Pack ${blipIndex}`,
+          factionId: 'FACTION_PHORID',
+          factionName: 'Phorid Swarm Hive',
+          factionColor: '#f59e0b',
+          speed: 30.0,
+          detectionRadius: 40.0,
+          shipCount: 4,
+          shipClass: 'Bio-Interceptor',
+          isHostile: true,
+        };
+      } else if (factionId === 'FACTION_LITHOS') {
+        blipData = {
+          name: `Lithos Monolith Sentinel ${blipIndex}`,
+          factionId: 'FACTION_LITHOS',
+          factionName: 'Lithos Harmonic Expanse',
+          factionColor: '#a855f7',
+          speed: 18.0,
+          detectionRadius: 25.0,
+          shipCount: 1,
+          shipClass: 'Prism Sentinel',
+          isHostile: false,
+        };
+      } else if (factionId === 'FACTION_SOL') {
+        blipData = {
+          name: `Sol Defense Picket Alpha ${blipIndex}`,
+          factionId: 'FACTION_SOL',
+          factionName: 'Sol Planetary Alliance',
+          factionColor: '#38bdf8',
+          speed: 22.0,
+          detectionRadius: 28.0,
+          shipCount: 2,
+          shipClass: 'Defender',
+          isHostile: false,
+        };
+      } else {
+        blipData = {
+          name: `Independent Ore Hauler ${blipIndex}`,
+          factionId: 'FACTION_INDEPENDENT',
+          factionName: 'Independent Rim Traders',
+          factionColor: '#94a3b8',
+          speed: 19.0,
+          detectionRadius: 20.0,
+          shipCount: 1,
+          shipClass: 'Freighter',
+          isHostile: false,
+        };
+      }
+
+      const blipId = `blip_${factionId.toLowerCase()}_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+      blipMap.set(blipId, {
+        id: blipId,
+        x: bx,
+        y: by,
+        vx: (Math.random() - 0.5) * 8.0,
+        vy: (Math.random() - 0.5) * 8.0,
+        state: 'PATROL',
+        ...blipData,
+      });
+    }
+
+    // 7. Execute Hunter AI state machine & kinematics
+    let threatLevel: 'CLEAR' | 'ALERT' | 'PURSUIT' = 'CLEAR';
+
+    for (const blip of blipMap.values()) {
+      const distToPlayer = Math.hypot(blip.x - coords[0], blip.y - coords[1]);
+      blip.distanceLY = Number(distToPlayer.toFixed(1));
+
+      // Check closest decoy within distraction radius (80 LY)
+      let closestDecoy: ActiveDecoy | null = null;
+      let minDecoyDist = Infinity;
+      for (const d of userDecoys) {
+        const dd = Math.hypot(blip.x - d.x, blip.y - d.y);
+        if (dd <= 80.0 && dd < minDecoyDist) {
+          minDecoyDist = dd;
+          closestDecoy = d;
+        }
+      }
+
+      if (closestDecoy) {
+        // Distracted by Thermal Decoy
+        blip.state = 'DISTRACTED';
+        const ddx = closestDecoy.x - blip.x;
+        const ddy = closestDecoy.y - blip.y;
+        const len = Math.hypot(ddx, ddy) || 1;
+        blip.vx = (ddx / len) * blip.speed;
+        blip.vy = (ddy / len) * blip.speed;
+        blip.x += blip.vx * dt;
+        blip.y += blip.vy * dt;
+      } else if (blip.isHostile && immunityRemainingSeconds <= 0) {
+        // Hostile Hunter Check
+        const effectiveDetection = blip.detectionRadius * (isBoosting ? 1.6 : 1.0);
+        if (distToPlayer <= effectiveDetection) {
+          blip.state = 'PURSUING';
+          threatLevel = 'PURSUIT';
+          const pdx = coords[0] - blip.x;
+          const pdy = coords[1] - blip.y;
+          const len = Math.hypot(pdx, pdy) || 1;
+          blip.vx = (pdx / len) * blip.speed;
+          blip.vy = (pdy / len) * blip.speed;
+          blip.x += blip.vx * dt;
+          blip.y += blip.vy * dt;
+        } else {
+          blip.state = 'PATROL';
+          blip.x += blip.vx * dt;
+          blip.y += blip.vy * dt;
+          if (distToPlayer <= 50.0 && threatLevel !== 'PURSUIT') {
+            threatLevel = 'ALERT';
+          }
+        }
+      } else {
+        // Friendly / Neutral / Immune Patrol
+        blip.state = 'PATROL';
+        blip.x += blip.vx * dt;
+        blip.y += blip.vy * dt;
+      }
+
+      // Clamp coordinates to galactic grid [0, 1000]
+      blip.x = Math.max(5, Math.min(995, Number(blip.x.toFixed(2))));
+      blip.y = Math.max(5, Math.min(995, Number(blip.y.toFixed(2))));
+    }
+
+    return {
+      success: true,
+      blips: Array.from(blipMap.values()),
+      activeDecoys: userDecoys,
+      immunityRemainingSeconds,
+      decoysRemaining,
+      threatLevel,
+      territory: territoryName,
+    };
+  }
+
+  /**
+   * Deploys a thermal subspace decoy to draw chasing hostiles.
+   */
+  public async deployHyperspaceDecoy(
+    accountId: string = 'acc_sol_captain',
+    coords: [number, number]
+  ): Promise<{
+    success: boolean;
+    decoysRemaining: number;
+    decoy?: ActiveDecoy;
+    error?: string;
+  }> {
+    const { rows } = await db.query<any>(
+      'SELECT decoys_remaining FROM ships WHERE account_id = $1',
+      [accountId]
+    );
+    if (rows.length === 0) {
+      return { success: false, decoysRemaining: 0, error: 'SHIP_NOT_FOUND' };
+    }
+
+    const currentDecoys = Number(rows[0].decoys_remaining ?? 0);
+    if (currentDecoys <= 0) {
+      return {
+        success: false,
+        decoysRemaining: 0,
+        error: 'NO_DECOYS_REMAINING: All thermal decoy canisters have been expended.',
+      };
+    }
+
+    const updatedDecoys = currentDecoys - 1;
+    await db.query(
+      'UPDATE ships SET decoys_remaining = $1 WHERE account_id = $2',
+      [updatedDecoys, accountId]
+    );
+
+    const decoy: ActiveDecoy = {
+      id: `decoy_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+      x: Number(coords[0].toFixed(2)),
+      y: Number(coords[1].toFixed(2)),
+      expiresAt: Date.now() + 6000,
+      durationSeconds: 6.0,
+    };
+
+    const userDecoys = this.activeDecoys.get(accountId) || [];
+    userDecoys.push(decoy);
+    this.activeDecoys.set(accountId, userDecoys);
+
+    return {
+      success: true,
+      decoysRemaining: updatedDecoys,
+      decoy,
+    };
+  }
+
+  /**
+   * Handshakes an alien radar interception and builds the Tier 1 Comms payload.
+   */
+  public async initiateHyperspaceInterception(
+    accountId: string = 'acc_sol_captain',
+    blipId: string,
+    currentCoords?: [number, number]
+  ): Promise<{
+    success: boolean;
+    interception?: InterceptionHandshake;
+    error?: string;
+  }> {
+    // 1. Verify ship status
+    const { rows: shipRows } = await db.query<any>(
+      'SELECT is_in_hyperspace, hyperspace_immunity_until, hyperspace_x, hyperspace_y FROM ships WHERE account_id = $1',
+      [accountId]
+    );
+    if (shipRows.length === 0) {
+      return { success: false, error: 'SHIP_NOT_FOUND' };
+    }
+    const ship = shipRows[0];
+    if (!ship.is_in_hyperspace) {
+      return { success: false, error: 'NOT_IN_HYPERSPACE: Ship must be traversing Hyperspace to engage in interception.' };
+    }
+
+    if (ship.hyperspace_immunity_until) {
+      const expires = new Date(ship.hyperspace_immunity_until).getTime();
+      if (expires > Date.now()) {
+        return {
+          success: false,
+          error: 'SHIP_UNDER_WARP_IMMUNITY: Vessel is protected by warp-flare stealth resonance and cannot be intercepted.',
+        };
+      }
+    }
+
+    // 2. Find or synthesize blip details
+    const userBlips = this.activeBlips.get(accountId);
+    let targetBlip = userBlips ? userBlips.get(blipId) : null;
+
+    if (!targetBlip) {
+      // Synthesize blip if passed directly or generated from proximity
+      const sx = currentCoords ? currentCoords[0] : Number(ship.hyperspace_x ?? 500);
+      const sy = currentCoords ? currentCoords[1] : Number(ship.hyperspace_y ?? 500);
+      const sphere = this.getFactionSphereAtCoords(sx, sy);
+      const fid = sphere ? sphere.factionId : 'FACTION_VAELIC';
+
+      targetBlip = {
+        id: blipId,
+        name: `${sphere ? sphere.name : 'Vaelic'} Interceptor`,
+        factionId: fid,
+        factionName: sphere ? sphere.name : 'Vaelic Imperial Hegemony',
+        factionColor: sphere ? sphere.color : '#ef4444',
+        x: sx,
+        y: sy,
+        vx: 0,
+        vy: 0,
+        state: 'PURSUING',
+        speed: 25,
+        detectionRadius: 35,
+        shipCount: 2,
+        shipClass: 'War Cruiser',
+        isHostile: fid !== 'FACTION_SOL' && fid !== 'FACTION_LITHOS',
+      };
+    }
+
+    // 3. Construct Tier 1 Alien Comms Handshake
+    let handshake: InterceptionHandshake;
+
+    if (targetBlip.factionId === 'FACTION_VAELIC') {
+      handshake = {
+        interceptionId: `intercept_${Date.now()}`,
+        blipId: targetBlip.id,
+        factionId: targetBlip.factionId,
+        factionName: 'Vaelic Imperial Hegemony',
+        alienCommander: 'Prefect Malakor of the Vaelic Core',
+        portrait: 'vaelic_commander',
+        title: 'Imperial Vanguard Interdictor',
+        hostility: 'HOSTILE',
+        audioCue: 'vaelic_hail',
+        dialogueText:
+          'Unidentified Earth Alliance vessel! You have violated sovereign Imperial airspace without Hegemony clearance. Surrender your vessel or be reduced to atoms in the subspace void.',
+        bribeCostCredits: 500,
+        bribeCostFuel: 20,
+        options: [
+          {
+            id: 'bribe_credits',
+            label: 'Pay Imperial Toll (500 Credits)',
+            action: 'BRIBE_CREDITS',
+            description: 'Authorize an emergency credit transfer to satisfy the Hegemony interdiction.',
+          },
+          {
+            id: 'bluff',
+            label: 'Transmit Diplomatic Clearance Code',
+            action: 'BLUFF',
+            description: 'Attempt to bluff the Imperial commander with forged Alliance clearance tokens.',
+          },
+          {
+            id: 'attack',
+            label: 'Raise Shields and Open Fire!',
+            action: 'ATTACK',
+            description: 'Refuse all demands and engage the Imperial squadron in tactical combat.',
+          },
+        ],
+      };
+    } else if (targetBlip.factionId === 'FACTION_KRYLL') {
+      handshake = {
+        interceptionId: `intercept_${Date.now()}`,
+        blipId: targetBlip.id,
+        factionId: targetBlip.factionId,
+        factionName: 'Kryll Freebooter Syndicate',
+        alienCommander: 'Captain Skrix of the Rust Claws',
+        portrait: 'kryll_raider',
+        title: 'Syndicate Corsair Captain',
+        hostility: 'EXTORTIONIST',
+        audioCue: 'kryll_hail',
+        dialogueText:
+          'Hahaha! Look at the pretty flagship that drifted right into our crosshairs! Pay the Syndicate transit fee—fuel or shiny credits—or my gunners tear through your hull plating!',
+        bribeCostCredits: 350,
+        bribeCostFuel: 15,
+        options: [
+          {
+            id: 'bribe_fuel',
+            label: 'Surrender Fuel (15 Fuel Units)',
+            action: 'BRIBE_FUEL',
+            description: 'Siphon 15 fuel canisters to the corsairs to buy passage.',
+          },
+          {
+            id: 'bribe_credits',
+            label: 'Pay Syndicate Tribute (350 Credits)',
+            action: 'BRIBE_CREDITS',
+            description: 'Pay off the pirate pack with credits.',
+          },
+          {
+            id: 'attack',
+            label: 'Lock Cannons and Fire!',
+            action: 'ATTACK',
+            description: 'Engage the pirate raiders in ship-to-ship combat.',
+          },
+        ],
+      };
+    } else if (targetBlip.factionId === 'FACTION_PHORID') {
+      handshake = {
+        interceptionId: `intercept_${Date.now()}`,
+        blipId: targetBlip.id,
+        factionId: targetBlip.factionId,
+        factionName: 'Phorid Swarm Hive',
+        alienCommander: 'Chitinous Swarm Overmind',
+        portrait: 'phorid_swarm',
+        title: 'Hive Vanguard Tendril',
+        hostility: 'HOSTILE',
+        audioCue: 'phorid_hail',
+        dialogueText:
+          '*Chittering bio-resonance shrieks fill the subspace comms band* ...FLESH... ENERGY CORE DETECTED... HARVEST... SPAWN...',
+        options: [
+          {
+            id: 'attack',
+            label: 'Repel Swarm Incursion!',
+            action: 'ATTACK',
+            description: 'The hive swarm cannot be reasoned with. Battle stations!',
+          },
+        ],
+      };
+    } else if (targetBlip.factionId === 'FACTION_LITHOS') {
+      handshake = {
+        interceptionId: `intercept_${Date.now()}`,
+        blipId: targetBlip.id,
+        factionId: targetBlip.factionId,
+        factionName: 'Lithos Harmonic Expanse',
+        alienCommander: 'Axiom Resonator 7-Alpha',
+        portrait: 'lithos_resonator',
+        title: 'Crystalline Observer',
+        hostility: 'NEUTRAL',
+        audioCue: 'lithos_hail',
+        dialogueText:
+          'Harmonic frequency recognized. Vessel of carbon consciousness, maintain your frequency and pass in peace through the crystalline meridian.',
+        options: [
+          {
+            id: 'peaceful',
+            label: 'Acknowledge Harmonic Resonance',
+            action: 'PEACEFUL_PASS',
+            description: 'Transmit peaceful acknowledgement and resume trajectory.',
+          },
+        ],
+      };
+    } else if (targetBlip.factionId === 'FACTION_SOL') {
+      handshake = {
+        interceptionId: `intercept_${Date.now()}`,
+        blipId: targetBlip.id,
+        factionId: targetBlip.factionId,
+        factionName: 'Sol Planetary Alliance',
+        alienCommander: 'Cmdr. Andrea Drake',
+        portrait: 'sol_officer',
+        title: 'Terran Sector Picket Command',
+        hostility: 'FRIENDLY',
+        audioCue: 'sol_hail',
+        dialogueText:
+          'Sol Defense Command here. Transponder verified, Flagship. Outer sectors report elevated pirate and Hegemony activity. Watch your fuel reserves.',
+        options: [
+          {
+            id: 'peaceful',
+            label: 'Understood, Sol Command. Out.',
+            action: 'PEACEFUL_PASS',
+            description: 'Affirm message and resume warp journey.',
+          },
+        ],
+      };
+    } else {
+      handshake = {
+        interceptionId: `intercept_${Date.now()}`,
+        blipId: targetBlip.id,
+        factionId: 'FACTION_INDEPENDENT',
+        factionName: 'Independent Rim Traders',
+        alienCommander: 'Captain Jax',
+        portrait: 'neutral_trader',
+        title: 'Free Rim Merchant',
+        hostility: 'NEUTRAL',
+        audioCue: 'neutral_hail',
+        dialogueText:
+          'Hail, traveler! Out here in deep subspace you can never be too careful. Safe travels to you and your flotilla.',
+        options: [
+          {
+            id: 'peaceful',
+            label: 'Safe travels, Captain.',
+            action: 'PEACEFUL_PASS',
+            description: 'Part ways peacefully.',
+          },
+        ],
+      };
+    }
+
+    return {
+      success: true,
+      interception: handshake,
+    };
+  }
+
+  /**
+   * Resolves a Comms decision during Tier 1 Interception.
+   */
+  public async resolveInterceptionComms(
+    accountId: string = 'acc_sol_captain',
+    blipId: string,
+    actionId: string
+  ): Promise<CommsResolutionResult> {
+    const { rows: shipRows } = await db.query<any>(
+      'SELECT s.fuel, a.credits FROM ships s JOIN accounts a ON a.id = s.account_id WHERE s.account_id = $1',
+      [accountId]
+    );
+    if (shipRows.length === 0) {
+      return {
+        success: false,
+        actionTaken: actionId,
+        resolvedPeacefully: false,
+        message: 'Account or ship not found.',
+        immunityGrantedSeconds: 0,
+        combatDropRequired: false,
+        error: 'SHIP_NOT_FOUND',
+      };
+    }
+
+    const ship = shipRows[0];
+    const currentCredits = Number(ship.credits ?? 0);
+    const currentFuel = Number(ship.fuel ?? 0);
+
+    // Remove blip from active radar after resolution
+    const userBlips = this.activeBlips.get(accountId);
+    const targetBlip = userBlips ? userBlips.get(blipId) : null;
+    if (userBlips && targetBlip) {
+      userBlips.delete(blipId);
+    }
+
+    const factionId = targetBlip ? targetBlip.factionId : 'FACTION_VAELIC';
+
+    if (actionId === 'BRIBE_CREDITS') {
+      const creditCost = factionId === 'FACTION_VAELIC' ? 500 : 350;
+      if (currentCredits < creditCost) {
+        return {
+          success: false,
+          actionTaken: actionId,
+          resolvedPeacefully: false,
+          message: `INSUFFICIENT_CREDITS: Required ${creditCost} Credits, but only ${currentCredits} available.`,
+          immunityGrantedSeconds: 0,
+          combatDropRequired: false,
+          error: 'INSUFFICIENT_CREDITS',
+        };
+      }
+
+      await db.query('UPDATE accounts SET credits = credits - $1 WHERE id = $2', [creditCost, accountId]);
+      await db.query("UPDATE ships SET hyperspace_immunity_until = NOW() + INTERVAL '5 seconds' WHERE account_id = $1", [
+        accountId,
+      ]);
+
+      return {
+        success: true,
+        actionTaken: actionId,
+        resolvedPeacefully: true,
+        message: `Tribute of ${creditCost} Credits transferred. The patrol acknowledges payment and disengages. 5-second warp immunity active.`,
+        immunityGrantedSeconds: 5,
+        remainingCredits: currentCredits - creditCost,
+        remainingFuel: currentFuel,
+        combatDropRequired: false,
+      };
+    }
+
+    if (actionId === 'BRIBE_FUEL') {
+      const fuelCost = factionId === 'FACTION_VAELIC' ? 20 : 15;
+      if (currentFuel < fuelCost) {
+        return {
+          success: false,
+          actionTaken: actionId,
+          resolvedPeacefully: false,
+          message: `INSUFFICIENT_FUEL: Required ${fuelCost} Fuel canisters, but only ${currentFuel} available.`,
+          immunityGrantedSeconds: 0,
+          combatDropRequired: false,
+          error: 'INSUFFICIENT_FUEL',
+        };
+      }
+
+      await db.query('UPDATE ships SET fuel = fuel - $1 WHERE account_id = $2', [fuelCost, accountId]);
+      await db.query("UPDATE ships SET hyperspace_immunity_until = NOW() + INTERVAL '5 seconds' WHERE account_id = $1", [
+        accountId,
+      ]);
+
+      return {
+        success: true,
+        actionTaken: actionId,
+        resolvedPeacefully: true,
+        message: `${fuelCost} Fuel units siphoned. The raiders depart cackling into the void. 5-second warp immunity active.`,
+        immunityGrantedSeconds: 5,
+        remainingCredits: currentCredits,
+        remainingFuel: currentFuel - fuelCost,
+        combatDropRequired: false,
+      };
+    }
+
+    if (actionId === 'PEACEFUL_PASS' || actionId === 'BLUFF') {
+      await db.query("UPDATE ships SET hyperspace_immunity_until = NOW() + INTERVAL '5 seconds' WHERE account_id = $1", [
+        accountId,
+      ]);
+
+      return {
+        success: true,
+        actionTaken: actionId,
+        resolvedPeacefully: true,
+        message: 'Passage verified. Patrol vessel resumes patrol vector. 5-second warp immunity granted.',
+        immunityGrantedSeconds: 5,
+        remainingCredits: currentCredits,
+        remainingFuel: currentFuel,
+        combatDropRequired: false,
+      };
+    }
+
+    // Hostile Escalation (ATTACK / Defiance)
+    let enemySquadron: Array<{ type: string; hull: number; shield: number; weapons: string[] }> = [];
+
+    if (factionId === 'FACTION_VAELIC') {
+      enemySquadron = [
+        { type: 'Vaelic Interdictor Cruiser', hull: 120, shield: 80, weapons: ['HEAVY_PLASMA', 'DISRUPTOR'] },
+        { type: 'Vaelic Strike Gunship', hull: 75, shield: 45, weapons: ['PULSE_LASER'] },
+      ];
+    } else if (factionId === 'FACTION_KRYLL') {
+      enemySquadron = [
+        { type: 'Kryll Raider Skiff', hull: 70, shield: 40, weapons: ['PULSE_LASER', 'SWARM_MISSILE'] },
+        { type: 'Kryll Scrap Corsair', hull: 65, shield: 35, weapons: ['PULSE_LASER'] },
+        { type: 'Kryll Gunboat', hull: 80, shield: 40, weapons: ['HEAVY_CANNON'] },
+      ];
+    } else if (factionId === 'FACTION_PHORID') {
+      enemySquadron = [
+        { type: 'Phorid Spore Drone Alpha', hull: 50, shield: 20, weapons: ['BIO_SPORE'] },
+        { type: 'Phorid Spore Drone Beta', hull: 50, shield: 20, weapons: ['BIO_SPORE'] },
+        { type: 'Phorid Bio-Striker', hull: 70, shield: 30, weapons: ['CORROSIVE_SPIT'] },
+      ];
+    } else {
+      enemySquadron = [
+        { type: 'Mercenary Gunboat', hull: 80, shield: 50, weapons: ['PLASMA_CANNON'] },
+        { type: 'Rogue Interceptor', hull: 60, shield: 30, weapons: ['PULSE_LASER'] },
+      ];
+    }
+
+    return {
+      success: true,
+      actionTaken: 'ATTACK',
+      resolvedPeacefully: false,
+      message: 'Hostilities initiated! Dropping fleet out of Hyperspace into 20Hz tactical combat.',
+      immunityGrantedSeconds: 0,
+      combatDropRequired: true,
+      combatSetup: {
+        encounterId: `enc_${Date.now()}`,
+        factionId,
+        enemySquadron,
+      },
+    };
+  }
+
+  /**
+   * Resumes Hyperspace flight in-situ following combat victory or FTL escape.
+   */
+  public async resumeHyperspaceFlight(
+    accountId: string = 'acc_sol_captain',
+    combatOutcome: 'VICTORY' | 'FLED' = 'VICTORY'
+  ): Promise<{
+    success: boolean;
+    isInHyperspace: boolean;
+    coordinates: [number, number];
+    fuel: number;
+    immunityGrantedSeconds: number;
+    message: string;
+  }> {
+    await db.query(
+      `UPDATE ships 
+       SET is_in_hyperspace = TRUE, 
+           hyperspace_immunity_until = NOW() + INTERVAL '5 seconds',
+           updated_at = NOW() 
+       WHERE account_id = $1`,
+      [accountId]
+    );
+
+    const { rows } = await db.query<any>(
+      'SELECT fuel, hyperspace_x, hyperspace_y FROM ships WHERE account_id = $1',
+      [accountId]
+    );
+    const ship = rows[0] || { fuel: 100, hyperspace_x: 500, hyperspace_y: 500 };
+
+    return {
+      success: true,
+      isInHyperspace: true,
+      coordinates: [Number(ship.hyperspace_x ?? 500), Number(ship.hyperspace_y ?? 500)],
+      fuel: Number(ship.fuel ?? 100),
+      immunityGrantedSeconds: 5,
+      message:
+        combatOutcome === 'VICTORY'
+          ? 'Tactical combat resolved: VICTORY. Re-emerging in Hyperspace with 5s warp-flare immunity.'
+          : 'Emergency FTL escape successful. Re-emerging in Hyperspace with 5s warp-flare immunity.',
     };
   }
 }

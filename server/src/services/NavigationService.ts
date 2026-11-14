@@ -41,6 +41,8 @@ export interface PlayerShip {
   is_in_hyperspace?: boolean;
   hyperspace_x?: number;
   hyperspace_y?: number;
+  decoys_remaining?: number;
+  hyperspace_immunity_until?: string | Date | null;
 }
 
 export interface JumpResult {

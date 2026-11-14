@@ -46,6 +46,9 @@ export class CommsController {
   public currentAlienNpcId: string | null = null;
   public isConvoyComms: boolean = false;
   public currentConvoyId: string | null = null;
+  public isHyperspaceInterception: boolean = false;
+  public currentInterceptionHandshake: any = null;
+  public onHyperspaceInterceptionResolved?: (result: any) => void;
   public currentAlienSpecies: string = 'VAELIC';
   public currentAlienMood: string = 'AGGRESSIVE';
   public alienPortraitAnimId: number | null = null;
@@ -254,6 +257,38 @@ export class CommsController {
     }
   }
 
+  public openHyperspaceInterception(handshake: any, onResolved: (result: any) => void): void {
+    this.isConvoyComms = false;
+    this.isHyperspaceInterception = true;
+    this.currentInterceptionHandshake = handshake;
+    this.onHyperspaceInterceptionResolved = onResolved;
+
+    if (this.elAlienCommsModal) {
+      this.elAlienCommsModal.classList.remove('hidden');
+    }
+    this.audio.playCommsHailingChime();
+
+    let species = 'VAELIC';
+    if (handshake.factionId === 'FACTION_PHORID') species = 'PHORID';
+    else if (handshake.factionId === 'FACTION_KRYLL') species = 'KRYLL';
+    else if (handshake.factionId === 'FACTION_SOL') species = 'SOL';
+
+    const dialogNode = {
+      speakerName: handshake.alienCommander,
+      title: handshake.title,
+      species,
+      mood: handshake.hostility === 'HOSTILE' ? 'AGGRESSIVE' : handshake.hostility === 'EXTORTIONIST' ? 'SUSPICIOUS' : 'FRIENDLY',
+      dialogueText: handshake.dialogueText,
+      options: (handshake.options || []).map((opt: any) => ({
+        id: opt.id,
+        text: `${opt.label} — ${opt.description}`,
+        action: opt.action,
+      })),
+    };
+
+    this.renderAlienDialogNode(dialogNode);
+  }
+
   public async openAlienComms(npcId: string): Promise<void> {
     this.isConvoyComms = false;
     this.currentConvoyId = null;
@@ -390,10 +425,37 @@ export class CommsController {
   }
 
   public async selectAlienDialogOption(optionIndex: number): Promise<void> {
-    if (!this.currentAlienNpcId && !this.isConvoyComms) return;
+    if (!this.currentAlienNpcId && !this.isConvoyComms && !this.isHyperspaceInterception) return;
 
     this.audio.playUiBlip();
     try {
+      if (this.isHyperspaceInterception && this.currentInterceptionHandshake) {
+        const selectedOption = this.alienCurrentOptions[optionIndex];
+        const actionId = selectedOption?.action || selectedOption?.id || 'ATTACK';
+        try {
+          const res = await fetch('/api/starmap/hyperspace/comms-action', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              accountId: 'acc_sol_captain',
+              blipId: this.currentInterceptionHandshake.blipId,
+              actionId,
+            }),
+          });
+          const data = await res.json();
+          this.closeAlienComms();
+          if (this.onHyperspaceInterceptionResolved) {
+            this.onHyperspaceInterceptionResolved(data);
+          }
+        } catch (err: any) {
+          this.closeAlienComms();
+          if (this.onHyperspaceInterceptionResolved) {
+            this.onHyperspaceInterceptionResolved({ success: false, error: err.message, combatDropRequired: false });
+          }
+        }
+        return;
+      }
+
       if (this.isConvoyComms && this.currentConvoyId) {
         const sectorId = this.callbacks.getCurrentSectorId();
         const res = await fetch('/api/dialog/convoy/respond', {
@@ -596,6 +658,9 @@ export class CommsController {
   }
 
   public closeAlienComms(): void {
+    this.isHyperspaceInterception = false;
+    this.currentInterceptionHandshake = null;
+
     if (this.isConvoyComms) {
       const sectorId = this.callbacks.getCurrentSectorId();
       fetch('/api/dialog/convoy/stand-down', {

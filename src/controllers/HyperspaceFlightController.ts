@@ -8,6 +8,35 @@ export interface HyperspaceContext {
   playUiBlip?: () => void;
   audio: AudioEngine;
   onExitHyperspace: (newSectorId: number) => void;
+  onInterception?: (handshake: any) => void;
+  onCombatDrop?: (combatSetup: any) => void;
+}
+
+export interface HyperspaceRadarBlip {
+  id: string;
+  name: string;
+  factionId: string;
+  factionName: string;
+  factionColor: string;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  state: 'PATROL' | 'ALERT' | 'PURSUING' | 'DISTRACTED';
+  speed: number;
+  detectionRadius: number;
+  shipCount: number;
+  shipClass: string;
+  isHostile: boolean;
+  distanceLY?: number;
+}
+
+export interface ActiveDecoy {
+  id: string;
+  x: number;
+  y: number;
+  expiresAt: number;
+  durationSeconds: number;
 }
 
 export class HyperspaceFlightController {
@@ -30,6 +59,20 @@ export class HyperspaceFlightController {
   public baseBurnRate: number = 0.20; // Fuel per Light-Year
   private accumulatedFuelBurn: number = 0.0;
   private lastSyncTime: number = 0;
+
+  // Day 39: Radar Blips, Decoys & Tactical Interceptions
+  public radarBlips: HyperspaceRadarBlip[] = [];
+  public activeDecoys: ActiveDecoy[] = [];
+  public decoysRemaining: number = 3;
+  public immunityRemainingSeconds: number = 0.0;
+  public threatLevel: 'CLEAR' | 'ALERT' | 'PURSUIT' = 'CLEAR';
+  public territory: string = 'Deep Space';
+  public isInterceptionActive: boolean = false;
+  private lastRadarPollTime: number = 0;
+  private lastAlertSoundTime: number = 0;
+  private blipMeshes: Map<string, THREE.Group> = new Map();
+  private decoyMeshes: Map<string, THREE.Group> = new Map();
+  private stealthShieldMesh: THREE.Mesh | null = null;
 
   // Navigation & Autopilot
   public activeCourse: CoursePlotResult | null = null;
@@ -71,6 +114,12 @@ export class HyperspaceFlightController {
   private hudTargetText: HTMLElement | null = null;
   private hudAutopilotBadge: HTMLElement | null = null;
   private hudGravityWellAlert: HTMLElement | null = null;
+  private hudRadarBadge: HTMLElement | null = null;
+  private hudThreatBadge: HTMLElement | null = null;
+  private hudDecoyBtn: HTMLButtonElement | null = null;
+  private hudDecoyCount: HTMLElement | null = null;
+  private hudStealthPill: HTMLElement | null = null;
+  private hudStealthVal: HTMLElement | null = null;
 
   constructor(ctx: HyperspaceContext, scene: THREE.Scene, camera: THREE.PerspectiveCamera) {
     this.ctx = ctx;
@@ -96,6 +145,18 @@ export class HyperspaceFlightController {
     this.hudTargetText = document.getElementById('hyper-hud-target-text');
     this.hudAutopilotBadge = document.getElementById('hyper-hud-autopilot-badge');
     this.hudGravityWellAlert = document.getElementById('hyper-hud-gravity-alert');
+    this.hudRadarBadge = document.getElementById('hyper-hud-radar-badge');
+    this.hudThreatBadge = document.getElementById('hyper-hud-threat-badge');
+    this.hudDecoyBtn = document.getElementById('btn-hyper-decoy') as HTMLButtonElement | null;
+    this.hudDecoyCount = document.getElementById('hyper-hud-decoy-count');
+    this.hudStealthPill = document.getElementById('hyper-hud-stealth-pill');
+    this.hudStealthVal = document.getElementById('hyper-hud-stealth-val');
+
+    this.hudDecoyBtn?.addEventListener('click', () => {
+      if (this.isInHyperspace) {
+        this.deployDecoy();
+      }
+    });
   }
 
   private initInputListeners(): void {
@@ -113,6 +174,11 @@ export class HyperspaceFlightController {
         this.disengageAutopilot();
       }
       if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') this.keys.afterburner = true;
+
+      // Deploy Subspace Thermal Decoy (Hotkey: F)
+      if (e.code === 'KeyF') {
+        this.deployDecoy();
+      }
 
       // Toggle Autopilot Assist
       if (e.code === 'KeyX') {
@@ -469,6 +535,27 @@ export class HyperspaceFlightController {
       this.lastSyncTime = now;
     }
 
+    // Day 39: Update Warp Immunity Countdown
+    if (this.immunityRemainingSeconds > 0) {
+      this.immunityRemainingSeconds = Math.max(0, this.immunityRemainingSeconds - delta);
+    }
+
+    // Day 39: Periodic Subspace Radar Polling (every 1.2 seconds)
+    if (now - this.lastRadarPollTime > 1200) {
+      this.pollRadarBlips();
+      this.lastRadarPollTime = now;
+    }
+
+    // Day 39: Interception Collision Detection (R <= 1.8 LY)
+    if (this.immunityRemainingSeconds <= 0 && !this.isInterceptionActive) {
+      for (const blip of this.radarBlips) {
+        if (blip.distanceLY !== undefined && blip.distanceLY <= 1.8 && blip.isHostile) {
+          this.triggerInterception(blip.id);
+          break;
+        }
+      }
+    }
+
     // 5. Detect Nearest Star Gravity Well
     this.detectNearestStar();
 
@@ -586,6 +673,97 @@ export class HyperspaceFlightController {
       this.camera.position.set(cx, 16, cz);
       this.camera.lookAt(Math.cos(this.heading) * 50, 0, Math.sin(this.heading) * 50);
     }
+
+    // Day 39: Render Subspace Radar Blips
+    const currentBlipIds = new Set(this.radarBlips.map((b) => b.id));
+    for (const [id, grp] of this.blipMeshes.entries()) {
+      if (!currentBlipIds.has(id)) {
+        this.hyperspaceGroup.remove(grp);
+        this.blipMeshes.delete(id);
+      }
+    }
+
+    for (const blip of this.radarBlips) {
+      let grp = this.blipMeshes.get(blip.id);
+      if (!grp) {
+        grp = new THREE.Group();
+        const coreGeo = new THREE.SphereGeometry(3.0, 10, 10);
+        const coreMat = new THREE.MeshBasicMaterial({
+          color: new THREE.Color(blip.factionColor),
+          transparent: true,
+          opacity: 0.9,
+        });
+        const core = new THREE.Mesh(coreGeo, coreMat);
+        grp.add(core);
+
+        const ringGeo = new THREE.RingGeometry(4.5, 6.0, 16);
+        const ringMat = new THREE.MeshBasicMaterial({
+          color: new THREE.Color(blip.factionColor),
+          side: THREE.DoubleSide,
+          transparent: true,
+          opacity: 0.6,
+        });
+        const ring = new THREE.Mesh(ringGeo, ringMat);
+        ring.rotation.x = Math.PI / 2;
+        grp.add(ring);
+
+        this.hyperspaceGroup.add(grp);
+        this.blipMeshes.set(blip.id, grp);
+      }
+
+      const relX = (blip.x - this.coordinates[0]) * 4.0;
+      const relZ = (blip.y - this.coordinates[1]) * 4.0;
+      grp.position.set(relX, 0, relZ);
+
+      const scale = 1.0 + Math.sin(performance.now() * 0.006) * 0.2;
+      grp.scale.set(scale, scale, scale);
+    }
+
+    // Day 39: Render Active Decoys
+    const currentDecoyIds = new Set(this.activeDecoys.map((d) => d.id));
+    for (const [id, grp] of this.decoyMeshes.entries()) {
+      if (!currentDecoyIds.has(id)) {
+        this.hyperspaceGroup.remove(grp);
+        this.decoyMeshes.delete(id);
+      }
+    }
+
+    for (const decoy of this.activeDecoys) {
+      let grp = this.decoyMeshes.get(decoy.id);
+      if (!grp) {
+        grp = new THREE.Group();
+        const geo = new THREE.SphereGeometry(4.0, 8, 8);
+        const mat = new THREE.MeshBasicMaterial({
+          color: 0xf59e0b,
+          wireframe: true,
+        });
+        grp.add(new THREE.Mesh(geo, mat));
+        this.hyperspaceGroup.add(grp);
+        this.decoyMeshes.set(decoy.id, grp);
+      }
+      const relX = (decoy.x - this.coordinates[0]) * 4.0;
+      const relZ = (decoy.y - this.coordinates[1]) * 4.0;
+      grp.position.set(relX, 0, relZ);
+    }
+
+    // Day 39: Render Warp Stealth Shield
+    if (this.immunityRemainingSeconds > 0) {
+      if (!this.stealthShieldMesh) {
+        const shieldGeo = new THREE.SphereGeometry(14, 16, 16);
+        const shieldMat = new THREE.MeshBasicMaterial({
+          color: 0x38bdf8,
+          wireframe: true,
+          transparent: true,
+          opacity: 0.5,
+        });
+        this.stealthShieldMesh = new THREE.Mesh(shieldGeo, shieldMat);
+        this.hyperspaceGroup.add(this.stealthShieldMesh);
+      }
+      this.stealthShieldMesh.visible = true;
+      this.stealthShieldMesh.rotation.y += delta * 1.5;
+    } else if (this.stealthShieldMesh) {
+      this.stealthShieldMesh.visible = false;
+    }
   }
 
   private updateHUD(currentBurnRate: number): void {
@@ -604,6 +782,29 @@ export class HyperspaceFlightController {
     }
     if (this.hudSpeed) {
       this.hudSpeed.textContent = `${this.speed.toFixed(1)} LY/s`;
+    }
+
+    // Day 39: Update Radar, Threat & Decoy Badges
+    if (this.hudRadarBadge) {
+      this.hudRadarBadge.textContent = `RADAR: ${this.radarBlips.length} CONTACTS`;
+    }
+    if (this.hudThreatBadge) {
+      this.hudThreatBadge.textContent = `THREAT: ${this.threatLevel}`;
+      this.hudThreatBadge.className = `hyper-threat-badge ${this.threatLevel.toLowerCase()}`;
+    }
+    if (this.hudDecoyCount) {
+      this.hudDecoyCount.textContent = `${this.decoysRemaining}`;
+    }
+    if (this.hudDecoyBtn) {
+      this.hudDecoyBtn.disabled = this.decoysRemaining <= 0;
+    }
+    if (this.hudStealthPill && this.hudStealthVal) {
+      if (this.immunityRemainingSeconds > 0) {
+        this.hudStealthPill.classList.remove('hidden');
+        this.hudStealthVal.textContent = `${this.immunityRemainingSeconds.toFixed(1)}s`;
+      } else {
+        this.hudStealthPill.classList.add('hidden');
+      }
     }
 
     // Compass needle rotation towards active waypoint
@@ -640,6 +841,184 @@ export class HyperspaceFlightController {
       } else {
         this.hudGravityWellAlert.classList.add('hidden');
       }
+    }
+  }
+
+  // =========================================================================
+  // Day 39: Radar Blips, Decoys & Tactical Interceptions Handlers
+  // =========================================================================
+
+  /**
+   * Polls authoritative radar blips from the backend Starmap service.
+   */
+  public async pollRadarBlips(): Promise<void> {
+    try {
+      const accountId = this.ctx.getAccountId();
+      const res = await fetch('/api/starmap/hyperspace/blips', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accountId,
+          currentCoords: this.coordinates,
+          isBoosting: this.keys.afterburner,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const prevCount = this.radarBlips.length;
+        this.radarBlips = data.blips || [];
+        this.activeDecoys = data.activeDecoys || [];
+        this.immunityRemainingSeconds = Number(data.immunityRemainingSeconds || 0);
+        this.decoysRemaining = Number(data.decoysRemaining ?? this.decoysRemaining);
+        this.threatLevel = data.threatLevel || 'CLEAR';
+        this.territory = data.territory || 'Deep Space';
+
+        // Sound cues
+        const now = performance.now();
+        if (this.threatLevel === 'PURSUIT' && now - this.lastAlertSoundTime > 2500) {
+          this.ctx.audio.playProximityAlert();
+          this.lastAlertSoundTime = now;
+        } else if (this.radarBlips.length > prevCount) {
+          const hasHostile = this.radarBlips.some((b) => b.isHostile);
+          this.ctx.audio.playRadarPing(hasHostile);
+        }
+      }
+    } catch {}
+  }
+
+  /**
+   * Deploys a thermal subspace decoy to draw pursuing hostiles away.
+   */
+  public async deployDecoy(): Promise<void> {
+    if (this.decoysRemaining <= 0) {
+      this.ctx.showNotification?.('Decoy Countermeasure Failed: No decoys remaining in cargo hold.', true);
+      return;
+    }
+
+    try {
+      const accountId = this.ctx.getAccountId();
+      const res = await fetch('/api/starmap/hyperspace/decoy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accountId,
+          currentCoords: this.coordinates,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        this.ctx.showNotification?.(data.error || 'Failed to deploy decoy.', true);
+        return;
+      }
+
+      this.decoysRemaining = data.decoysRemaining;
+      this.ctx.audio.playDecoyLaunch();
+      this.ctx.showNotification?.('🎯 Thermal Decoy deployed! Hostiles distracted for 6.0 seconds.');
+      this.pollRadarBlips();
+    } catch (err: any) {
+      this.ctx.showNotification?.(`Decoy deployment error: ${err.message}`, true);
+    }
+  }
+
+  /**
+   * Triggers an alien interception collision event and launches Tier 1 Comms.
+   */
+  public async triggerInterception(blipId: string): Promise<void> {
+    if (this.isInterceptionActive || this.immunityRemainingSeconds > 0) return;
+
+    this.isInterceptionActive = true;
+    this.speed = 0;
+    this.velocity = [0, 0];
+    this.keys.forward = false;
+
+    this.ctx.audio.playWarpInterdiction();
+
+    try {
+      const accountId = this.ctx.getAccountId();
+      const res = await fetch('/api/starmap/hyperspace/intercept', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accountId,
+          blipId,
+          currentCoords: this.coordinates,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        this.isInterceptionActive = false;
+        return;
+      }
+
+      if (this.ctx.onInterception && data.interception) {
+        this.ctx.onInterception(data.interception);
+      }
+    } catch (err) {
+      this.isInterceptionActive = false;
+    }
+  }
+
+  /**
+   * Resumes Hyperspace flight after peaceful Comms resolution (bribe, bluff, safe pass).
+   */
+  public resumeFlightAfterComms(result: any): void {
+    this.isInterceptionActive = false;
+    this.immunityRemainingSeconds = Number(result.immunityGrantedSeconds || 5.0);
+    this.ctx.showNotification?.(result.message || 'Resuming continuous Hyperspace flight.');
+    this.pollRadarBlips();
+  }
+
+  /**
+   * Drops out of Hyperspace to engage in Tier 2 20Hz tactical combat.
+   */
+  public dropOutOfHyperspaceToCombat(combatSetup?: any): void {
+    this.isInterceptionActive = false;
+    this.isInHyperspace = false;
+    this.hyperspaceGroup.visible = false;
+    if (this.hudElement) {
+      this.hudElement.classList.add('hidden');
+      this.hudElement.style.display = 'none';
+    }
+
+    this.ctx.audio.stopHyperspaceDrone();
+    this.ctx.audio.playWarpCollapse();
+
+    if (this.ctx.onCombatDrop) {
+      this.ctx.onCombatDrop(combatSetup);
+    }
+  }
+
+  /**
+   * Resumes Hyperspace in-situ following combat victory or FTL escape.
+   */
+  public async resumeHyperspaceAfterCombat(combatOutcome: 'VICTORY' | 'FLED' = 'VICTORY'): Promise<void> {
+    try {
+      const accountId = this.ctx.getAccountId();
+      const res = await fetch('/api/starmap/hyperspace/resume', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId, combatOutcome }),
+      });
+
+      const data = await res.json();
+      this.isInHyperspace = true;
+      this.isInterceptionActive = false;
+      this.immunityRemainingSeconds = 5.0;
+      this.hyperspaceGroup.visible = true;
+
+      if (this.hudElement) {
+        this.hudElement.classList.remove('hidden');
+        this.hudElement.style.display = 'flex';
+      }
+
+      this.ctx.audio.startHyperspaceDrone();
+      this.ctx.showNotification?.(data.message || 'Hyperspace flight resumed with 5s warp-flare immunity.');
+      this.pollRadarBlips();
+    } catch (err: any) {
+      this.ctx.showNotification?.(`Hyperspace resumption error: ${err.message}`, true);
     }
   }
 

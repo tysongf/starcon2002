@@ -164,7 +164,7 @@ export const playerRoutes: FastifyPluginAsync = async (server) => {
     try {
       await db.query('UPDATE accounts SET credits = 2500 WHERE id = $1', [accountId]);
       await db.query(
-        'UPDATE ships SET current_sector_id = 1, fuel = 100, cargo_capacity = 40, armor = 100, max_armor = 100, shield = 100, max_shield = 100, nav_target_sector_id = NULL, is_in_hyperspace = FALSE, hyperspace_x = 500.0, hyperspace_y = 500.0, updated_at = NOW() WHERE account_id = $1',
+        'UPDATE ships SET current_sector_id = 1, fuel = 100, cargo_capacity = 40, armor = 100, max_armor = 100, shield = 100, max_shield = 100, nav_target_sector_id = NULL, is_in_hyperspace = FALSE, hyperspace_x = 500.0, hyperspace_y = 500.0, decoys_remaining = 3, hyperspace_immunity_until = NULL, updated_at = NOW() WHERE account_id = $1',
         [accountId]
       );
       await db.query('DELETE FROM ship_cargo WHERE ship_id IN (SELECT id FROM ships WHERE account_id = $1)', [accountId]);

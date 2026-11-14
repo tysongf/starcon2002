@@ -2097,6 +2097,145 @@ export class AudioEngine {
       osc.stop(now + idx * 0.06 + 0.2);
     });
   }
+
+  // =========================================================================
+  // Day 39: Hyperspace Radar, Hunter AI & Tactical Interceptions Audio
+  // =========================================================================
+
+  /**
+   * Day 39: Subspace Radar Contact Sweep Ping
+   */
+  public playRadarPing(isHostile: boolean = false): void {
+    this.initContext();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    if (isHostile) {
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(440, now);
+      osc.frequency.exponentialRampToValueAtTime(330, now + 0.12);
+      gain.gain.setValueAtTime(0.01, now);
+      gain.gain.linearRampToValueAtTime(0.15, now + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+    } else {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, now);
+      osc.frequency.exponentialRampToValueAtTime(1046.5, now + 0.09);
+      gain.gain.setValueAtTime(0.01, now);
+      gain.gain.linearRampToValueAtTime(0.12, now + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+    }
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.16);
+  }
+
+  /**
+   * Day 39: Urgent Hunter Proximity Klaxon Siren (Two-Tone Square Alert)
+   */
+  public playProximityAlert(): void {
+    this.initContext();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+
+    const tones = [587.33, 440];
+    tones.forEach((freq, idx) => {
+      if (!this.ctx) return;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, now + idx * 0.11);
+
+      gain.gain.setValueAtTime(0.01, now + idx * 0.11);
+      gain.gain.linearRampToValueAtTime(0.2, now + idx * 0.11 + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.11 + 0.1);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      osc.start(now + idx * 0.11);
+      osc.stop(now + idx * 0.11 + 0.12);
+    });
+  }
+
+  /**
+   * Day 39: Thermal Subspace Decoy Deployment Hiss and Flare
+   */
+  public playDecoyLaunch(): void {
+    this.initContext();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+
+    // Pneumatic ejection pop
+    const osc = this.ctx.createOscillator();
+    const oscGain = this.ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(600, now);
+    osc.frequency.exponentialRampToValueAtTime(90, now + 0.18);
+
+    oscGain.gain.setValueAtTime(0.01, now);
+    oscGain.gain.linearRampToValueAtTime(0.25, now + 0.02);
+    oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+
+    osc.connect(oscGain);
+    oscGain.connect(this.ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.24);
+
+    // High shimmer flare
+    const shimmer = this.ctx.createOscillator();
+    const shimmerGain = this.ctx.createGain();
+    shimmer.type = 'sine';
+    shimmer.frequency.setValueAtTime(1400, now + 0.05);
+    shimmer.frequency.linearRampToValueAtTime(2200, now + 0.35);
+
+    shimmerGain.gain.setValueAtTime(0.01, now + 0.05);
+    shimmerGain.gain.linearRampToValueAtTime(0.1, now + 0.1);
+    shimmerGain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+
+    shimmer.connect(shimmerGain);
+    shimmerGain.connect(this.ctx.destination);
+    shimmer.start(now + 0.05);
+    shimmer.stop(now + 0.42);
+  }
+
+  /**
+   * Day 39: Warp Interdiction Resonance Collision / Heavy Drop
+   */
+  public playWarpInterdiction(): void {
+    this.initContext();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+
+    const osc = this.ctx.createOscillator();
+    const filter = this.ctx.createBiquadFilter();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(160, now);
+    osc.frequency.exponentialRampToValueAtTime(35, now + 0.85);
+
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(600, now);
+    filter.frequency.exponentialRampToValueAtTime(80, now + 0.85);
+
+    gain.gain.setValueAtTime(0.01, now);
+    gain.gain.linearRampToValueAtTime(0.4, now + 0.08);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.95);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 1.0);
+  }
 }
 
 
