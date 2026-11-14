@@ -18,6 +18,7 @@ import { SurveyController } from './controllers/SurveyController';
 import { CombatClient } from './controllers/CombatClient';
 import { XenobiologyController } from './controllers/XenobiologyController';
 import { FleetController } from './controllers/FleetController';
+import { TacticalCommandWheel } from './controllers/TacticalCommandWheel';
 
 class GameEngine {
   private canvas: HTMLCanvasElement;
@@ -44,6 +45,7 @@ class GameEngine {
   public combatClient!: CombatClient;
   public xenobiologyController!: XenobiologyController;
   public fleetController!: FleetController;
+  public tacticalCommandWheel!: TacticalCommandWheel;
 
   // Navigation & Sector Jump System (Day 8)
   private currentSectorId: number = 1;
@@ -1793,6 +1795,9 @@ class GameEngine {
       },
       closeComms: () => this.commsController.closeAlienComms(),
       loadSectorScene: (id, seed) => this.loadSectorScene(id, seed ?? 99201),
+      onCombatSnapshot: (snapshot) => {
+        this.tacticalCommandWheel?.updateSquadronTelemetry(snapshot.entities);
+      },
     });
 
     this.xenobiologyController = new XenobiologyController({
@@ -1806,6 +1811,8 @@ class GameEngine {
       playUiBlip: () => this.audio.playUiBlip(),
       onFleetUpdated: () => this.refreshPlayerHold(),
     });
+
+    this.tacticalCommandWheel = new TacticalCommandWheel(this.combatClient, this.audio);
   }
 
   private setupEventListeners(): void {
@@ -2087,6 +2094,10 @@ class GameEngine {
       }
 
       if (e.code === 'Escape') {
+        if (this.tacticalCommandWheel?.isOpen) {
+          this.tacticalCommandWheel.close();
+          return;
+        }
         if (this.surveyController.modalPlanetarySurvey && !this.surveyController.modalPlanetarySurvey.classList.contains('hidden')) {
           this.exitOrbit();
           return;
@@ -2175,7 +2186,27 @@ class GameEngine {
           toggleDampeners();
           break;
         case 'KeyC':
-          toggleCameraMode();
+          if (e.altKey || e.ctrlKey) {
+            toggleCameraMode();
+          } else if (!this.tacticalCommandWheel.isOpen) {
+            this.tacticalCommandWheel.open();
+          }
+          break;
+        case 'F1':
+          e.preventDefault();
+          this.tacticalCommandWheel.executeOrder('FOCUS_TARGET');
+          break;
+        case 'F2':
+          e.preventDefault();
+          this.tacticalCommandWheel.executeOrder('ESCORT_FLAGSHIP');
+          break;
+        case 'F3':
+          e.preventDefault();
+          this.tacticalCommandWheel.executeOrder('FLANK_HARASS');
+          break;
+        case 'F4':
+          e.preventDefault();
+          this.tacticalCommandWheel.executeOrder('REGROUP_HOLD');
           break;
         case 'KeyG':
           this.sectorGrid.visible = !this.sectorGrid.visible;
@@ -2210,24 +2241,46 @@ class GameEngine {
           break;
         }
         case 'Digit1':
-          this.selectWeaponPreset(0);
-          this.fireWeaponDirectly('PULSE');
+          if (this.tacticalCommandWheel.isOpen) {
+            this.tacticalCommandWheel.executeOrder('FOCUS_TARGET');
+            this.tacticalCommandWheel.close();
+          } else {
+            this.selectWeaponPreset(0);
+            this.fireWeaponDirectly('PULSE');
+          }
           break;
         case 'Digit2':
-          this.selectWeaponPreset(1);
-          this.fireWeaponDirectly('PLASMA');
+          if (this.tacticalCommandWheel.isOpen) {
+            this.tacticalCommandWheel.executeOrder('ESCORT_FLAGSHIP');
+            this.tacticalCommandWheel.close();
+          } else {
+            this.selectWeaponPreset(1);
+            this.fireWeaponDirectly('PLASMA');
+          }
           break;
         case 'Digit3':
-          this.combatInputs.fireTactical = true;
-          this.sendCombatInputs();
+          if (this.tacticalCommandWheel.isOpen) {
+            this.tacticalCommandWheel.executeOrder('FLANK_HARASS');
+            this.tacticalCommandWheel.close();
+          } else {
+            this.combatInputs.fireTactical = true;
+            this.sendCombatInputs();
+          }
           break;
         case 'Digit4':
-          this.selectWeaponPreset(2);
-          this.fireWeaponDirectly('FLAK');
+          if (this.tacticalCommandWheel.isOpen) {
+            this.tacticalCommandWheel.executeOrder('REGROUP_HOLD');
+            this.tacticalCommandWheel.close();
+          } else {
+            this.selectWeaponPreset(2);
+            this.fireWeaponDirectly('FLAK');
+          }
           break;
         case 'Tab':
           e.preventDefault();
-          this.cycleTargetLock();
+          if (!this.tacticalCommandWheel.isOpen) {
+            this.tacticalCommandWheel.open();
+          }
           break;
       }
     });
@@ -2293,6 +2346,19 @@ class GameEngine {
         case 'Digit3':
           this.combatInputs.fireTactical = false;
           this.sendCombatInputs();
+          break;
+        case 'Tab':
+          if (this.tacticalCommandWheel?.isOpen) {
+            if (!this.tacticalCommandWheel.selectedOrder) {
+              this.cycleTargetLock();
+            }
+            this.tacticalCommandWheel.close();
+          }
+          break;
+        case 'KeyC':
+          if (this.tacticalCommandWheel?.isOpen) {
+            this.tacticalCommandWheel.close();
+          }
           break;
       }
     });

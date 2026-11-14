@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { fleetService } from '../services/FleetService';
+import { combatManager } from '../services/SectorCombatManager';
 
 export const fleetRoutes: FastifyPluginAsync = async (server) => {
   // 1. Get Fleet Roster & Command Bridge Status
@@ -80,6 +81,38 @@ export const fleetRoutes: FastifyPluginAsync = async (server) => {
     const accountId = body.accountId || 'acc_sol_captain';
     await fleetService.debugReset(accountId);
     reply.send({ success: true, message: 'Fleet reset to baseline starter escorts.' });
+  });
+
+  // 7. Day 34: Tactical Order Directives (REST Mirror & Headless Directives)
+  server.post('/tactical-order', async (req, reply) => {
+    const body = (req.body || {}) as {
+      accountId?: string;
+      sectorId?: number;
+      order: 'FORMATION_FOLLOW' | 'FOCUS_TARGET' | 'ESCORT_FLAGSHIP' | 'FLANK_HARASS' | 'REGROUP_HOLD';
+      targetEntityId?: string;
+    };
+    const accountId = body.accountId || 'acc_sol_captain';
+    const sectorId = body.sectorId || 1;
+    const result = combatManager.setTacticalOrder(sectorId, accountId, body.order, body.targetEntityId);
+    reply.send(result);
+  });
+
+  // 8. Day 34: Tactical State Query
+  server.get('/tactical-state', async (req, reply) => {
+    const query = (req.query || {}) as { accountId?: string; sectorId?: string };
+    const accountId = query.accountId || 'acc_sol_captain';
+    const sectorId = parseInt(query.sectorId || '1', 10);
+    const result = combatManager.getTacticalState(sectorId, accountId);
+    reply.send(result);
+  });
+
+  // 9. Day 34: Headless Spawn Combat Wingmen (Debug)
+  server.post('/debug-spawn-combat-wing', async (req, reply) => {
+    const body = (req.body || {}) as { accountId?: string; sectorId?: number; overrideWingmen?: any[] };
+    const accountId = body.accountId || 'acc_sol_captain';
+    const sectorId = body.sectorId || 1;
+    const wingmen = await combatManager.spawnWingmenForPlayer(sectorId, accountId, body.overrideWingmen);
+    reply.send({ success: true, count: wingmen.length, wingmen });
   });
 };
 

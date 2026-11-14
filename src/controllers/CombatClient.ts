@@ -35,6 +35,7 @@ export interface CombatClientCallbacks {
   setPlayerCredits?: (cr: number) => void;
   closeComms?: () => void;
   loadSectorScene?: (sectorId: number, seed?: number) => void;
+  onCombatSnapshot?: (snapshot: any) => void;
 }
 
 export class CombatClient {
@@ -87,6 +88,12 @@ export class CombatClient {
   public droneShieldBubbles: Map<string, ShieldBubble> = new Map();
   public haulerMeshes: Map<string, THREE.Group> = new Map();
   public haulerShieldBubbles: Map<string, ShieldBubble> = new Map();
+  // Day 34: Wingman Squadron Meshes & Shield Bubbles
+  public wingmanMeshes: Map<string, THREE.Group | THREE.Mesh> = new Map();
+  public wingmanShieldBubbles: Map<string, ShieldBubble> = new Map();
+  public targetedEntityId: string | null = null;
+  public activeSquadronOrder: string = 'FORMATION_FOLLOW';
+
   public projectileMeshes: Map<string, THREE.Mesh> = new Map();
   public containerMeshes: Map<string, THREE.Group> = new Map();
   public activeLootContainers: Map<string, any> = new Map();
@@ -443,6 +450,20 @@ export class CombatClient {
     }
     this.haulerShieldBubbles.clear();
 
+    // Day 34: Clean up wingman meshes & shield bubbles
+    for (const wMesh of this.wingmanMeshes.values()) {
+      scene.remove(wMesh);
+      wMesh.traverse((child) => {
+        if ((child as THREE.Mesh).geometry) (child as THREE.Mesh).geometry.dispose();
+      });
+    }
+    this.wingmanMeshes.clear();
+    for (const sb of this.wingmanShieldBubbles.values()) {
+      scene.remove(sb.mesh);
+      sb.dispose();
+    }
+    this.wingmanShieldBubbles.clear();
+
     for (const pMesh of this.projectileMeshes.values()) {
       scene.remove(pMesh);
     }
@@ -476,6 +497,8 @@ export class CombatClient {
           } else if (msg.type === 'KILLMAIL_NOTIFICATION') {
             this.audio.playShipExplosionSound();
             this.openKillmailModal(msg.killmail);
+          } else if (msg.type === 'S_TACTICAL_ORDER_ACK') {
+            this.activeSquadronOrder = msg.order;
           }
         } catch (err) {
           console.error('[CombatClient] Parse error:', err);
@@ -510,7 +533,22 @@ export class CombatClient {
     }
   }
 
+  // Day 34: Tactical Order WebSocket Dispatch
+  public sendTacticalOrder(order: string, targetEntityId?: string): void {
+    if (this.combatSocket && this.combatSocket.readyState === WebSocket.OPEN) {
+      this.activeSquadronOrder = order;
+      this.combatSocket.send(
+        JSON.stringify({
+          type: 'C_TACTICAL_ORDER',
+          order,
+          targetEntityId: targetEntityId || this.targetedEntityId || undefined,
+        })
+      );
+    }
+  }
+
   public handleCombatSnapshot(snapshot: any): void {
+    this.callbacks.onCombatSnapshot?.(snapshot);
     const scene = this.callbacks.getScene();
     const flightController = this.callbacks.getFlightController();
     const shipMesh = this.callbacks.getShipMesh();
@@ -755,8 +793,76 @@ export class CombatClient {
     if (combatTargets.length > 0) {
       if (this.targetLockIndex >= combatTargets.length) this.targetLockIndex = 0;
       this.primaryDroneTarget = combatTargets[this.targetLockIndex] || (minHaulerDist < minDroneDist ? nearestHauler : nearestDrone);
+      this.targetedEntityId = this.primaryDroneTarget?.id || null;
     } else {
       this.primaryDroneTarget = null;
+      this.targetedEntityId = null;
+    }
+
+    // Day 34: Wingman Squadron Vessel Synchronization
+    const wingmen = snapshot.entities.filter((e: any) => e.type === 'WINGMAN' && e.state !== 'DESTROYED');
+    const wingmanIds = new Set(wingmen.map((w: any) => w.id));
+
+    for (const [id, wMesh] of this.wingmanMeshes.entries()) {
+      if (!wingmanIds.has(id)) {
+        scene.remove(wMesh);
+        wMesh.traverse((child) => {
+          if ((child as THREE.Mesh).geometry) (child as THREE.Mesh).geometry.dispose();
+        });
+        this.wingmanMeshes.delete(id);
+      }
+    }
+    for (const [id, sb] of this.wingmanShieldBubbles.entries()) {
+      if (!wingmanIds.has(id)) {
+        scene.remove(sb.mesh);
+        sb.dispose();
+        this.wingmanShieldBubbles.delete(id);
+      }
+    }
+
+    for (const wm of wingmen) {
+      let mesh = this.wingmanMeshes.get(wm.id);
+      if (!mesh) {
+        let factionStyle = FACTION_STYLES.FACTION_SOL;
+        if (wm.factionId === 'FACTION_VAELIC') factionStyle = FACTION_STYLES.FACTION_VAELIC;
+        else if (wm.factionId === 'FACTION_KRYLL') factionStyle = FACTION_STYLES.FACTION_KRYLL;
+
+        const res = ProceduralHullGenerator.generate({
+          seed: wm.hullSeed || 1000 + (wm.wingmanSlot || 1),
+          faction: factionStyle,
+        });
+
+        const mat = new THREE.MeshStandardMaterial({
+          color: factionStyle.palette.primary,
+          roughness: 0.35,
+          metalness: 0.85,
+          flatShading: true,
+          emissive: '#0284c7',
+          emissiveIntensity: 0.4,
+        });
+
+        const m = new THREE.Mesh(res.geometry, mat);
+        m.scale.set(0.9, 0.9, 0.9);
+        scene.add(m);
+        this.wingmanMeshes.set(wm.id, m);
+        mesh = m;
+      }
+
+      mesh.position.x += (wm.x - mesh.position.x) * 0.45;
+      mesh.position.z += (wm.z - mesh.position.z) * 0.45;
+      mesh.rotation.y = wm.yaw;
+
+      let sb = this.wingmanShieldBubbles.get(wm.id);
+      if (!sb) {
+        sb = new ShieldBubble(4.2, true);
+        scene.add(sb.mesh);
+        this.wingmanShieldBubbles.set(wm.id, sb);
+      }
+      sb.update(0.05, mesh.position, wm.shields, wm.maxShields);
+
+      if (wm.tacticalOrder) {
+        this.activeSquadronOrder = wm.tacticalOrder;
+      }
     }
 
     // 2c. Scavenger Vessel Synchronization

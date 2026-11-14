@@ -493,6 +493,78 @@
       </div>
     </div>
 
+    <!-- Day 34: 360-Degree Radial Tactical Command Wheel -->
+    <div id="tactical-command-wheel" class="tactical-wheel-overlay hidden">
+      <div class="tactical-wheel-backdrop"></div>
+      <div class="tactical-wheel-container">
+        <!-- Radial Quadrants -->
+        <div class="wheel-wedge wedge-north" data-order="FOCUS_TARGET">
+          <div class="wedge-content">
+            <div class="wedge-key">[1]</div>
+            <div class="wedge-icon">🎯</div>
+            <div class="wedge-label">FOCUS TARGET</div>
+            <div class="wedge-desc">Converge fire on lock</div>
+          </div>
+        </div>
+
+        <div class="wheel-wedge wedge-east" data-order="ESCORT_FLAGSHIP">
+          <div class="wedge-content">
+            <div class="wedge-key">[2]</div>
+            <div class="wedge-icon">🛡️</div>
+            <div class="wedge-label">ESCORT FLAGSHIP</div>
+            <div class="wedge-desc">Screen & defend 40m</div>
+          </div>
+        </div>
+
+        <div class="wheel-wedge wedge-south" data-order="FLANK_HARASS">
+          <div class="wedge-content">
+            <div class="wedge-key">[3]</div>
+            <div class="wedge-icon">⚡</div>
+            <div class="wedge-label">FLANK & HARASS</div>
+            <div class="wedge-desc">Speed orbit 120m</div>
+          </div>
+        </div>
+
+        <div class="wheel-wedge wedge-west" data-order="REGROUP_HOLD">
+          <div class="wedge-content">
+            <div class="wedge-key">[4]</div>
+            <div class="wedge-icon">⚓</div>
+            <div class="wedge-label">REGROUP & HOLD</div>
+            <div class="wedge-desc">Ceasefire & recall</div>
+          </div>
+        </div>
+
+        <!-- Center Hub -->
+        <div class="wheel-center-hub">
+          <div class="hub-reticle"></div>
+          <div class="hub-title">SQUADRON COMMAND</div>
+          <div class="hub-active-directive" id="wheel-active-directive">FORMATION FOLLOW</div>
+          <div class="hub-hint">HOLD [TAB] / [C] • SELECT OR TAP 1-4</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Day 34: Tactical Order HUD Notification Banner -->
+    <div id="tactical-order-banner" class="tactical-order-banner hidden">
+      <span class="banner-icon">📡</span>
+      <div class="banner-text">
+        <span class="banner-title" id="tactical-banner-title">SQUADRON DIRECTIVE ISSUED</span>
+        <span class="banner-order" id="tactical-banner-order">FOCUS TARGET</span>
+      </div>
+    </div>
+
+    <!-- Day 34: Persistent Squadron HUD Widget -->
+    <div id="squadron-hud-widget" class="squadron-hud-widget">
+      <div class="squadron-widget-header">
+        <span class="widget-icon">🚀</span>
+        <span class="widget-title">SQUADRON</span>
+        <span class="widget-order-badge badge-formation-follow" id="squadron-order-badge">FOLLOW</span>
+      </div>
+      <div class="squadron-wingmen-list" id="squadron-wingmen-list">
+        <!-- Rendered dynamically -->
+      </div>
+    </div>
+
     <!-- Station Dock Modal (Milestone 0.1) -->
     <div id="station-dock-modal" class="dock-modal-overlay hidden">
       <div class="dock-modal-card">

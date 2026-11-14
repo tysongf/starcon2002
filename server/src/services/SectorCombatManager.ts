@@ -52,7 +52,7 @@ export interface SectorLootContainer {
 
 export interface SectorEntity {
   id: string;
-  type: 'PLAYER' | 'DRONE' | 'WRECK' | 'CARGO_CRATE' | 'SCAVENGER' | 'HAULER';
+  type: 'PLAYER' | 'DRONE' | 'WRECK' | 'CARGO_CRATE' | 'SCAVENGER' | 'HAULER' | 'WINGMAN';
   factionId: string;
   name: string;
   hullClass: string;
@@ -111,7 +111,19 @@ export interface SectorEntity {
   isSkirmishVessel?: boolean;
   allegiance?: string;
   targetEntityId?: string | null;
+  // Day 34 Player Wingman Formation Flight & Tactical Directives
+  ownerPlayerId?: string;
+  wingmanSlot?: number;
+  tacticalOrder?: 'FORMATION_FOLLOW' | 'FOCUS_TARGET' | 'ESCORT_FLAGSHIP' | 'FLANK_HARASS' | 'REGROUP_HOLD';
+  shipId?: string;
 }
+
+export const WINGMAN_FORMATION_OFFSETS: Record<number, { x: number; z: number }> = {
+  1: { x: -35.0, z: -25.0 }, // Port Wingman (left shoulder)
+  2: { x: 35.0, z: -25.0 },  // Starboard Wingman (right shoulder)
+  3: { x: 0.0, z: -55.0 },   // Tail Guard (high rear astern)
+  4: { x: 50.0, z: 15.0 },   // Forward Screen (vanguard screen)
+};
 
 export interface Projectile {
   id: string;
@@ -127,7 +139,7 @@ export interface Projectile {
 }
 
 export interface CombatEvent {
-  type: 'HIT' | 'SHIELD_BREAK' | 'DESTROYED' | 'LOOT_SPAWNED' | 'LOOT_COLLECTED' | 'POD_EJECTED' | 'CONTAINER_SCOOPED' | 'WRECK_SPAWNED' | 'TOW_ATTACHED' | 'TOW_RELEASED' | 'SALVAGE_BEAM_TICK' | 'WRECK_DISINTEGRATED' | 'TRUCE_DECLARED' | 'TRUCE_BROKEN' | 'LIFE_SUPPORT_EXHAUSTED' | 'WARP_SPOOL_STARTED' | 'WARP_SPOOL_INTERRUPTED' | 'WARP_JUMP_SUCCESS' | 'CONVOY_SURRENDERED' | 'COMMS_ABORTED' | 'AMBUSH_TRIGGERED' | 'AMBUSH_CLEARED' | 'ESCORT_FAILED' | 'ALLEGIANCE_DECLARED' | 'COMBAT_BOND_AWARDED' | 'SKIRMISH_VICTORY';
+  type: 'HIT' | 'SHIELD_BREAK' | 'DESTROYED' | 'LOOT_SPAWNED' | 'LOOT_COLLECTED' | 'POD_EJECTED' | 'CONTAINER_SCOOPED' | 'WRECK_SPAWNED' | 'TOW_ATTACHED' | 'TOW_RELEASED' | 'SALVAGE_BEAM_TICK' | 'WRECK_DISINTEGRATED' | 'TRUCE_DECLARED' | 'TRUCE_BROKEN' | 'LIFE_SUPPORT_EXHAUSTED' | 'WARP_SPOOL_STARTED' | 'WARP_SPOOL_INTERRUPTED' | 'WARP_JUMP_SUCCESS' | 'CONVOY_SURRENDERED' | 'COMMS_ABORTED' | 'AMBUSH_TRIGGERED' | 'AMBUSH_CLEARED' | 'ESCORT_FAILED' | 'ALLEGIANCE_DECLARED' | 'COMBAT_BOND_AWARDED' | 'SKIRMISH_VICTORY' | 'TACTICAL_ORDER_ISSUED' | 'WINGMAN_DESTROYED';
 
   sourceId?: string;
   targetId?: string;
@@ -188,6 +200,11 @@ export interface SnapshotPayload {
     targetHaulerId?: string;
     isSkirmishVessel?: boolean;
     allegiance?: string;
+    // Day 34 Wingman Telemetry
+    ownerPlayerId?: string;
+    wingmanSlot?: number;
+    tacticalOrder?: string;
+    shipId?: string;
   }>;
   convoys?: Array<{
     convoyId: string;
@@ -1035,14 +1052,200 @@ export class SectorRoom {
       });
     }
 
+    // Day 34: Auto-spawn active wingmen for this player
+    this.spawnWingmenForPlayer(playerId, shipData?.activeWingmen).catch((err) => {
+      console.warn(`[SectorRoom ${this.sectorId}] Failed to spawn wingmen for player ${playerId}:`, err);
+    });
+
     if (!this.tickInterval) {
       this.startTickLoop();
     }
   }
 
+  public async spawnWingmenForPlayer(playerId: string, overrideWingmen?: any[]): Promise<SectorEntity[]> {
+    const pEntity = this.entities.get(`player_${playerId}`);
+    const flagshipX = pEntity ? pEntity.x : 0;
+    const flagshipZ = pEntity ? pEntity.z : 0;
+    const flagshipYaw = pEntity ? pEntity.yaw : 0;
+    const flagshipVx = pEntity ? pEntity.vx : 0;
+    const flagshipVz = pEntity ? pEntity.vz : 0;
+
+    let wingmenRows: any[] = [];
+    if (Array.isArray(overrideWingmen) && overrideWingmen.length > 0) {
+      wingmenRows = overrideWingmen;
+    } else {
+      try {
+        const query = `
+          SELECT * FROM player_fleet
+          WHERE account_id = $1 AND deployment_slot IS NOT NULL AND status != 'DESTROYED'
+          ORDER BY deployment_slot ASC
+        `;
+        const { rows } = await db.query<any>(query, [playerId]);
+        wingmenRows = rows;
+      } catch (err) {
+        console.warn(`[SectorRoom ${this.sectorId}] DB query for wingmen failed:`, err);
+      }
+    }
+
+    const spawned: SectorEntity[] = [];
+
+    for (const row of wingmenRows) {
+      const slot = Number(row.deployment_slot ?? row.deploymentSlot ?? 1);
+      const wingmanId = `wingman_${playerId}_slot_${slot}`;
+
+      const offset = WINGMAN_FORMATION_OFFSETS[slot] || { x: -35.0, z: -25.0 };
+      const cosY = Math.cos(flagshipYaw);
+      const sinY = Math.sin(flagshipYaw);
+      const wx = flagshipX + (offset.x * cosY + offset.z * sinY);
+      const wz = flagshipZ + (-offset.x * sinY + offset.z * cosY);
+
+      const hullClass = row.hull_class || row.hullClass || 'SOL_CRUISER';
+      const factionId = row.faction_id || row.factionId || 'FACTION_SOL';
+      const shipName = row.name || `Wingman Slot ${slot}`;
+      const hp = Number(row.hull ?? 150);
+      const maxHp = Number(row.max_hull ?? row.maxHull ?? 150);
+      const shields = Number(row.shield ?? 100);
+      const maxShields = Number(row.max_shield ?? row.maxShield ?? 100);
+
+      const entity: SectorEntity = {
+        id: wingmanId,
+        type: 'WINGMAN',
+        ownerPlayerId: playerId,
+        wingmanSlot: slot,
+        tacticalOrder: 'FORMATION_FOLLOW',
+        shipId: row.id,
+        factionId,
+        name: shipName,
+        hullClass,
+        hullSeed: 1000 + slot,
+        x: wx,
+        z: wz,
+        vx: flagshipVx,
+        vz: flagshipVz,
+        yaw: flagshipYaw,
+        angularVelocity: 0,
+        hp,
+        maxHp,
+        shields,
+        maxShields,
+        energy: 100,
+        maxEnergy: 100,
+        powerGridMax: 100,
+        powerGridUsed: 60,
+        cpuMax: 140,
+        cpuUsed: 80,
+        state: 'PATROL',
+        inputs: {
+          forward: false,
+          reverse: false,
+          turnLeft: false,
+          turnRight: false,
+          brake: false,
+          firePrimary: false,
+          fireTactical: false,
+        },
+        lastHitTime: 0,
+        fireCooldown: 0,
+      };
+
+      this.entities.set(wingmanId, entity);
+      spawned.push(entity);
+    }
+
+    return spawned;
+  }
+
+  public setTacticalOrder(
+    playerId: string,
+    order: 'FORMATION_FOLLOW' | 'FOCUS_TARGET' | 'ESCORT_FLAGSHIP' | 'FLANK_HARASS' | 'REGROUP_HOLD',
+    targetEntityId?: string
+  ): { success: boolean; affectedWingmenCount: number; message: string } {
+    let affectedWingmenCount = 0;
+    for (const entity of this.entities.values()) {
+      if (entity.type === 'WINGMAN' && entity.ownerPlayerId === playerId && entity.state !== 'DESTROYED') {
+        entity.tacticalOrder = order;
+        if (targetEntityId) {
+          entity.targetEntityId = targetEntityId;
+        } else if (order === 'FORMATION_FOLLOW' || order === 'REGROUP_HOLD') {
+          entity.targetEntityId = null;
+        }
+        affectedWingmenCount++;
+      }
+    }
+
+    this.pendingEvents.push({
+      type: 'TACTICAL_ORDER_ISSUED',
+      sourceId: `player_${playerId}`,
+      targetId: targetEntityId,
+      data: {
+        order,
+        targetEntityId,
+        affectedWingmenCount,
+        message: `Squadron directive set to ${order} (${affectedWingmenCount} wingmen assigned)`,
+      },
+    });
+
+    return {
+      success: true,
+      affectedWingmenCount,
+      message: `Squadron directive set to ${order} (${affectedWingmenCount} wingmen assigned)`,
+    };
+  }
+
+  public getTacticalState(playerId: string): {
+    success: boolean;
+    wingmen: Array<{
+      id: string;
+      shipId?: string;
+      slot?: number;
+      name: string;
+      hullClass: string;
+      tacticalOrder?: string;
+      targetEntityId?: string | null;
+      hp: number;
+      maxHp: number;
+      shields: number;
+      maxShields: number;
+      x: number;
+      z: number;
+      yaw: number;
+    }>;
+  } {
+    const wingmen = Array.from(this.entities.values())
+      .filter((e) => e.type === 'WINGMAN' && e.ownerPlayerId === playerId && e.state !== 'DESTROYED')
+      .map((w) => ({
+        id: w.id,
+        shipId: w.shipId,
+        slot: w.wingmanSlot,
+        name: w.name,
+        hullClass: w.hullClass,
+        tacticalOrder: w.tacticalOrder,
+        targetEntityId: w.targetEntityId,
+        hp: w.hp,
+        maxHp: w.maxHp,
+        shields: w.shields,
+        maxShields: w.maxShields,
+        x: Math.round(w.x * 100) / 100,
+        z: Math.round(w.z * 100) / 100,
+        yaw: Math.round(w.yaw * 1000) / 1000,
+      }));
+
+    return {
+      success: true,
+      wingmen,
+    };
+  }
+
   public removePlayer(playerId: string): void {
     this.clients.delete(playerId);
     this.entities.delete(`player_${playerId}`);
+
+    // Day 34: Despawn wingmen belonging to this player
+    for (const [id, entity] of this.entities.entries()) {
+      if (entity.type === 'WINGMAN' && entity.ownerPlayerId === playerId) {
+        this.entities.delete(id);
+      }
+    }
 
     // If no players remain in this sector, put the sector room to sleep
     const hasPlayers = Array.from(this.entities.values()).some((e) => e.type === 'PLAYER');
@@ -1081,10 +1284,11 @@ export class SectorRoom {
     this.lastTickTimestamp = now;
     this.tickCount++;
 
-    // 1. Process Drone, Hauler & Scavenger AI
+    // 1. Process Drone, Hauler, Scavenger & Wingman AI
     this.processDroneAI(dt);
     this.processHaulerAI(dt);
     this.processScavengerAI(dt);
+    this.processWingmanAI(dt, now);
 
     // 2. Integrate Kinematics for all living vessels
     for (const entity of this.entities.values()) {
@@ -1322,9 +1526,9 @@ export class SectorRoom {
 
   private integrateEntityPhysics(entity: SectorEntity, dt: number, now: number): void {
     const isEscapePod = entity.isEscapePod || entity.hullClass === 'ESCAPE_POD';
-    let accel = isEscapePod ? 8.0 : entity.type === 'HAULER' ? 6.0 : entity.type === 'DRONE' ? 18.0 : entity.type === 'SCAVENGER' ? 14.0 : 22.0;
-    const turnAccel = isEscapePod ? 2.0 : entity.type === 'HAULER' ? 1.4 : entity.type === 'SCAVENGER' ? 2.8 : 3.6;
-    let maxSpeed = isEscapePod ? 13.0 : entity.type === 'HAULER' ? 10.0 : entity.type === 'DRONE' ? 24.0 : entity.type === 'SCAVENGER' ? 18.0 : 28.0;
+    let accel = isEscapePod ? 8.0 : entity.type === 'HAULER' ? 6.0 : entity.type === 'DRONE' ? 18.0 : entity.type === 'SCAVENGER' ? 14.0 : entity.type === 'WINGMAN' ? 24.0 : 22.0;
+    const turnAccel = isEscapePod ? 2.0 : entity.type === 'HAULER' ? 1.4 : entity.type === 'SCAVENGER' ? 2.8 : entity.type === 'WINGMAN' ? 3.4 : 3.6;
+    let maxSpeed = isEscapePod ? 13.0 : entity.type === 'HAULER' ? 10.0 : entity.type === 'DRONE' ? 24.0 : entity.type === 'SCAVENGER' ? 18.0 : entity.type === 'WINGMAN' ? 30.0 : 28.0;
 
     // Day 14: Emergency Life Support countdown for Escape Pods
     if (isEscapePod && typeof entity.lifeSupportSeconds === 'number') {
@@ -1344,7 +1548,7 @@ export class SectorRoom {
     const wantsAfterburner = entity.inputs.fireTactical && !isEscapePod && entity.energy >= 3.0;
     if (wantsAfterburner) {
       accel *= 2.2;
-      maxSpeed = entity.type === 'DRONE' ? 42.0 : 48.0;
+      maxSpeed = entity.type === 'DRONE' ? 42.0 : entity.type === 'WINGMAN' ? 44.0 : 48.0;
       entity.energy = Math.max(0, entity.energy - 38.0 * dt);
       entity.afterburnerActive = true;
     } else {
@@ -1763,7 +1967,358 @@ export class SectorRoom {
     }
   }
 
+  /**
+   * Day 34: 20Hz Wingman Formation Flight AI & Tactical Directive Processing
+   */
+  private processWingmanAI(dt: number, now: number): void {
+    // 1. Group living wingmen by owner player ID
+    const wingmenByPlayer = new Map<string, SectorEntity[]>();
+    for (const entity of this.entities.values()) {
+      if (entity.type === 'WINGMAN' && entity.state !== 'DESTROYED' && entity.ownerPlayerId) {
+        const list = wingmenByPlayer.get(entity.ownerPlayerId) || [];
+        list.push(entity);
+        wingmenByPlayer.set(entity.ownerPlayerId, list);
+      }
+    }
+
+    for (const [playerId, wingmen] of wingmenByPlayer.entries()) {
+      const flagship = this.entities.get(`player_${playerId}`);
+      if (!flagship || flagship.state === 'DESTROYED') {
+        for (const w of wingmen) {
+          w.inputs.forward = false;
+          w.inputs.brake = true;
+          w.inputs.firePrimary = false;
+          w.inputs.fireTactical = false;
+        }
+        continue;
+      }
+
+      // Friendly squadron fleet group (flagship + active wingmen) for soft proximity repulsion
+      const friendlySquadron: SectorEntity[] = [flagship, ...wingmen];
+
+      for (const wingman of wingmen) {
+        // A. Soft Proximity Repulsion (r < 25m) to avoid friendly overlap & rigid collision jitter
+        let repulseVx = 0;
+        let repulseVz = 0;
+        const minSafeDist = 25.0;
+
+        for (const other of friendlySquadron) {
+          if (other.id === wingman.id || other.state === 'DESTROYED') continue;
+          const rdx = wingman.x - other.x;
+          const rdz = wingman.z - other.z;
+          const dist = Math.hypot(rdx, rdz);
+          if (dist < minSafeDist && dist > 0.01) {
+            const factor = (minSafeDist - dist) / minSafeDist; // 0..1
+            const pushAcc = factor * factor * 16.0; // smooth quadratic push
+            repulseVx += (rdx / dist) * pushAcc;
+            repulseVz += (rdz / dist) * pushAcc;
+          }
+        }
+        wingman.vx += repulseVx * dt;
+        wingman.vz += repulseVz * dt;
+
+        // B. Handle Tactical Order
+        const order = wingman.tacticalOrder || 'FORMATION_FOLLOW';
+
+        switch (order) {
+          case 'FOCUS_TARGET': {
+            const targetId = wingman.targetEntityId || flagship.targetEntityId;
+            const target = targetId ? this.entities.get(targetId) : null;
+
+            if (!target || target.state === 'DESTROYED') {
+              wingman.tacticalOrder = 'FORMATION_FOLLOW';
+              wingman.targetEntityId = null;
+              break;
+            }
+
+            const dx = target.x - wingman.x;
+            const dz = target.z - wingman.z;
+            const dist = Math.hypot(dx, dz);
+            const desiredYaw = Math.atan2(dx, dz);
+
+            let yawDiff = desiredYaw - wingman.yaw;
+            while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
+            while (yawDiff > Math.PI) yawDiff -= Math.PI * 2;
+
+            wingman.inputs.turnLeft = yawDiff > 0.12;
+            wingman.inputs.turnRight = yawDiff < -0.12;
+
+            if (dist > 80.0) {
+              wingman.inputs.forward = true;
+              wingman.inputs.brake = false;
+              wingman.inputs.fireTactical = dist > 140.0;
+            } else if (dist < 40.0) {
+              wingman.inputs.forward = false;
+              wingman.inputs.brake = true;
+              wingman.inputs.fireTactical = false;
+            } else {
+              wingman.inputs.forward = true;
+              wingman.inputs.brake = false;
+              wingman.inputs.fireTactical = false;
+            }
+
+            const facingTarget = Math.abs(yawDiff) < 0.44;
+            wingman.inputs.firePrimary = facingTarget && dist <= 110.0;
+            break;
+          }
+
+          case 'ESCORT_FLAGSHIP': {
+            let threat: SectorEntity | null = null;
+            let minThreatDist = Infinity;
+
+            for (const other of this.entities.values()) {
+              if (
+                other.state === 'DESTROYED' ||
+                other.type === 'PLAYER' ||
+                other.type === 'WINGMAN' ||
+                other.type === 'WRECK' ||
+                other.type === 'CARGO_CRATE'
+              ) {
+                continue;
+              }
+              const distToFlagship = Math.hypot(other.x - flagship.x, other.z - flagship.z);
+              if (distToFlagship < 90.0 && distToFlagship < minThreatDist) {
+                minThreatDist = distToFlagship;
+                threat = other;
+              }
+            }
+
+            const distToFlagship = Math.hypot(wingman.x - flagship.x, wingman.z - flagship.z);
+
+            if (threat && distToFlagship < 60.0) {
+              const dx = threat.x - wingman.x;
+              const dz = threat.z - wingman.z;
+              const dist = Math.hypot(dx, dz);
+              const desiredYaw = Math.atan2(dx, dz);
+
+              let yawDiff = desiredYaw - wingman.yaw;
+              while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
+              while (yawDiff > Math.PI) yawDiff -= Math.PI * 2;
+
+              wingman.inputs.turnLeft = yawDiff > 0.12;
+              wingman.inputs.turnRight = yawDiff < -0.12;
+              wingman.inputs.forward = dist > 35.0;
+              wingman.inputs.brake = dist <= 25.0;
+              wingman.inputs.firePrimary = Math.abs(yawDiff) < 0.44 && dist <= 95.0;
+            } else {
+              const slot = wingman.wingmanSlot || 1;
+              const orbitAngle = flagship.yaw + (slot * Math.PI) / 2.5;
+              const targetX = flagship.x + Math.sin(orbitAngle) * 38.0;
+              const targetZ = flagship.z + Math.cos(orbitAngle) * 38.0;
+
+              const dx = targetX - wingman.x;
+              const dz = targetZ - wingman.z;
+              const dist = Math.hypot(dx, dz);
+              const desiredYaw = Math.atan2(dx, dz);
+
+              let yawDiff = desiredYaw - wingman.yaw;
+              while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
+              while (yawDiff > Math.PI) yawDiff -= Math.PI * 2;
+
+              wingman.inputs.turnLeft = yawDiff > 0.12;
+              wingman.inputs.turnRight = yawDiff < -0.12;
+              wingman.inputs.forward = dist > 3.0;
+              wingman.inputs.brake = dist <= 2.0;
+              wingman.inputs.firePrimary = false;
+            }
+            break;
+          }
+
+          case 'FLANK_HARASS': {
+            let hostileCenterX = 0;
+            let hostileCenterZ = 0;
+            let hostileCount = 0;
+
+            for (const other of this.entities.values()) {
+              if (
+                other.state === 'DESTROYED' ||
+                other.type === 'PLAYER' ||
+                other.type === 'WINGMAN' ||
+                other.type === 'WRECK' ||
+                other.type === 'CARGO_CRATE'
+              ) {
+                continue;
+              }
+              hostileCenterX += other.x;
+              hostileCenterZ += other.z;
+              hostileCount++;
+            }
+
+            if (hostileCount > 0) {
+              hostileCenterX /= hostileCount;
+              hostileCenterZ /= hostileCount;
+
+              const orbitRadius = 120.0;
+              const angle = Math.atan2(wingman.x - hostileCenterX, wingman.z - hostileCenterZ) + 0.35;
+              const targetX = hostileCenterX + Math.sin(angle) * orbitRadius;
+              const targetZ = hostileCenterZ + Math.cos(angle) * orbitRadius;
+
+              const dx = targetX - wingman.x;
+              const dz = targetZ - wingman.z;
+              const desiredYaw = Math.atan2(dx, dz);
+
+              let yawDiff = desiredYaw - wingman.yaw;
+              while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
+              while (yawDiff > Math.PI) yawDiff -= Math.PI * 2;
+
+              wingman.inputs.turnLeft = yawDiff > 0.1;
+              wingman.inputs.turnRight = yawDiff < -0.1;
+              wingman.inputs.forward = true;
+              wingman.inputs.brake = false;
+              wingman.inputs.fireTactical = true;
+
+              const toCenterX = hostileCenterX - wingman.x;
+              const toCenterZ = hostileCenterZ - wingman.z;
+              const centerDist = Math.hypot(toCenterX, toCenterZ);
+              const aimYaw = Math.atan2(toCenterX, toCenterZ);
+              let aimDiff = aimYaw - wingman.yaw;
+              while (aimDiff < -Math.PI) aimDiff += Math.PI * 2;
+              while (aimDiff > Math.PI) aimDiff -= Math.PI * 2;
+
+              wingman.inputs.firePrimary = Math.abs(aimDiff) < 0.6 && centerDist <= 135.0;
+            } else {
+              wingman.tacticalOrder = 'FORMATION_FOLLOW';
+            }
+            break;
+          }
+
+          case 'REGROUP_HOLD': {
+            // Strict ceasefire!
+            wingman.inputs.firePrimary = false;
+
+            const slot = wingman.wingmanSlot || 1;
+            const offset = WINGMAN_FORMATION_OFFSETS[slot] || { x: -35.0, z: -25.0 };
+            const cosY = Math.cos(flagship.yaw);
+            const sinY = Math.sin(flagship.yaw);
+            const targetX = flagship.x + (offset.x * cosY + offset.z * sinY);
+            const targetZ = flagship.z + (-offset.x * sinY + offset.z * cosY);
+
+            const dx = targetX - wingman.x;
+            const dz = targetZ - wingman.z;
+            const dist = Math.hypot(dx, dz);
+
+            if (dist < 8.0) {
+              wingman.tacticalOrder = 'FORMATION_FOLLOW';
+              wingman.inputs.forward = false;
+              wingman.inputs.brake = true;
+              wingman.inputs.fireTactical = false;
+              wingman.vx = flagship.vx;
+              wingman.vz = flagship.vz;
+              wingman.yaw = flagship.yaw;
+            } else {
+              const desiredYaw = Math.atan2(dx, dz);
+              let yawDiff = desiredYaw - wingman.yaw;
+              while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
+              while (yawDiff > Math.PI) yawDiff -= Math.PI * 2;
+
+              wingman.inputs.turnLeft = yawDiff > 0.12;
+              wingman.inputs.turnRight = yawDiff < -0.12;
+              wingman.inputs.forward = true;
+              wingman.inputs.brake = false;
+              wingman.inputs.fireTactical = dist > 25.0;
+            }
+            break;
+          }
+
+          case 'FORMATION_FOLLOW':
+          default: {
+            const slot = wingman.wingmanSlot || 1;
+            const offset = WINGMAN_FORMATION_OFFSETS[slot] || { x: -35.0, z: -25.0 };
+            const cosY = Math.cos(flagship.yaw);
+            const sinY = Math.sin(flagship.yaw);
+            const targetX = flagship.x + (offset.x * cosY + offset.z * sinY);
+            const targetZ = flagship.z + (-offset.x * sinY + offset.z * cosY);
+
+            const dx = targetX - wingman.x;
+            const dz = targetZ - wingman.z;
+            const dist = Math.hypot(dx, dz);
+
+            if (dist < 2.5) {
+              wingman.inputs.turnLeft = false;
+              wingman.inputs.turnRight = false;
+              wingman.inputs.forward = false;
+              wingman.inputs.brake = true;
+              wingman.inputs.fireTactical = false;
+              wingman.vx = flagship.vx;
+              wingman.vz = flagship.vz;
+              wingman.yaw = flagship.yaw;
+            } else {
+              const desiredYaw = Math.atan2(dx, dz);
+              let yawDiff = desiredYaw - wingman.yaw;
+              while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
+              while (yawDiff > Math.PI) yawDiff -= Math.PI * 2;
+
+              wingman.inputs.turnLeft = yawDiff > 0.1;
+              wingman.inputs.turnRight = yawDiff < -0.1;
+              wingman.inputs.forward = dist > 2.0;
+              wingman.inputs.brake = dist <= 1.5;
+              wingman.inputs.fireTactical = dist > 60.0;
+            }
+
+            let targetHostile: SectorEntity | null = null;
+            let minHdist = Infinity;
+
+            for (const other of this.entities.values()) {
+              if (
+                other.state === 'DESTROYED' ||
+                other.type === 'PLAYER' ||
+                other.type === 'WINGMAN' ||
+                other.type === 'WRECK' ||
+                other.type === 'CARGO_CRATE'
+              ) {
+                continue;
+              }
+              const hdx = other.x - wingman.x;
+              const hdz = other.z - wingman.z;
+              const hdist = Math.hypot(hdx, hdz);
+              if (hdist <= 75.0 && hdist < minHdist) {
+                const hYaw = Math.atan2(hdx, hdz);
+                let hDiff = hYaw - wingman.yaw;
+                while (hDiff < -Math.PI) hDiff += Math.PI * 2;
+                while (hDiff > Math.PI) hDiff -= Math.PI * 2;
+                if (Math.abs(hDiff) <= Math.PI / 6) {
+                  minHdist = hdist;
+                  targetHostile = other;
+                }
+              }
+            }
+
+            wingman.inputs.firePrimary = !!targetHostile;
+            break;
+          }
+        }
+      }
+    }
+  }
+
   private dischargePrimaryWeapon(entity: SectorEntity): void {
+    if (entity.type === 'WINGMAN') {
+      if (entity.energy < 8) return;
+      entity.energy -= 8;
+      entity.fireCooldown = 0.22;
+      const forwardX = Math.sin(entity.yaw);
+      const forwardZ = Math.cos(entity.yaw);
+      const muzzleSpeed = 70.0;
+      let color = '#38bdf8'; // Sol cyan default
+      if (entity.factionId === 'FACTION_VAELIC') color = '#a855f7';
+      else if (entity.factionId === 'FACTION_KRYLL') color = '#22c55e';
+      else if (entity.factionId === 'FACTION_LITHOS') color = '#eab308';
+
+      this.projectiles.push({
+        id: `proj_${++this.projectileSeq}_${Date.now()}`,
+        ownerId: entity.id,
+        x: entity.x + forwardX * 3.8,
+        z: entity.z + forwardZ * 3.8,
+        vx: entity.vx * 0.3 + forwardX * muzzleSpeed,
+        vz: entity.vz * 0.3 + forwardZ * muzzleSpeed,
+        damage: 20,
+        ttl: 1.8,
+        color,
+        projType: 'PULSE',
+      });
+      return;
+    }
+
     if (entity.type === 'DRONE' || entity.type === 'SCAVENGER') {
       entity.energy -= 12.0;
       entity.fireCooldown = 0.35;
@@ -1868,6 +2423,15 @@ export class SectorRoom {
       // Check collision with living entities
       for (const entity of this.entities.values()) {
         if (entity.id === proj.ownerId || entity.state === 'DESTROYED') continue;
+
+        // Friendly fire protection between player flagship and their wingmen, and between co-wingmen
+        const projOwner = this.entities.get(proj.ownerId);
+        const isFriendlySquadron =
+          (entity.type === 'WINGMAN' && entity.ownerPlayerId === proj.ownerId.replace('player_', '')) ||
+          (projOwner?.type === 'WINGMAN' && entity.id === `player_${projOwner.ownerPlayerId}`) ||
+          (projOwner?.type === 'WINGMAN' && entity.type === 'WINGMAN' && projOwner.ownerPlayerId === entity.ownerPlayerId);
+
+        if (isFriendlySquadron) continue;
 
         const dx = entity.x - proj.x;
         const dz = entity.z - proj.z;
@@ -2010,6 +2574,25 @@ export class SectorRoom {
       x: target.x,
       z: target.z,
     });
+
+    // Day 34: Wingman Destruction
+    if (target.type === 'WINGMAN') {
+      this.pendingEvents.push({
+        type: 'WINGMAN_DESTROYED',
+        sourceId: killerId,
+        targetId: target.id,
+        data: {
+          shipId: target.shipId,
+          wingmanSlot: target.wingmanSlot,
+          ownerPlayerId: target.ownerPlayerId,
+          name: target.name,
+          message: `🚨 WINGMAN LOST: ${target.name} destroyed!`,
+        },
+      });
+      if (target.shipId) {
+        db.query(`UPDATE player_fleet SET status = 'DESTROYED', deployment_slot = NULL WHERE id = $1`, [target.shipId]).catch(console.error);
+      }
+    }
 
     // Day 17: Faction standing penalty for destroying Hegemony patrol drone
     if (killerId && (target.factionId === 'FACTION_VAELIC' || target.factionId === 'FACTION_HEGEMONY')) {
@@ -2382,6 +2965,11 @@ export class SectorRoom {
         targetHaulerId: e.targetHaulerId,
         isSkirmishVessel: e.isSkirmishVessel,
         allegiance: e.allegiance,
+        // Day 34 Wingman Telemetry
+        ownerPlayerId: e.ownerPlayerId,
+        wingmanSlot: e.wingmanSlot,
+        tacticalOrder: e.tacticalOrder,
+        shipId: e.shipId,
       })),
       convoys: Array.from(this.entities.values())
         .filter((e) => e.isConvoyHauler && e.state !== 'DESTROYED')
@@ -2550,6 +3138,26 @@ export class SectorCombatManager {
     return false;
   }
 
+  public setTacticalOrder(
+    sectorId: number,
+    playerId: string,
+    order: 'FORMATION_FOLLOW' | 'FOCUS_TARGET' | 'ESCORT_FLAGSHIP' | 'FLANK_HARASS' | 'REGROUP_HOLD',
+    targetEntityId?: string
+  ) {
+    const room = this.getOrCreateRoom(sectorId);
+    return room.setTacticalOrder(playerId, order, targetEntityId);
+  }
+
+  public getTacticalState(sectorId: number, playerId: string) {
+    const room = this.getOrCreateRoom(sectorId);
+    return room.getTacticalState(playerId);
+  }
+
+  public async spawnWingmenForPlayer(sectorId: number, playerId: string, overrideWingmen?: any[]) {
+    const room = this.getOrCreateRoom(sectorId);
+    return await room.spawnWingmenForPlayer(playerId, overrideWingmen);
+  }
+
   public handleConnection(socket: WebSocket, sectorId: number, playerId: string, shipData?: any): void {
 
     const room = this.getOrCreateRoom(sectorId);
@@ -2572,6 +3180,22 @@ export class SectorCombatManager {
           room.stopSalvageBeam(playerId);
         } else if (msg.type === 'DECLARE_ALLEGIANCE') {
           room.declareAllegiance(playerId, msg.factionId);
+        } else if (msg.type === 'C_TACTICAL_ORDER' || msg.type === 'TACTICAL_ORDER') {
+          const res = room.setTacticalOrder(playerId, msg.order, msg.targetEntityId);
+          try {
+            socket.send(
+              JSON.stringify({
+                type: 'S_TACTICAL_ORDER_ACK',
+                success: res.success,
+                order: msg.order,
+                targetEntityId: msg.targetEntityId,
+                affectedWingmenCount: res.affectedWingmenCount,
+                message: res.message,
+              })
+            );
+          } catch {
+            // Socket might be closed
+          }
         }
       } catch (err) {
         // Ignore malformed client frames
