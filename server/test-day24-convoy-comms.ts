@@ -332,9 +332,9 @@ async function runDay24Tests() {
     console.error('\n❌ DAY 24 TEST SUITE ENCOUNTERED AN ERROR:');
     console.error(err);
     process.exit(1);
-  } finally {
-    process.exit(0);
   }
 }
 
-runDay24Tests();
+runDay24Tests().then(() => {
+  process.exit(0);
+});

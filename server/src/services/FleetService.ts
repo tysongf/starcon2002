@@ -366,7 +366,7 @@ export class FleetService {
     );
   }
 
-  private mapRowToShip(r: any): FleetShip {
+  public mapRowToShip(r: any): FleetShip {
     return {
       id: r.id,
       accountId: r.account_id,

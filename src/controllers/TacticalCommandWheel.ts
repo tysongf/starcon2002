@@ -206,6 +206,10 @@ export class TacticalCommandWheel {
         const shieldPct = Math.max(0, Math.min(100, (w.shields / w.maxShields) * 100));
         const slot = w.wingmanSlot || 1;
         const orderTag = (w.tacticalOrder || 'FOLLOW').replace('_', ' ');
+        const ability = (w.specialAbility || 'POINT_DEFENSE').replace('_', ' ');
+        const cd = w.abilityCooldown ? Math.ceil(w.abilityCooldown) : 0;
+        const abilityTag = cd > 0 ? `${ability} (${cd}s)` : `${ability} [⇧${slot}]`;
+        const abilityClass = cd > 0 ? 'wm-ability-cd' : 'wm-ability-ready';
 
         return `
           <div class="wingman-row">
@@ -217,7 +221,10 @@ export class TacticalCommandWheel {
                 <div class="wm-bar-track"><div class="wm-hull-fill" style="width: ${hpPct}%;"></div></div>
               </div>
             </div>
-            <div class="wm-order-tag">${orderTag}</div>
+            <div class="wm-meta">
+              <div class="wm-order-tag">${orderTag}</div>
+              <div class="wm-ability-tag ${abilityClass}" title="Trigger: Shift+${slot}">${abilityTag}</div>
+            </div>
           </div>
         `;
       })

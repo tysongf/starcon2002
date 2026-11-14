@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { fleetService } from '../services/FleetService';
 import { combatManager } from '../services/SectorCombatManager';
+import { shipyardService } from '../services/ShipyardService';
 
 export const fleetRoutes: FastifyPluginAsync = async (server) => {
   // 1. Get Fleet Roster & Command Bridge Status
@@ -113,6 +114,44 @@ export const fleetRoutes: FastifyPluginAsync = async (server) => {
     const sectorId = body.sectorId || 1;
     const wingmen = await combatManager.spawnWingmenForPlayer(sectorId, accountId, body.overrideWingmen);
     reply.send({ success: true, count: wingmen.length, wingmen });
+  });
+
+  // 10. Day 35: Refurbish Escort Wreck Mirror
+  server.post('/refurbish', async (req, reply) => {
+    const body = (req.body || {}) as {
+      accountId?: string;
+      wreckId: string;
+      colonyId?: string;
+    };
+    const accountId = body.accountId || 'acc_sol_captain';
+    if (!body.wreckId) {
+      return reply.status(400).send({ success: false, error: 'wreckId is required.' });
+    }
+
+    const result = await shipyardService.refurbishEscortWreck(
+      accountId,
+      body.wreckId,
+      body.colonyId
+    );
+    if (!result.success) {
+      return reply.status(400).send(result);
+    }
+    reply.send(result);
+  });
+
+  // 11. Day 35: Trigger Wingman Signature Fleet Ability
+  server.post('/trigger-ability', async (req, reply) => {
+    const body = (req.body || {}) as {
+      accountId?: string;
+      sectorId?: number;
+      slot: number;
+      targetEntityId?: string;
+    };
+    const accountId = body.accountId || 'acc_sol_captain';
+    const sectorId = body.sectorId || 1;
+    const slot = Number(body.slot || 1);
+    const result = combatManager.triggerWingmanAbility(sectorId, accountId, slot, body.targetEntityId);
+    reply.send(result);
   });
 };
 

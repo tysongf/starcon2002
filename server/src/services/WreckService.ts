@@ -15,6 +15,8 @@ export interface SectorWreck {
   hullIntactness: number;
   isTowed: boolean;
   towedByAccountId: string | null;
+  blueprintId?: string | null;
+  fleetShipId?: string | null;
   createdAt: string;
 }
 
@@ -43,6 +45,8 @@ export class WreckService {
       hullIntactness: parseFloat(r.hull_intactness),
       isTowed: r.is_towed === true,
       towedByAccountId: r.towed_by_account_id,
+      blueprintId: r.blueprint_id || null,
+      fleetShipId: r.fleet_ship_id || null,
       createdAt: r.created_at,
     }));
   }
@@ -72,6 +76,8 @@ export class WreckService {
       hullIntactness: parseFloat(r.hull_intactness),
       isTowed: r.is_towed === true,
       towedByAccountId: r.towed_by_account_id,
+      blueprintId: r.blueprint_id || null,
+      fleetShipId: r.fleet_ship_id || null,
       createdAt: r.created_at,
     };
   }
@@ -89,15 +95,23 @@ export class WreckService {
     z: number,
     rotation: number = 0,
     maxScrap: number = 100,
-    hullIntactness: number = 0.8
+    hullIntactness: number = 0.8,
+    customWreckId?: string,
+    blueprintId?: string,
+    fleetShipId?: string
   ): Promise<SectorWreck> {
-    const wreckId = `wreck_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const wreckId = customWreckId || `wreck_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const { rows } = await db.query<any>(
       `INSERT INTO wrecks (
-        id, sector_id, ship_name, ship_class, faction, x, y, z, rotation, scrap_remaining, max_scrap, hull_intactness
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        id, sector_id, ship_name, ship_class, faction, x, y, z, rotation, scrap_remaining, max_scrap, hull_intactness, blueprint_id, fleet_ship_id
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      ON CONFLICT (id) DO UPDATE SET
+        scrap_remaining = EXCLUDED.scrap_remaining,
+        hull_intactness = EXCLUDED.hull_intactness,
+        blueprint_id = COALESCE(EXCLUDED.blueprint_id, wrecks.blueprint_id),
+        fleet_ship_id = COALESCE(EXCLUDED.fleet_ship_id, wrecks.fleet_ship_id)
       RETURNING *`,
-      [wreckId, sectorId, shipName, shipClass, faction, x, y, z, rotation, maxScrap, maxScrap, hullIntactness]
+      [wreckId, sectorId, shipName, shipClass, faction, x, y, z, rotation, maxScrap, maxScrap, hullIntactness, blueprintId || null, fleetShipId || null]
     );
 
     const r = rows[0];
@@ -257,6 +271,8 @@ export class WreckService {
       hullIntactness: parseFloat(r.hull_intactness),
       isTowed: true,
       towedByAccountId: r.towed_by_account_id,
+      blueprintId: r.blueprint_id || null,
+      fleetShipId: r.fleet_ship_id || null,
       createdAt: r.created_at,
     };
   }

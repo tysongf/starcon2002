@@ -116,6 +116,26 @@ export interface SectorEntity {
   wingmanSlot?: number;
   tacticalOrder?: 'FORMATION_FOLLOW' | 'FOCUS_TARGET' | 'ESCORT_FLAGSHIP' | 'FLANK_HARASS' | 'REGROUP_HOLD';
   shipId?: string;
+  // Day 35 Alien Hull Asymmetry & Signature Abilities
+  specialAbility?: string; // 'POINT_DEFENSE' | 'PLASMA_LANCE' | 'DECOY_HOLO' | 'BIO_SPORE_CLOUD' | 'HARMONIC_SHIELD'
+  abilityCooldown?: number;
+  abilityMaxCooldown?: number;
+  abilityActiveTimer?: number;
+  harmonicShieldActive?: boolean;
+  isDecoy?: boolean;
+  decoyOwnerId?: string;
+  decoyTtl?: number;
+}
+
+export interface SporeCloud {
+  id: string;
+  x: number;
+  z: number;
+  radius: number;
+  ttl: number;
+  maxTtl: number;
+  ownerId: string;
+  dps: number;
 }
 
 export const WINGMAN_FORMATION_OFFSETS: Record<number, { x: number; z: number }> = {
@@ -139,7 +159,7 @@ export interface Projectile {
 }
 
 export interface CombatEvent {
-  type: 'HIT' | 'SHIELD_BREAK' | 'DESTROYED' | 'LOOT_SPAWNED' | 'LOOT_COLLECTED' | 'POD_EJECTED' | 'CONTAINER_SCOOPED' | 'WRECK_SPAWNED' | 'TOW_ATTACHED' | 'TOW_RELEASED' | 'SALVAGE_BEAM_TICK' | 'WRECK_DISINTEGRATED' | 'TRUCE_DECLARED' | 'TRUCE_BROKEN' | 'LIFE_SUPPORT_EXHAUSTED' | 'WARP_SPOOL_STARTED' | 'WARP_SPOOL_INTERRUPTED' | 'WARP_JUMP_SUCCESS' | 'CONVOY_SURRENDERED' | 'COMMS_ABORTED' | 'AMBUSH_TRIGGERED' | 'AMBUSH_CLEARED' | 'ESCORT_FAILED' | 'ALLEGIANCE_DECLARED' | 'COMBAT_BOND_AWARDED' | 'SKIRMISH_VICTORY' | 'TACTICAL_ORDER_ISSUED' | 'WINGMAN_DESTROYED';
+  type: 'HIT' | 'SHIELD_BREAK' | 'DESTROYED' | 'LOOT_SPAWNED' | 'LOOT_COLLECTED' | 'POD_EJECTED' | 'CONTAINER_SCOOPED' | 'WRECK_SPAWNED' | 'TOW_ATTACHED' | 'TOW_RELEASED' | 'SALVAGE_BEAM_TICK' | 'WRECK_DISINTEGRATED' | 'TRUCE_DECLARED' | 'TRUCE_BROKEN' | 'LIFE_SUPPORT_EXHAUSTED' | 'WARP_SPOOL_STARTED' | 'WARP_SPOOL_INTERRUPTED' | 'WARP_JUMP_SUCCESS' | 'CONVOY_SURRENDERED' | 'COMMS_ABORTED' | 'AMBUSH_TRIGGERED' | 'AMBUSH_CLEARED' | 'ESCORT_FAILED' | 'ALLEGIANCE_DECLARED' | 'COMBAT_BOND_AWARDED' | 'SKIRMISH_VICTORY' | 'TACTICAL_ORDER_ISSUED' | 'WINGMAN_DESTROYED' | 'ABILITY_TRIGGERED';
 
   sourceId?: string;
   targetId?: string;
@@ -205,7 +225,14 @@ export interface SnapshotPayload {
     wingmanSlot?: number;
     tacticalOrder?: string;
     shipId?: string;
+    // Day 35 Ability Telemetry
+    specialAbility?: string;
+    abilityCooldown?: number;
+    abilityMaxCooldown?: number;
+    harmonicShieldActive?: boolean;
+    isDecoy?: boolean;
   }>;
+  sporeClouds?: SporeCloud[];
   convoys?: Array<{
     convoyId: string;
     name: string;
@@ -264,6 +291,7 @@ export class SectorRoom {
   public readonly wrecks: Map<string, SectorWreckEntity> = new Map();
   public projectiles: Projectile[] = [];
   public containers: SectorLootContainer[] = [];
+  public sporeClouds: SporeCloud[] = [];
   public pendingEvents: CombatEvent[] = [];
 
   private tickInterval: NodeJS.Timeout | null = null;
@@ -1073,7 +1101,7 @@ export class SectorRoom {
     let wingmenRows: any[] = [];
     if (Array.isArray(overrideWingmen) && overrideWingmen.length > 0) {
       wingmenRows = overrideWingmen;
-    } else {
+    } else if (db.isInitialized) {
       try {
         const query = `
           SELECT * FROM player_fleet
@@ -1107,6 +1135,18 @@ export class SectorRoom {
       const shields = Number(row.shield ?? 100);
       const maxShields = Number(row.max_shield ?? row.maxShield ?? 100);
 
+      let ability = row.special_ability || row.specialAbility;
+      if (!ability) {
+        if (hullClass === 'KRYLL_RUNNER' || factionId === 'FACTION_KRYLL') ability = 'DECOY_HOLO';
+        else if (hullClass === 'VAELIC_INTERDICTOR' || factionId === 'FACTION_VAELIC') ability = 'PLASMA_LANCE';
+        else if (hullClass === 'PHORID_FRIGATE' || factionId === 'FACTION_PHORID') ability = 'BIO_SPORE_CLOUD';
+        else if (hullClass === 'LITHOS_MONITOR' || factionId === 'FACTION_LITHOS') ability = 'HARMONIC_SHIELD';
+        else ability = 'POINT_DEFENSE';
+      }
+      if (ability === 'PLASMA_BARRAGE') ability = 'PLASMA_LANCE';
+      if (ability === 'SHOCKWAVE') ability = 'HARMONIC_SHIELD';
+      const maxCd = ability === 'BIO_SPORE_CLOUD' ? 35 : (ability === 'POINT_DEFENSE' ? 25 : 30);
+
       const entity: SectorEntity = {
         id: wingmanId,
         type: 'WINGMAN',
@@ -1114,6 +1154,11 @@ export class SectorRoom {
         wingmanSlot: slot,
         tacticalOrder: 'FORMATION_FOLLOW',
         shipId: row.id,
+        specialAbility: ability,
+        abilityCooldown: 0,
+        abilityMaxCooldown: maxCd,
+        abilityActiveTimer: 0,
+        harmonicShieldActive: false,
         factionId,
         name: shipName,
         hullClass,
@@ -1236,6 +1281,336 @@ export class SectorRoom {
     };
   }
 
+  public triggerPlayerWingmanAbility(
+    playerId: string,
+    slot: number,
+    targetEntityId?: string
+  ): { success: boolean; ability?: string; cooldownRemaining?: number; message?: string; error?: string } {
+    const wingman = Array.from(this.entities.values()).find(
+      (e) => e.type === 'WINGMAN' && e.ownerPlayerId === playerId && e.wingmanSlot === slot && e.state !== 'DESTROYED'
+    );
+
+    if (!wingman) {
+      return {
+        success: false,
+        error: 'WINGMAN_NOT_FOUND',
+        message: `No active wingman assigned to Deployment Slot ${slot}.`,
+      };
+    }
+
+    return this.triggerWingmanAbility(wingman, targetEntityId);
+  }
+
+  public triggerWingmanAbility(
+    wingman: SectorEntity,
+    targetEntityId?: string
+  ): { success: boolean; ability?: string; cooldownRemaining?: number; message?: string; error?: string } {
+    if ((wingman.abilityCooldown || 0) > 0) {
+      return {
+        success: false,
+        ability: wingman.specialAbility,
+        cooldownRemaining: Math.round((wingman.abilityCooldown || 0) * 10) / 10,
+        error: 'ABILITY_ON_COOLDOWN',
+        message: `${wingman.name}'s ${wingman.specialAbility} is recharging (${Math.ceil(wingman.abilityCooldown || 0)}s remaining).`,
+      };
+    }
+
+    let ability = wingman.specialAbility || 'POINT_DEFENSE';
+    if (ability === 'PLASMA_BARRAGE') ability = 'PLASMA_LANCE';
+    if (ability === 'SHOCKWAVE') ability = 'HARMONIC_SHIELD';
+
+    switch (ability) {
+      case 'POINT_DEFENSE': {
+        const radius = 35.0;
+        let destroyedCount = 0;
+        this.projectiles = this.projectiles.filter((p) => {
+          const isFriendly = p.ownerId === wingman.id || (wingman.ownerPlayerId && p.ownerId === `player_${wingman.ownerPlayerId}`) || p.ownerId.startsWith('wingman_');
+          if (!isFriendly) {
+            const dist = Math.hypot(p.x - wingman.x, p.z - wingman.z);
+            if (dist <= radius) {
+              destroyedCount++;
+              return false; // neutralized by flak grid
+            }
+          }
+          return true;
+        });
+
+        wingman.abilityCooldown = 25.0;
+        wingman.abilityMaxCooldown = 25.0;
+
+        this.pendingEvents.push({
+          type: 'ABILITY_TRIGGERED',
+          sourceId: wingman.id,
+          x: wingman.x,
+          z: wingman.z,
+          data: {
+            ability: 'POINT_DEFENSE',
+            radius,
+            destroyedProjectilesCount: destroyedCount,
+            message: `🛡️ Point-Defense flak grid neutralized ${destroyedCount} hostile projectiles.`,
+          },
+        });
+
+        return {
+          success: true,
+          ability: 'POINT_DEFENSE',
+          cooldownRemaining: 25.0,
+          message: `Point-Defense flak grid deployed around ${wingman.name} (${destroyedCount} projectiles destroyed).`,
+        };
+      }
+
+      case 'PLASMA_LANCE': {
+        let target: SectorEntity | null = null;
+        if (targetEntityId) {
+          target = this.entities.get(targetEntityId) || null;
+        }
+        if (!target || target.state === 'DESTROYED') {
+          // Find nearest hostile entity within 100m
+          let minD = 100.0;
+          for (const other of this.entities.values()) {
+            if (other.state === 'DESTROYED' || other.type === 'PLAYER' || other.type === 'WINGMAN' || other.isEscapePod) continue;
+            const d = Math.hypot(other.x - wingman.x, other.z - wingman.z);
+            if (d <= minD) {
+              minD = d;
+              target = other;
+            }
+          }
+        }
+
+        if (!target) {
+          // Beam fires forward into space along wingman's yaw
+          const beamDist = 100.0;
+          const targetX = wingman.x + Math.sin(wingman.yaw) * beamDist;
+          const targetZ = wingman.z + Math.cos(wingman.yaw) * beamDist;
+          wingman.abilityCooldown = 30.0;
+          wingman.abilityMaxCooldown = 30.0;
+
+          this.pendingEvents.push({
+            type: 'ABILITY_TRIGGERED',
+            sourceId: wingman.id,
+            damage: 0,
+            x: wingman.x,
+            z: wingman.z,
+            data: {
+              ability: 'PLASMA_LANCE',
+              totalDamage: 0,
+              targetX,
+              targetZ,
+              message: `⚡ Plasma Lance discharged forward into the void.`,
+            },
+          });
+
+          return {
+            success: true,
+            ability: 'PLASMA_LANCE',
+            cooldownRemaining: 30.0,
+            message: `Plasma Lance discharged forward!`,
+          };
+        }
+
+        const totalDamage = 70;
+        const directHullDmg = 42; // 60% direct hull penetration
+        const shieldDmg = 28;     // 40% absorbed by shield first
+
+        target.lastHitTime = Date.now();
+        let spillHull = 0;
+        if (target.shields > 0) {
+          if (target.shields >= shieldDmg) {
+            target.shields -= shieldDmg;
+          } else {
+            spillHull = shieldDmg - target.shields;
+            target.shields = 0;
+          }
+        } else {
+          spillHull = shieldDmg;
+        }
+
+        target.hp = Math.max(0, target.hp - directHullDmg - spillHull);
+        wingman.abilityCooldown = 30.0;
+        wingman.abilityMaxCooldown = 30.0;
+
+        this.pendingEvents.push({
+          type: 'ABILITY_TRIGGERED',
+          sourceId: wingman.id,
+          targetId: target.id,
+          damage: totalDamage,
+          x: wingman.x,
+          z: wingman.z,
+          data: {
+            ability: 'PLASMA_LANCE',
+            totalDamage,
+            directHullDmg,
+            targetHp: target.hp,
+            targetShields: target.shields,
+            targetX: target.x,
+            targetZ: target.z,
+            message: `⚡ Plasma Lance fired at ${target.name} for 70 DMG (60% shield piercing).`,
+          },
+        });
+
+        if (target.hp <= 0 && target.state !== 'DESTROYED') {
+          this.handleEntityDestruction(target, wingman.id);
+        }
+
+        return {
+          success: true,
+          ability: 'PLASMA_LANCE',
+          cooldownRemaining: 30.0,
+          message: `Plasma Lance particle lance discharged at ${target.name}!`,
+        };
+      }
+
+      case 'DECOY_HOLO': {
+        const decoyId = `decoy_${wingman.id}_${Date.now()}`;
+        const offsetAngle = Math.random() * Math.PI * 2;
+        const offsetDist = 12.0;
+        const dx = wingman.x + Math.sin(offsetAngle) * offsetDist;
+        const dz = wingman.z + Math.cos(offsetAngle) * offsetDist;
+
+        const decoyEntity: SectorEntity = {
+          id: decoyId,
+          type: 'DRONE',
+          factionId: wingman.factionId,
+          name: `${wingman.name} Sensor Ghost`,
+          hullClass: 'DECOY',
+          hullSeed: 9999,
+          x: dx,
+          z: dz,
+          vx: wingman.vx,
+          vz: wingman.vz,
+          yaw: wingman.yaw,
+          angularVelocity: 0,
+          hp: 1,
+          maxHp: 1,
+          shields: 0,
+          maxShields: 0,
+          energy: 50,
+          maxEnergy: 50,
+          powerGridMax: 0,
+          powerGridUsed: 0,
+          cpuMax: 0,
+          cpuUsed: 0,
+          state: 'ENGAGE',
+          inputs: {
+            forward: true,
+            reverse: false,
+            turnLeft: false,
+            turnRight: false,
+            brake: false,
+            firePrimary: false,
+            fireTactical: false,
+          },
+          lastHitTime: 0,
+          fireCooldown: 999,
+          isDecoy: true,
+          decoyOwnerId: wingman.id,
+          decoyTtl: 6.0,
+        };
+
+        this.entities.set(decoyId, decoyEntity);
+        wingman.abilityCooldown = 30.0;
+        wingman.abilityMaxCooldown = 30.0;
+
+        this.pendingEvents.push({
+          type: 'ABILITY_TRIGGERED',
+          sourceId: wingman.id,
+          x: dx,
+          z: dz,
+          data: {
+            ability: 'DECOY_HOLO',
+            decoyId,
+            ttl: 6.0,
+            x: dx,
+            z: dz,
+            message: `👻 Holographic decoy deployed by ${wingman.name} (TTL 6.0s).`,
+          },
+        });
+
+        return {
+          success: true,
+          ability: 'DECOY_HOLO',
+          cooldownRemaining: 30.0,
+          message: `Holographic sensor ghost emitted! Enemy lock broke.`,
+        };
+      }
+
+      case 'BIO_SPORE_CLOUD': {
+        const cloudId = `cloud_${wingman.id}_${Date.now()}`;
+        this.sporeClouds.push({
+          id: cloudId,
+          x: wingman.x,
+          z: wingman.z,
+          radius: 40.0,
+          ttl: 5.0,
+          maxTtl: 5.0,
+          ownerId: wingman.id,
+          dps: 14.0,
+        });
+
+        wingman.abilityCooldown = 35.0;
+        wingman.abilityMaxCooldown = 35.0;
+
+        this.pendingEvents.push({
+          type: 'ABILITY_TRIGGERED',
+          sourceId: wingman.id,
+          x: wingman.x,
+          z: wingman.z,
+          data: {
+            ability: 'BIO_SPORE_CLOUD',
+            cloudId,
+            radius: 40.0,
+            ttl: 5.0,
+            x: wingman.x,
+            z: wingman.z,
+            message: `☣️ Corrosive bio-spore cloud vented by ${wingman.name} (40m radius, 14 armor DoT/s).`,
+          },
+        });
+
+        return {
+          success: true,
+          ability: 'BIO_SPORE_CLOUD',
+          cooldownRemaining: 35.0,
+          message: `Bio-Spore cloud vented! Caustic spore field active for 5s.`,
+        };
+      }
+
+      case 'HARMONIC_SHIELD': {
+        wingman.harmonicShieldActive = true;
+        wingman.abilityActiveTimer = 6.0;
+        wingman.abilityCooldown = 30.0;
+        wingman.abilityMaxCooldown = 30.0;
+
+        this.pendingEvents.push({
+          type: 'ABILITY_TRIGGERED',
+          sourceId: wingman.id,
+          x: wingman.x,
+          z: wingman.z,
+          data: {
+            ability: 'HARMONIC_SHIELD',
+            duration: 6.0,
+            x: wingman.x,
+            z: wingman.z,
+            message: `💎 Crystalline harmonic shield activated by ${wingman.name} (50% absorption, 25% reflection for 6s).`,
+          },
+        });
+
+        return {
+          success: true,
+          ability: 'HARMONIC_SHIELD',
+          cooldownRemaining: 30.0,
+          message: `Harmonic crystalline barrier online for 6s!`,
+        };
+      }
+
+      default:
+        return {
+          success: false,
+          error: 'UNKNOWN_ABILITY',
+          message: `Unknown ability: ${ability}`,
+        };
+    }
+  }
+
   public removePlayer(playerId: string): void {
     this.clients.delete(playerId);
     this.entities.delete(`player_${playerId}`);
@@ -1289,6 +1664,41 @@ export class SectorRoom {
     this.processHaulerAI(dt);
     this.processScavengerAI(dt);
     this.processWingmanAI(dt, now);
+
+    // 1b. Process Bio-Spore Clouds (Corrosive Armor DoT)
+    if (this.sporeClouds.length > 0) {
+      const livingClouds: SporeCloud[] = [];
+      for (const cloud of this.sporeClouds) {
+        cloud.ttl -= dt;
+        if (cloud.ttl <= 0) continue;
+        livingClouds.push(cloud);
+
+        const dpsTick = cloud.dps * dt;
+        for (const entity of this.entities.values()) {
+          if (entity.state === 'DESTROYED' || entity.type === 'PLAYER' || entity.type === 'WINGMAN' || entity.isEscapePod) continue;
+          const dist = Math.hypot(entity.x - cloud.x, entity.z - cloud.z);
+          if (dist <= cloud.radius) {
+            entity.hp = Math.max(0, entity.hp - dpsTick);
+            entity.lastHitTime = now;
+            if (entity.hp <= 0) {
+              this.handleEntityDestruction(entity, cloud.ownerId);
+            }
+          }
+        }
+      }
+      this.sporeClouds = livingClouds;
+    }
+
+    // 1c. Process Holographic Decoy Lifespans
+    for (const entity of this.entities.values()) {
+      if (entity.isDecoy && entity.state !== 'DESTROYED') {
+        entity.decoyTtl = (entity.decoyTtl || 0) - dt;
+        if (entity.decoyTtl <= 0) {
+          entity.state = 'DESTROYED';
+          this.entities.delete(entity.id);
+        }
+      }
+    }
 
     // 2. Integrate Kinematics for all living vessels
     for (const entity of this.entities.values()) {
@@ -1612,16 +2022,34 @@ export class SectorRoom {
   }
 
   private processDroneAI(dt: number): void {
-    // Locate nearest active player ship in sector
+    // Locate nearest active player ship (or active holo-decoy!) in sector
     let targetPlayer: SectorEntity | null = null;
     let minDistance = Infinity;
 
+    // Day 35: Decoy Attraction Priority
+    let activeDecoy: SectorEntity | null = null;
+    let minDecoyDist = Infinity;
     for (const entity of this.entities.values()) {
-      if (entity.type === 'PLAYER' && entity.state !== 'DESTROYED') {
-        const dist = Math.sqrt(entity.x * entity.x + entity.z * entity.z);
-        if (dist < minDistance) {
-          minDistance = dist;
-          targetPlayer = entity;
+      if (entity.isDecoy && entity.state !== 'DESTROYED') {
+        const dist = Math.hypot(entity.x, entity.z);
+        if (dist < minDecoyDist) {
+          minDecoyDist = dist;
+          activeDecoy = entity;
+        }
+      }
+    }
+
+    if (activeDecoy) {
+      targetPlayer = activeDecoy;
+      minDistance = minDecoyDist;
+    } else {
+      for (const entity of this.entities.values()) {
+        if (entity.type === 'PLAYER' && entity.state !== 'DESTROYED') {
+          const dist = Math.sqrt(entity.x * entity.x + entity.z * entity.z);
+          if (dist < minDistance) {
+            minDistance = dist;
+            targetPlayer = entity;
+          }
         }
       }
     }
@@ -1997,6 +2425,81 @@ export class SectorRoom {
       const friendlySquadron: SectorEntity[] = [flagship, ...wingmen];
 
       for (const wingman of wingmen) {
+        // Cooldown & Active Timer Tick Down
+        if (wingman.abilityCooldown && wingman.abilityCooldown > 0) {
+          wingman.abilityCooldown = Math.max(0, wingman.abilityCooldown - dt);
+        }
+        if (wingman.abilityActiveTimer && wingman.abilityActiveTimer > 0) {
+          wingman.abilityActiveTimer = Math.max(0, wingman.abilityActiveTimer - dt);
+          if (wingman.abilityActiveTimer <= 0) {
+            wingman.harmonicShieldActive = false;
+          }
+        }
+
+        // Autonomous Signature Fleet Ability Trigger Under Tactical Distress
+        if ((wingman.abilityCooldown || 0) <= 0) {
+          let ab = wingman.specialAbility || 'POINT_DEFENSE';
+          if (ab === 'PLASMA_BARRAGE') ab = 'PLASMA_LANCE';
+          if (ab === 'SHOCKWAVE') ab = 'HARMONIC_SHIELD';
+
+          if (ab === 'POINT_DEFENSE') {
+            const hostileProjNear = this.projectiles.some((p) => {
+              const isFriendly = p.ownerId === wingman.id || (wingman.ownerPlayerId && p.ownerId === `player_${wingman.ownerPlayerId}`) || p.ownerId.startsWith('wingman_');
+              if (isFriendly) return false;
+              const dToWingman = Math.hypot(p.x - wingman.x, p.z - wingman.z);
+              const dToFlagship = Math.hypot(p.x - flagship.x, p.z - flagship.z);
+              return dToWingman <= 32.0 || dToFlagship <= 32.0;
+            });
+            if (hostileProjNear) {
+              this.triggerWingmanAbility(wingman);
+            }
+          } else if (ab === 'PLASMA_LANCE') {
+            let targetCandidate: SectorEntity | null = null;
+            let minCandDist = 95.0;
+            for (const other of this.entities.values()) {
+              if (other.state === 'DESTROYED' || other.type === 'PLAYER' || other.type === 'WINGMAN' || other.isEscapePod) continue;
+              const dx = other.x - wingman.x;
+              const dz = other.z - wingman.z;
+              const dist = Math.hypot(dx, dz);
+              if (dist <= minCandDist) {
+                const aimYaw = Math.atan2(dx, dz);
+                let diff = aimYaw - wingman.yaw;
+                while (diff < -Math.PI) diff += Math.PI * 2;
+                while (diff > Math.PI) diff -= Math.PI * 2;
+                if (Math.abs(diff) < 0.6) {
+                  minCandDist = dist;
+                  targetCandidate = other;
+                }
+              }
+            }
+            if (targetCandidate) {
+              this.triggerWingmanAbility(wingman, targetCandidate.id);
+            }
+          } else if (ab === 'DECOY_HOLO') {
+            const wingmanDistress = wingman.shields <= 0;
+            const flagshipDistress = flagship.shields < (flagship.maxShields * 0.25);
+            if (wingmanDistress || flagshipDistress) {
+              this.triggerWingmanAbility(wingman);
+            }
+          } else if (ab === 'BIO_SPORE_CLOUD') {
+            let hostileCount = 0;
+            for (const other of this.entities.values()) {
+              if (other.state === 'DESTROYED' || other.type === 'PLAYER' || other.type === 'WINGMAN' || other.isEscapePod) continue;
+              const dist = Math.hypot(other.x - wingman.x, other.z - wingman.z);
+              if (dist <= 45.0) hostileCount++;
+            }
+            if (hostileCount >= 2) {
+              this.triggerWingmanAbility(wingman);
+            }
+          } else if (ab === 'HARMONIC_SHIELD') {
+            const tookRecentDamage = (now - wingman.lastHitTime) < 1500;
+            const shieldsLow = wingman.shields < (wingman.maxShields * 0.50);
+            if (tookRecentDamage && shieldsLow) {
+              this.triggerWingmanAbility(wingman);
+            }
+          }
+        }
+
         // A. Soft Proximity Repulsion (r < 25m) to avoid friendly overlap & rigid collision jitter
         let repulseVx = 0;
         let repulseVz = 0;
@@ -2456,6 +2959,45 @@ export class SectorRoom {
   private applyDamage(target: SectorEntity, proj: Projectile): void {
     target.lastHitTime = Date.now();
     let damageRemaining = proj.damage;
+
+    // Day 35: Lithos Harmonic Resonant Shield (50% absorption, 25% reflection)
+    if (target.harmonicShieldActive) {
+      const absorbed = damageRemaining * 0.50;
+      const reflected = damageRemaining * 0.25;
+      damageRemaining = absorbed;
+
+      if (proj.ownerId) {
+        const attacker = this.entities.get(proj.ownerId);
+        if (attacker && attacker.id !== target.id && attacker.state !== 'DESTROYED') {
+          if (attacker.shields > 0) {
+            if (attacker.shields >= reflected) {
+              attacker.shields -= reflected;
+            } else {
+              const rem = reflected - attacker.shields;
+              attacker.shields = 0;
+              attacker.hp = Math.max(0, attacker.hp - rem);
+            }
+          } else {
+            attacker.hp = Math.max(0, attacker.hp - reflected);
+          }
+
+          this.pendingEvents.push({
+            type: 'HIT',
+            sourceId: target.id,
+            targetId: attacker.id,
+            damage: Math.round(reflected * 10) / 10,
+            hitShield: attacker.shields > 0,
+            x: attacker.x,
+            z: attacker.z,
+          });
+
+          if (attacker.hp <= 0) {
+            this.handleEntityDestruction(attacker, target.id);
+          }
+        }
+      }
+    }
+
     const hadShields = target.shields > 0;
     let hitShield = false;
 
@@ -2566,6 +3108,7 @@ export class SectorRoom {
 
   private handleEntityDestruction(target: SectorEntity, killerId: string): void {
     target.state = 'DESTROYED';
+    const wreckId = `wreck_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
 
     this.pendingEvents.push({
       type: 'DESTROYED',
@@ -2575,7 +3118,7 @@ export class SectorRoom {
       z: target.z,
     });
 
-    // Day 34: Wingman Destruction
+    // Day 34 & Day 35: Wingman Destruction & High-Value Salvage
     if (target.type === 'WINGMAN') {
       this.pendingEvents.push({
         type: 'WINGMAN_DESTROYED',
@@ -2586,12 +3129,28 @@ export class SectorRoom {
           wingmanSlot: target.wingmanSlot,
           ownerPlayerId: target.ownerPlayerId,
           name: target.name,
+          wreckId,
           message: `🚨 WINGMAN LOST: ${target.name} destroyed!`,
         },
       });
       if (target.shipId) {
         db.query(`UPDATE player_fleet SET status = 'DESTROYED', deployment_slot = NULL WHERE id = $1`, [target.shipId]).catch(console.error);
       }
+
+      // Spawn rare escort salvage cargo container
+      const escortCanisterId = `loot_escort_wreck_${Date.now()}`;
+      this.containers.push({
+        id: escortCanisterId,
+        x: Math.round(target.x * 10) / 10,
+        z: Math.round(target.z * 10) / 10,
+        title: `${target.name} Salvage Pod`,
+        rarity: 'RARE',
+        items: [
+          { commodityId: 'COMM_ALLOY', name: 'Plasteel Salvage Alloy', quantity: 12, category: 'COMMODITY', unitValue: 120 },
+          { commodityId: 'COMM_FUEL', name: 'Recovered Deuterium Core', quantity: 6, category: 'COMMODITY', unitValue: 90 },
+        ],
+        createdAt: Date.now(),
+      });
     }
 
     // Day 17: Faction standing penalty for destroying Hegemony patrol drone
@@ -2690,9 +3249,7 @@ export class SectorRoom {
       }
     }
 
-    // Day 15: Spawn Persistent 3D Ship Wreck for Laser Scrap Mining & Towing
-
-    const wreckId = `wreck_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    // Day 15 & Day 35: Spawn Persistent 3D Ship Wreck for Laser Scrap Mining, Towing & Refurbishment
     const wreckEntity: SectorWreckEntity = {
       id: wreckId,
       sectorId: this.sectorId,
@@ -2707,7 +3264,7 @@ export class SectorRoom {
       rotation: target.yaw,
       scrapRemaining: 120,
       maxScrap: 120,
-      hullIntactness: 0.75,
+      hullIntactness: target.type === 'WINGMAN' ? 0.45 : 0.75,
       isTowed: false,
       towedByAccountId: null,
     };
@@ -2729,7 +3286,10 @@ export class SectorRoom {
       wreckEntity.z,
       wreckEntity.rotation,
       wreckEntity.maxScrap,
-      wreckEntity.hullIntactness
+      wreckEntity.hullIntactness,
+      wreckId,
+      target.hullClass,
+      target.shipId
     ).catch((err) => console.error('[WreckService] Error persisting wreck:', err));
 
     if (target.type === 'PLAYER') {
@@ -2970,6 +3530,22 @@ export class SectorRoom {
         wingmanSlot: e.wingmanSlot,
         tacticalOrder: e.tacticalOrder,
         shipId: e.shipId,
+        // Day 35 Ability Telemetry
+        specialAbility: e.specialAbility,
+        abilityCooldown: typeof e.abilityCooldown === 'number' ? Math.round(e.abilityCooldown * 10) / 10 : undefined,
+        abilityMaxCooldown: e.abilityMaxCooldown,
+        harmonicShieldActive: e.harmonicShieldActive,
+        isDecoy: e.isDecoy,
+      })),
+      sporeClouds: this.sporeClouds.map((sc) => ({
+        id: sc.id,
+        x: Math.round(sc.x * 10) / 10,
+        z: Math.round(sc.z * 10) / 10,
+        radius: sc.radius,
+        ttl: Math.round(sc.ttl * 10) / 10,
+        maxTtl: sc.maxTtl,
+        ownerId: sc.ownerId,
+        dps: sc.dps,
       })),
       convoys: Array.from(this.entities.values())
         .filter((e) => e.isConvoyHauler && e.state !== 'DESTROYED')
@@ -3158,6 +3734,11 @@ export class SectorCombatManager {
     return await room.spawnWingmenForPlayer(playerId, overrideWingmen);
   }
 
+  public triggerWingmanAbility(sectorId: number, playerId: string, slot: number, targetEntityId?: string) {
+    const room = this.getOrCreateRoom(sectorId);
+    return room.triggerPlayerWingmanAbility(playerId, slot, targetEntityId);
+  }
+
   public handleConnection(socket: WebSocket, sectorId: number, playerId: string, shipData?: any): void {
 
     const room = this.getOrCreateRoom(sectorId);
@@ -3191,6 +3772,24 @@ export class SectorCombatManager {
                 targetEntityId: msg.targetEntityId,
                 affectedWingmenCount: res.affectedWingmenCount,
                 message: res.message,
+              })
+            );
+          } catch {
+            // Socket might be closed
+          }
+        } else if (msg.type === 'C_TRIGGER_ABILITY' || msg.type === 'TRIGGER_ABILITY') {
+          const slot = Number(msg.slot || 1);
+          const res = room.triggerPlayerWingmanAbility(playerId, slot, msg.targetEntityId);
+          try {
+            socket.send(
+              JSON.stringify({
+                type: 'S_ABILITY_ACK',
+                success: res.success,
+                slot,
+                ability: res.ability,
+                cooldownRemaining: res.cooldownRemaining,
+                message: res.message,
+                error: res.error,
               })
             );
           } catch {

@@ -547,6 +547,20 @@ export class CombatClient {
     }
   }
 
+  // Day 35: Signature Fleet Ability Dispatch
+  private lastEscortAlarmTime: number = 0;
+  public sendTriggerAbility(slot: number, targetEntityId?: string): void {
+    if (this.combatSocket && this.combatSocket.readyState === WebSocket.OPEN) {
+      this.combatSocket.send(
+        JSON.stringify({
+          type: 'C_TRIGGER_ABILITY',
+          slot,
+          targetEntityId: targetEntityId || this.targetedEntityId || undefined,
+        })
+      );
+    }
+  }
+
   public handleCombatSnapshot(snapshot: any): void {
     this.callbacks.onCombatSnapshot?.(snapshot);
     const scene = this.callbacks.getScene();
@@ -1245,8 +1259,46 @@ export class CombatClient {
           const winFaction = ev.data?.winningFaction || 'Allies';
           this.callbacks.showApNotification(`🏆 SKIRMISH VICTORY: ${winFaction} claims sector front! (+15 Influence)`, false);
           this.callbacks.refreshFactionStandings();
+        } else if (ev.type === 'ABILITY_TRIGGERED') {
+          const ability = ev.data?.ability;
+          const pos = new THREE.Vector3(ev.x || 0, 0, ev.z || 0);
+          if (ability === 'POINT_DEFENSE') {
+            this.audio.playPointDefenseSound();
+            this.combatVfx.emitPointDefenseGrid(pos, ev.data?.radius || 35);
+            this.callbacks.showApNotification(`🛡️ POINT-DEFENSE GRID ENGAGED // ${ev.data?.destroyedProjectilesCount || 0} Projectiles Neutralized`, false);
+          } else if (ability === 'PLASMA_LANCE') {
+            this.audio.playPlasmaLanceSound();
+            const targetPos = new THREE.Vector3(ev.data?.targetX || 0, 0, ev.data?.targetZ || 0);
+            this.combatVfx.emitPlasmaLanceBeam(pos, targetPos);
+            this.callbacks.showApNotification(`⚡ PLASMA LANCE DISCHARGE // 70 DMG (60% Shield Piercing)`, false);
+          } else if (ability === 'DECOY_HOLO') {
+            this.audio.playDecoyHoloSound();
+            this.combatVfx.emitHoloDecoyGlow(new THREE.Vector3(ev.data?.x || pos.x, 0, ev.data?.z || pos.z));
+            this.callbacks.showApNotification('👻 HOLOGRAPHIC SENSOR GHOST DEPLOYED // Hostile Locks Broken', false);
+          } else if (ability === 'BIO_SPORE_CLOUD') {
+            this.audio.playBioSporeSound();
+            this.combatVfx.emitBioSporeCloud(pos, ev.data?.radius || 40);
+            this.callbacks.showApNotification('☣️ BIO-SPORE CORROSIVE CLOUD VENTED // 14 Hull DoT/s', false);
+          } else if (ability === 'HARMONIC_SHIELD') {
+            this.audio.playHarmonicShieldSound();
+            this.combatVfx.emitHarmonicBarrier(pos);
+            this.callbacks.showApNotification('💎 HARMONIC CRYSTALLINE BARRIER ONLINE // 50% Absorb, 25% Reflect', false);
+          }
+        } else if (ev.type === 'WINGMAN_DESTROYED') {
+          this.audio.playShipExplosionSound();
+          this.callbacks.showApNotification(ev.data?.message || '🚨 WINGMAN DESTROYED // Derelict wreck spawned', true);
         }
       }
+    }
+
+    // Day 35: Monitor wingman critical vitals for alarm
+    const livingWingmen = (snapshot.entities || []).filter((e: any) => e.type === 'WINGMAN' && e.state !== 'DESTROYED');
+    const hasCriticalWingman = livingWingmen.some((w: any) => w.hp > 0 && w.hp < w.maxHp * 0.25);
+    const now = Date.now();
+    if (hasCriticalWingman && now - this.lastEscortAlarmTime > 4000) {
+      this.lastEscortAlarmTime = now;
+      this.audio.playEscortCriticalAlarm();
+      this.callbacks.showApNotification('🚨 ESCORT HULL INTEGRITY CRITICAL (< 25%)', true);
     }
   }
 

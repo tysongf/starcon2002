@@ -2241,6 +2241,11 @@ class GameEngine {
           break;
         }
         case 'Digit1':
+          if (e.shiftKey) {
+            e.preventDefault();
+            this.combatClient.sendTriggerAbility(1);
+            break;
+          }
           if (this.tacticalCommandWheel.isOpen) {
             this.tacticalCommandWheel.executeOrder('FOCUS_TARGET');
             this.tacticalCommandWheel.close();
@@ -2250,6 +2255,11 @@ class GameEngine {
           }
           break;
         case 'Digit2':
+          if (e.shiftKey) {
+            e.preventDefault();
+            this.combatClient.sendTriggerAbility(2);
+            break;
+          }
           if (this.tacticalCommandWheel.isOpen) {
             this.tacticalCommandWheel.executeOrder('ESCORT_FLAGSHIP');
             this.tacticalCommandWheel.close();
@@ -2259,6 +2269,11 @@ class GameEngine {
           }
           break;
         case 'Digit3':
+          if (e.shiftKey) {
+            e.preventDefault();
+            this.combatClient.sendTriggerAbility(3);
+            break;
+          }
           if (this.tacticalCommandWheel.isOpen) {
             this.tacticalCommandWheel.executeOrder('FLANK_HARASS');
             this.tacticalCommandWheel.close();
@@ -2268,6 +2283,11 @@ class GameEngine {
           }
           break;
         case 'Digit4':
+          if (e.shiftKey) {
+            e.preventDefault();
+            this.combatClient.sendTriggerAbility(4);
+            break;
+          }
           if (this.tacticalCommandWheel.isOpen) {
             this.tacticalCommandWheel.executeOrder('REGROUP_HOLD');
             this.tacticalCommandWheel.close();

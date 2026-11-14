@@ -114,5 +114,28 @@ export const shipyardRoutes: FastifyPluginAsync = async (server) => {
     }
     reply.send(result);
   });
+
+  // 8. Refurbish Recovered Derelict Escort Wreck (Day 35: 50% discount)
+  server.post('/fleet/refurbish', async (req, reply) => {
+    const body = (req.body || {}) as {
+      accountId?: string;
+      wreckId: string;
+      colonyId?: string;
+    };
+    const accountId = body.accountId || 'acc_sol_captain';
+    if (!body.wreckId) {
+      return reply.status(400).send({ success: false, error: 'wreckId is required.' });
+    }
+
+    const result = await shipyardService.refurbishEscortWreck(
+      accountId,
+      body.wreckId,
+      body.colonyId
+    );
+    if (!result.success) {
+      return reply.status(400).send(result);
+    }
+    reply.send(result);
+  });
 };
 

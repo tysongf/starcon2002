@@ -20,6 +20,10 @@ export class DatabaseManager {
   private pglite: PGlite | null = null;
   public engineType: 'postgresql-remote' | 'pglite-embedded' = 'pglite-embedded';
 
+  public get isInitialized(): boolean {
+    return this.pgPool !== null || this.pglite !== null;
+  }
+
   public async initialize(): Promise<void> {
     const dbUrl = process.env.DATABASE_URL;
 
@@ -44,6 +48,13 @@ export class DatabaseManager {
       const dataDir = path.resolve(process.cwd(), '.pgdata');
       if (!fs.existsSync(dataDir)) {
         fs.mkdirSync(dataDir, { recursive: true });
+      } else {
+        const pidPath = path.join(dataDir, 'postmaster.pid');
+        if (fs.existsSync(pidPath)) {
+          try {
+            fs.unlinkSync(pidPath);
+          } catch {}
+        }
       }
       this.pglite = new PGlite(dataDir);
       this.engineType = 'pglite-embedded';
@@ -79,6 +90,13 @@ export class DatabaseManager {
           await this.exec(sql);
           await this.query('INSERT INTO _migrations (name) VALUES ($1)', [file]);
           console.log(`[DB] Migration ${file} applied successfully.`);
+
+          // Ensure prerequisite seed data exists before downstream migrations run
+          if (file === '001_initial_schema.sql') {
+            await this.seedFile('001_initial_world_seed.sql');
+          } else if (file === '002_convoys_and_skirmishes.sql') {
+            await this.seedFile('002_convoys_and_skirmishes_seed.sql');
+          }
         }
       }
     } else {
@@ -101,12 +119,20 @@ export class DatabaseManager {
           .filter(f => f.endsWith('.sql'))
           .sort();
         for (const seedFile of seedFiles) {
-          console.log(`[DB] Applying seed: ${seedFile}...`);
-          const seedSql = fs.readFileSync(path.join(seedsDir, seedFile), 'utf-8');
-          await this.exec(seedSql);
-          console.log(`[DB] Seed ${seedFile} applied successfully.`);
+          await this.seedFile(seedFile);
         }
       }
+    }
+  }
+
+  private async seedFile(fileName: string): Promise<void> {
+    const seedsDir = path.resolve(__dirname, 'seeds');
+    const filePath = path.join(seedsDir, fileName);
+    if (fs.existsSync(filePath)) {
+      console.log(`[DB] Applying seed: ${fileName}...`);
+      const seedSql = fs.readFileSync(filePath, 'utf-8');
+      await this.exec(seedSql);
+      console.log(`[DB] Seed ${fileName} applied successfully.`);
     }
   }
 

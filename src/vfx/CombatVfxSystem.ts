@@ -245,6 +245,160 @@ export class CombatVfxSystem {
     }
   }
 
+  /**
+   * Day 35: Sol Point-Defense Spherical Kinetic Flak Perimeter
+   */
+  public emitPointDefenseGrid(origin: THREE.Vector3, radius: number = 35): void {
+    let spawned = 0;
+    const count = 40;
+    for (const p of this.particles) {
+      if (!p.active) {
+        p.active = true;
+        const angle = Math.random() * Math.PI * 2;
+        const dist = radius * (0.8 + Math.random() * 0.2);
+        p.x = origin.x + Math.sin(angle) * dist;
+        p.y = (Math.random() - 0.5) * 6.0;
+        p.z = origin.z + Math.cos(angle) * dist;
+
+        p.vx = (Math.random() - 0.5) * 12.0;
+        p.vy = (Math.random() - 0.5) * 6.0;
+        p.vz = (Math.random() - 0.5) * 12.0;
+
+        p.r = 0.95;
+        p.g = 0.85;
+        p.b = 0.35; // Bright kinetic golden-yellow flak sparks
+        p.life = 0;
+        p.maxLife = 0.35 + Math.random() * 0.2;
+
+        spawned++;
+        if (spawned >= count) break;
+      }
+    }
+  }
+
+  /**
+   * Day 35: Vaelic High-Energy Piercing Plasma Lance Beam
+   */
+  public emitPlasmaLanceBeam(from: THREE.Vector3, to: THREE.Vector3): void {
+    const steps = 30;
+    let spawned = 0;
+    for (let i = 0; i < steps; i++) {
+      const frac = i / steps;
+      for (const p of this.particles) {
+        if (!p.active) {
+          p.active = true;
+          p.x = from.x + (to.x - from.x) * frac + (Math.random() - 0.5) * 1.5;
+          p.y = from.y + (to.y - from.y) * frac + (Math.random() - 0.5) * 1.5;
+          p.z = from.z + (to.z - from.z) * frac + (Math.random() - 0.5) * 1.5;
+
+          p.vx = (Math.random() - 0.5) * 6.0;
+          p.vy = (Math.random() - 0.5) * 4.0;
+          p.vz = (Math.random() - 0.5) * 6.0;
+
+          p.r = 0.75;
+          p.g = 0.2;
+          p.b = 1.0; // Violet plasma ionization
+          p.life = 0;
+          p.maxLife = 0.45;
+
+          spawned++;
+          break;
+        }
+      }
+    }
+  }
+
+  /**
+   * Day 35: Kryll Holographic Sensor Ghost Decoy Shimmer
+   */
+  public emitHoloDecoyGlow(pos: THREE.Vector3): void {
+    let spawned = 0;
+    const count = 35;
+    for (const p of this.particles) {
+      if (!p.active) {
+        p.active = true;
+        p.x = pos.x + (Math.random() - 0.5) * 8.0;
+        p.y = pos.y + (Math.random() - 0.5) * 4.0;
+        p.z = pos.z + (Math.random() - 0.5) * 8.0;
+
+        p.vx = (Math.random() - 0.5) * 4.0;
+        p.vy = (Math.random() - 0.5) * 2.0;
+        p.vz = (Math.random() - 0.5) * 4.0;
+
+        p.r = 0.2;
+        p.g = 0.95;
+        p.b = 0.85; // Cyan sensor ghost shimmer
+        p.life = 0;
+        p.maxLife = 0.6;
+
+        spawned++;
+        if (spawned >= count) break;
+      }
+    }
+  }
+
+  /**
+   * Day 35: Phorid Corrosive Bio-Spore Expanding Cloud
+   */
+  public emitBioSporeCloud(pos: THREE.Vector3, radius: number = 40): void {
+    let spawned = 0;
+    const count = 50;
+    for (const p of this.particles) {
+      if (!p.active) {
+        p.active = true;
+        const angle = Math.random() * Math.PI * 2;
+        const dist = Math.random() * radius;
+        p.x = pos.x + Math.sin(angle) * dist;
+        p.y = (Math.random() - 0.5) * 8.0;
+        p.z = pos.z + Math.cos(angle) * dist;
+
+        p.vx = (Math.random() - 0.5) * 3.0;
+        p.vy = (Math.random() - 0.5) * 2.0;
+        p.vz = (Math.random() - 0.5) * 3.0;
+
+        p.r = 0.15;
+        p.g = 0.9;
+        p.b = 0.2; // Emerald caustic acid green
+        p.life = 0;
+        p.maxLife = 0.85;
+
+        spawned++;
+        if (spawned >= count) break;
+      }
+    }
+  }
+
+  /**
+   * Day 35: Lithos Harmonic Resonant Crystalline Barrier
+   */
+  public emitHarmonicBarrier(pos: THREE.Vector3): void {
+    let spawned = 0;
+    const count = 45;
+    for (const p of this.particles) {
+      if (!p.active) {
+        p.active = true;
+        const angle = Math.random() * Math.PI * 2;
+        const radius = 18.0 + Math.random() * 6.0;
+        p.x = pos.x + Math.sin(angle) * radius;
+        p.y = (Math.random() - 0.5) * 8.0;
+        p.z = pos.z + Math.cos(angle) * radius;
+
+        p.vx = (Math.random() - 0.5) * 2.0;
+        p.vy = (Math.random() - 0.5) * 2.0;
+        p.vz = (Math.random() - 0.5) * 2.0;
+
+        p.r = 0.95;
+        p.g = 0.8;
+        p.b = 0.15; // Prismatic resonant amber crystal
+        p.life = 0;
+        p.maxLife = 0.7;
+
+        spawned++;
+        if (spawned >= count) break;
+      }
+    }
+  }
+
   public update(dt: number): void {
     const posAttr = this.mesh.geometry.attributes.position as THREE.BufferAttribute;
     const colAttr = this.mesh.geometry.attributes.color as THREE.BufferAttribute;
