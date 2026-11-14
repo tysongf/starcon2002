@@ -179,6 +179,12 @@ export class HyperspaceFlightController {
         this.deployDecoy();
       }
     });
+
+    this.hudAutopilotBadge?.addEventListener('click', () => {
+      if (this.isInHyperspace) {
+        this.toggleAutopilot();
+      }
+    });
   }
 
   private initInputListeners(): void {
@@ -203,7 +209,7 @@ export class HyperspaceFlightController {
       }
 
       // Toggle Autopilot Assist
-      if (e.code === 'KeyX') {
+      if (e.code === 'KeyX' || (e.code === 'KeyA' && (e.ctrlKey || e.altKey))) {
         this.toggleAutopilot();
       }
 
@@ -489,22 +495,29 @@ export class HyperspaceFlightController {
     if (this.isAutopilotActive && this.activeCourse) {
       const tx = this.activeCourse.targetCoords[0];
       const ty = this.activeCourse.targetCoords[1];
-      const targetAngle = Math.atan2(ty - this.coordinates[1], tx - this.coordinates[0]);
+      const dist = Math.hypot(tx - this.coordinates[0], ty - this.coordinates[1]);
 
-      // Smooth angular interpolation
-      let angleDiff = targetAngle - this.heading;
-      while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-      while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-
-      const maxTurn = this.turnRate * delta;
-      if (Math.abs(angleDiff) <= maxTurn) {
-        this.heading = targetAngle;
+      if (dist <= 8.0) {
+        this.disengageAutopilot();
+        this.ctx.showNotification?.(`Autopilot Disengaged: Arrived at ${this.activeCourse.targetName} gravity well.`);
       } else {
-        this.heading += Math.sign(angleDiff) * maxTurn;
-      }
+        const targetAngle = Math.atan2(ty - this.coordinates[1], tx - this.coordinates[0]);
 
-      // Autopilot automatically applies forward cruising burn
-      this.keys.forward = true;
+        // Smooth angular interpolation
+        let angleDiff = targetAngle - this.heading;
+        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+
+        const maxTurn = this.turnRate * delta;
+        if (Math.abs(angleDiff) <= maxTurn) {
+          this.heading = targetAngle;
+        } else {
+          this.heading += Math.sign(angleDiff) * maxTurn;
+        }
+
+        // Autopilot automatically applies forward cruising burn
+        this.keys.forward = true;
+      }
     } else {
       if (this.keys.left) this.heading -= this.turnRate * delta;
       if (this.keys.right) this.heading += this.turnRate * delta;

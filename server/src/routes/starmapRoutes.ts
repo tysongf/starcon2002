@@ -392,5 +392,64 @@ export const starmapRoutes: FastifyPluginAsync = async (server) => {
     }
     reply.send(result);
   });
+
+  // 20. Get Galactic Expedition Summary & Telemetry
+  server.get('/expedition/summary', async (req, reply) => {
+    const query = (req.query || {}) as { accountId?: string; playerId?: string };
+    const accountId = query.accountId || query.playerId || 'acc_sol_captain';
+    const summary = await starmapService.getExpeditionSummary(accountId);
+    reply.send({
+      success: true,
+      summary,
+    });
+  });
+
+  // 21. Record System Visit in Expedition Ledger
+  server.post('/expedition/visit', async (req, reply) => {
+    const body = (req.body || {}) as { accountId?: string; playerId?: string; systemId: string | number };
+    const accountId = body.accountId || body.playerId || 'acc_sol_captain';
+    if (!body.systemId) {
+      return reply.status(400).send({ success: false, error: 'systemId is required.' });
+    }
+    starmapService.recordSystemVisit(accountId, body.systemId);
+    const summary = await starmapService.getExpeditionSummary(accountId);
+    reply.send({
+      success: true,
+      systemsVisited: summary.systemsVisited,
+    });
+  });
+
+  // 22. Record Custom Expedition Metric
+  server.post('/expedition/record-metric', async (req, reply) => {
+    const body = (req.body || {}) as {
+      accountId?: string;
+      playerId?: string;
+      metric: 'blipsEvaded' | 'portalsTransited' | 'sosBeaconsBroadcast' | 'interceptionsSurvived';
+      delta?: number;
+    };
+    const accountId = body.accountId || body.playerId || 'acc_sol_captain';
+    if (!body.metric) {
+      return reply.status(400).send({ success: false, error: 'metric is required.' });
+    }
+    starmapService.recordExpeditionMetric(accountId, body.metric, body.delta ?? 1);
+    const summary = await starmapService.getExpeditionSummary(accountId);
+    reply.send({
+      success: true,
+      summary,
+    });
+  });
+
+  // 23. Reset Expedition Ledger (Debug / Baseline)
+  server.post('/expedition/reset', async (req, reply) => {
+    const body = (req.body || {}) as { accountId?: string; playerId?: string };
+    const accountId = body.accountId || body.playerId || 'acc_sol_captain';
+    starmapService.resetExpedition(accountId);
+    const summary = await starmapService.getExpeditionSummary(accountId);
+    reply.send({
+      success: true,
+      message: 'Galactic expedition telemetry reset.',
+      summary,
+    });
+  });
 };
 

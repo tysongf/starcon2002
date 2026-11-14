@@ -8763,6 +8763,8 @@ kbd {
   border-radius: 4px;
   font-weight: 700;
   letter-spacing: 0.05em;
+  cursor: pointer;
+  user-select: none;
 }
 
 .hyper-badge.standby {

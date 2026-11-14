@@ -1167,6 +1167,13 @@ export class SectorRoom {
 
     const spawned: SectorEntity[] = [];
 
+    // Clear any previous wingmen for this player before spawning fresh roster
+    for (const [id, entity] of this.entities.entries()) {
+      if (entity.type === 'WINGMAN' && entity.ownerPlayerId === playerId) {
+        this.entities.delete(id);
+      }
+    }
+
     for (const row of wingmenRows) {
       const slot = Number(row.deployment_slot ?? row.deploymentSlot ?? 1);
       const wingmanId = `wingman_${playerId}_slot_${slot}`;

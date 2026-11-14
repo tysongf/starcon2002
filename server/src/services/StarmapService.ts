@@ -175,6 +175,18 @@ export interface EmergencySOSResolution {
   error?: string;
 }
 
+export interface ExpeditionSummary {
+  accountId: string;
+  totalLightYearsWarped: number;
+  systemsVisited: string[];
+  portalsTransited: number;
+  blipsEvaded: number;
+  sosBeaconsBroadcast: number;
+  interceptionsSurvived: number;
+  currentCoordinates: [number, number];
+  currentRealm: 'HYPERSPACE' | 'QUASISPACE' | 'TRUESPACE';
+}
+
 export class StarmapService {
   public static readonly CANONICAL_SPHERES: FactionSphere[] = [
     {
@@ -609,6 +621,11 @@ export class StarmapService {
       };
     }
 
+    if (displacement > 0) {
+      const exp = this.getOrCreateExpedition(accountId);
+      exp.totalLightYearsWarped += displacement;
+    }
+
     const currentFuel = Number(ship.fuel);
     const validFuelBurn = Math.max(0, Math.round(fuelBurned));
     const newFuel = Math.max(0, currentFuel - validFuelBurn);
@@ -718,6 +735,8 @@ export class StarmapService {
        WHERE account_id = $2 AND deployment_slot IS NOT NULL AND status != 'DESTROYED'`,
       [targetSectorId, accountId]
     );
+
+    this.recordSystemVisit(accountId, targetSectorId);
 
     const detailedSystem = await this.getStarSystemById(targetSectorId);
 
@@ -1028,6 +1047,9 @@ export class StarmapService {
     userDecoys.push(decoy);
     this.activeDecoys.set(accountId, userDecoys);
 
+    const exp = this.getOrCreateExpedition(accountId);
+    exp.blipsEvaded += 1;
+
     return {
       success: true,
       decoysRemaining: updatedDecoys,
@@ -1264,6 +1286,9 @@ export class StarmapService {
         ],
       };
     }
+
+    const exp = this.getOrCreateExpedition(accountId);
+    exp.interceptionsSurvived += 1;
 
     return {
       success: true,
@@ -1597,6 +1622,11 @@ export class StarmapService {
       };
     }
 
+    if (displacement > 0) {
+      const exp = this.getOrCreateExpedition(accountId);
+      exp.totalLightYearsWarped += displacement;
+    }
+
     // Update coordinates; FUEL CONSUMPTION IS STRICTLY ZERO
     await db.query(
       'UPDATE ships SET quasispace_x = $1, quasispace_y = $2, is_in_quasispace = TRUE WHERE account_id = $3',
@@ -1676,6 +1706,9 @@ export class StarmapService {
        WHERE account_id = $3`,
       [targetX, targetY, accountId]
     );
+
+    const exp = this.getOrCreateExpedition(accountId);
+    exp.portalsTransited += 1;
 
     return {
       success: true,
@@ -1810,6 +1843,9 @@ export class StarmapService {
 
     this.activeSOSEncounters.set(accountId, encounter);
 
+    const exp = this.getOrCreateExpedition(accountId);
+    exp.sosBeaconsBroadcast += 1;
+
     return {
       success: true,
       encounter,
@@ -1924,6 +1960,93 @@ export class StarmapService {
       },
       message: 'Anti-boarding alarms blaring! Dropping into 20Hz tactical combat arena.',
     };
+  }
+
+  // =========================================================================
+  // Day 41: Galactic Expedition Telemetry Engine
+  // =========================================================================
+
+  private static expeditionLedgers: Map<string, ExpeditionSummary> = new Map();
+
+  public getOrCreateExpedition(accountId: string = 'acc_sol_captain'): ExpeditionSummary {
+    let exp = StarmapService.expeditionLedgers.get(accountId);
+    if (!exp) {
+      exp = {
+        accountId,
+        totalLightYearsWarped: 0,
+        systemsVisited: ['1'],
+        portalsTransited: 0,
+        blipsEvaded: 0,
+        sosBeaconsBroadcast: 0,
+        interceptionsSurvived: 0,
+        currentCoordinates: [500.0, 500.0],
+        currentRealm: 'TRUESPACE',
+      };
+      StarmapService.expeditionLedgers.set(accountId, exp);
+    }
+    return exp;
+  }
+
+  public async getExpeditionSummary(accountId: string = 'acc_sol_captain'): Promise<ExpeditionSummary> {
+    const exp = this.getOrCreateExpedition(accountId);
+    const { rows } = await db.query<any>(
+      'SELECT is_in_hyperspace, hyperspace_x, hyperspace_y, is_in_quasispace, quasispace_x, quasispace_y, current_sector_id FROM ships WHERE account_id = $1',
+      [accountId]
+    );
+    if (rows.length > 0) {
+      const s = rows[0];
+      if (s.is_in_quasispace) {
+        exp.currentRealm = 'QUASISPACE';
+        exp.currentCoordinates = [Number(s.quasispace_x ?? 150.0), Number(s.quasispace_y ?? 150.0)];
+      } else if (s.is_in_hyperspace) {
+        exp.currentRealm = 'HYPERSPACE';
+        exp.currentCoordinates = [Number(s.hyperspace_x ?? 500.0), Number(s.hyperspace_y ?? 500.0)];
+      } else {
+        exp.currentRealm = 'TRUESPACE';
+        const { rows: secRows } = await db.query<any>('SELECT coordinates_x, coordinates_y FROM sectors WHERE id = $1', [
+          s.current_sector_id ?? 1,
+        ]);
+        if (secRows.length > 0) {
+          exp.currentCoordinates = [Number(secRows[0].coordinates_x ?? 500.0), Number(secRows[0].coordinates_y ?? 500.0)];
+        }
+      }
+    }
+    return {
+      ...exp,
+      totalLightYearsWarped: Number(exp.totalLightYearsWarped.toFixed(2)),
+      systemsVisited: [...exp.systemsVisited],
+    };
+  }
+
+  public recordSystemVisit(accountId: string, systemId: string | number): void {
+    const exp = this.getOrCreateExpedition(accountId);
+    const sid = String(systemId);
+    if (!exp.systemsVisited.includes(sid)) {
+      exp.systemsVisited.push(sid);
+    }
+  }
+
+  public recordExpeditionMetric(
+    accountId: string,
+    metric: 'blipsEvaded' | 'portalsTransited' | 'sosBeaconsBroadcast' | 'interceptionsSurvived',
+    delta: number = 1
+  ): void {
+    const exp = this.getOrCreateExpedition(accountId);
+    exp[metric] = (exp[metric] || 0) + delta;
+  }
+
+  public resetExpedition(accountId: string = 'acc_sol_captain'): void {
+    StarmapService.expeditionLedgers.set(accountId, {
+      accountId,
+      totalLightYearsWarped: 0,
+      systemsVisited: ['1'],
+      portalsTransited: 0,
+      blipsEvaded: 0,
+      sosBeaconsBroadcast: 0,
+      interceptionsSurvived: 0,
+      currentCoordinates: [500.0, 500.0],
+      currentRealm: 'TRUESPACE',
+    });
   }
 }
 

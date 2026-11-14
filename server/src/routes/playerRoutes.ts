@@ -5,6 +5,7 @@ import { apService, AP_COSTS, type ActionType } from '../services/ActionPointSer
 import { navigationService } from '../services/NavigationService';
 import { reputationService, type FactionId } from '../services/ReputationService';
 import { fleetService } from '../services/FleetService';
+import { starmapService } from '../services/StarmapService';
 
 export const playerRoutes: FastifyPluginAsync = async (server) => {
   // Hold telemetry
@@ -216,6 +217,7 @@ export const playerRoutes: FastifyPluginAsync = async (server) => {
           sell_price = EXCLUDED.sell_price
       `);
       await fleetService.debugReset(accountId);
+      starmapService.resetExpedition(accountId);
       reply.send({ success: true, message: 'Pilot reset to fresh-start baseline.' });
     } catch (err: any) {
       reply.status(500).send({ success: false, error: err.message });

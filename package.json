@@ -8,6 +8,8 @@
     "dev:server": "tsx watch server/src/index.ts",
     "typecheck": "tsc --noEmit -p . && tsc --noEmit -p server",
     "test:m04": "tsx server/test-milestone-0.4.ts",
+    "test:m09": "tsx server/test-milestone-0.9.ts",
+    "test:all": "tsx server/run-all-tests.ts",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "format": "prettier --write ."
