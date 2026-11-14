@@ -50,7 +50,9 @@ async function runTests() {
     }
     if (secId === 1) {
       assert.equal(json.planets[0].id, 'planet_sec1_aegis', 'Sector 1 primary planet remains planet_sec1_aegis');
+      assert.equal(json.planets[0].mainClass, 'METALLIC_ORE', 'Aegis Prime uses native METALLIC_ORE mainClass');
       assert.equal(json.planets[0].subtype, 'Auric Lode', 'Aegis Prime enriched with Auric Lode subtype');
+      assert.equal((json.planets[0] as any).archetype, undefined, 'Deprecated archetype field removed from planet payload');
       assert.ok(json.planets[0].planetPalette?.patternStyle, 'Aegis Prime carries planetPalette.patternStyle');
     }
   }
@@ -67,7 +69,7 @@ async function runTests() {
       id: p.id,
       name: p.name,
       subtype: p.subtype,
-      archetype: p.archetype,
+      mainClass: p.mainClass,
       textureSeed: p.textureSeed,
     });
     assert.ok(eco.length >= 4 && eco.length <= 8, `Planet ${p.id} must yield 4-8 lifeforms`);
@@ -77,7 +79,7 @@ async function runTests() {
       id: p.id,
       name: p.name,
       subtype: p.subtype,
-      archetype: p.archetype,
+      mainClass: p.mainClass,
       textureSeed: p.textureSeed,
     });
     assert.equal(eco[0].commonName, ecoAgain[0].commonName, 'Lazy-seeded species generation must be deterministic');
@@ -109,7 +111,7 @@ async function runTests() {
   assert.equal(faunaFallbackRes.status, 200, 'GET /api/planets/:id/fauna returns 200');
   const faunaFallbackData = await faunaFallbackRes.json();
   assert.ok(faunaFallbackData.fauna.length >= 4, 'Lazy fauna fallback populates full pure xenobiology species');
-  assert.ok(!faunaFallbackData.fauna.some((f: any) => f.species_name === 'Indigenous Spore Grazer'), 'Legacy hardcoded fallback name replaced');
+  assert.ok(!faunaFallbackData.fauna.some((f: any) => f.species_name === 'Indigenous Spore Grazer'), 'Procedural xenobiology populates endemic fauna');
 
   // Ensure AP before scan
   await fetch(`${BASE_URL}/api/player/acc_sol_captain`);
@@ -135,6 +137,7 @@ async function runTests() {
   const sampleMod = generateProceduralModule({ seed: 'test_seed_1', rarity: 'RARE', preferredCategory: 'OFFENSE' });
   assert.ok(sampleMod.customName.includes(sampleMod.techPrefix), 'Module customName contains Tech Prefix');
   assert.ok(sampleMod.customName.includes(sampleMod.techSuffix), 'Module customName contains compatible Tech Suffix');
+  assert.equal((sampleMod as any).category, undefined, 'Module drops old category field completely');
   assert.ok(sampleMod.affixes.length >= 1, 'Module contains mechanical affixes');
 
   const modTaxRes = await fetch(`${BASE_URL}/api/outfitting/taxonomy`);

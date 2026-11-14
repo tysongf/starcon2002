@@ -498,7 +498,7 @@ export class ColonyController {
         <div class="precursor-tech-card ${tech.isSynthesized ? 'synthesized' : ''}">
           <div class="tech-card-header">
             <div class="tech-title-block">
-              <span class="slot-badge slot-${tech.slotType.toLowerCase()}">${tech.slotType} SLOT // ${tech.category}</span>
+              <span class="slot-badge slot-${tech.slotType.toLowerCase()}">${tech.slotType} SLOT // ${tech.mainCategory || 'OFFENSE'} (${tech.subtype || 'Module'})</span>
               <h3 class="tech-title">${tech.name}</h3>
             </div>
             <div class="tech-cost-badge">

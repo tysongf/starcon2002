@@ -14,9 +14,8 @@ export interface FittedModule {
   name: string;
   customName: string;
   slotType: 'HIGH' | 'MID' | 'LOW';
-  category: string;
-  mainCategory?: string;
-  subtype?: string;
+  mainCategory: string;
+  subtype: string;
   techPrefix?: string;
   techSuffix?: string;
   manufacturer: string;
@@ -66,9 +65,8 @@ export class OutfittingService {
         eb.name,
         pi.custom_name as "customName",
         eb.slot_type as "slotType",
-        eb.category,
-        COALESCE(pi.main_category, eb.main_category) as "mainCategory",
-        COALESCE(pi.subtype, eb.subtype) as "subtype",
+        COALESCE(pi.main_category, eb.main_category, 'OFFENSE') as "mainCategory",
+        COALESCE(pi.subtype, eb.subtype, eb.name) as "subtype",
         pi.tech_prefix as "techPrefix",
         pi.tech_suffix as "techSuffix",
         eb.manufacturer,
@@ -229,7 +227,7 @@ export class OutfittingService {
     // Generate rolled item
     const drop = LootGenerator.generateDrop([bp], bp.base_rarity);
 
-    const mapped = mapBlueprintToTaxonomy(bp.name || '', bp.slot_type || 'HIGH', bp.category || 'WEAPON');
+    const mapped = mapBlueprintToTaxonomy(bp.name || '', bp.slot_type || 'HIGH');
     const mainCat = bp.main_category || mapped.mainCategory;
     const sub = bp.subtype || mapped.subtype;
 
@@ -249,7 +247,7 @@ export class OutfittingService {
   }
 
   public async addLootToPlayer(accountId: string, dropped: DroppedModule): Promise<any> {
-    const mapped = mapBlueprintToTaxonomy(dropped.name || '', dropped.slotType || 'HIGH', dropped.category || 'WEAPON');
+    const mapped = mapBlueprintToTaxonomy(dropped.name || '', dropped.slotType || 'HIGH');
     const res = await db.query(
       `INSERT INTO player_inventory (account_id, blueprint_id, custom_name, rarity, affixes, main_category, subtype, tech_prefix, tech_suffix, is_fitted, fit_slot)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, false, NULL)

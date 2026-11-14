@@ -4686,7 +4686,7 @@ kbd {
   text-shadow: 0 0 15px rgba(56, 189, 248, 0.4);
 }
 
-.survey-planet-archetype {
+.survey-planet-classification {
   font-family: var(--font-mono);
   font-size: 0.72rem;
   color: #94a3b8;

@@ -57,7 +57,6 @@ export interface ModuleSubtypeDef {
   mainCategory: ModuleMainCategory;
   blueprintId: string;
   slotType: 'HIGH' | 'MID' | 'LOW';
-  legacyCategory: string;
   basePrice: number;
   powerGridCost: number;
   cpuCost: number;
@@ -126,7 +125,6 @@ export const MODULE_SUBTYPE_CATALOG: readonly ModuleSubtypeDef[] = [
     mainCategory: 'OFFENSE',
     blueprintId: 'MOD_SUB_LASER_TURRET',
     slotType: 'HIGH',
-    legacyCategory: 'WEAPON',
     basePrice: 520,
     powerGridCost: 15.0,
     cpuCost: 26.0,
@@ -139,7 +137,6 @@ export const MODULE_SUBTYPE_CATALOG: readonly ModuleSubtypeDef[] = [
     mainCategory: 'OFFENSE',
     blueprintId: 'MOD_SUB_ION_CANNON',
     slotType: 'HIGH',
-    legacyCategory: 'WEAPON',
     basePrice: 820,
     powerGridCost: 24.0,
     cpuCost: 38.0,
@@ -152,7 +149,6 @@ export const MODULE_SUBTYPE_CATALOG: readonly ModuleSubtypeDef[] = [
     mainCategory: 'OFFENSE',
     blueprintId: 'MOD_SUB_RAILGUN',
     slotType: 'HIGH',
-    legacyCategory: 'WEAPON',
     basePrice: 1150,
     powerGridCost: 32.0,
     cpuCost: 44.0,
@@ -165,7 +161,6 @@ export const MODULE_SUBTYPE_CATALOG: readonly ModuleSubtypeDef[] = [
     mainCategory: 'OFFENSE',
     blueprintId: 'MOD_SUB_TORPEDO_BAY',
     slotType: 'HIGH',
-    legacyCategory: 'WEAPON',
     basePrice: 1350,
     powerGridCost: 30.0,
     cpuCost: 48.0,
@@ -180,7 +175,6 @@ export const MODULE_SUBTYPE_CATALOG: readonly ModuleSubtypeDef[] = [
     mainCategory: 'DEFENSE',
     blueprintId: 'MOD_SUB_SHIELD_GEN',
     slotType: 'MID',
-    legacyCategory: 'SHIELD',
     basePrice: 920,
     powerGridCost: 26.0,
     cpuCost: 40.0,
@@ -193,7 +187,6 @@ export const MODULE_SUBTYPE_CATALOG: readonly ModuleSubtypeDef[] = [
     mainCategory: 'DEFENSE',
     blueprintId: 'MOD_SUB_HULL_PLATING',
     slotType: 'LOW',
-    legacyCategory: 'HULL',
     basePrice: 480,
     powerGridCost: 10.0,
     cpuCost: 8.0,
@@ -206,7 +199,6 @@ export const MODULE_SUBTYPE_CATALOG: readonly ModuleSubtypeDef[] = [
     mainCategory: 'DEFENSE',
     blueprintId: 'MOD_SUB_POWER_CORE',
     slotType: 'LOW',
-    legacyCategory: 'REACTOR',
     basePrice: 740,
     powerGridCost: 0.0,
     cpuCost: 14.0,
@@ -219,7 +211,6 @@ export const MODULE_SUBTYPE_CATALOG: readonly ModuleSubtypeDef[] = [
     mainCategory: 'DEFENSE',
     blueprintId: 'MOD_SUB_ENGINEERING_BAY',
     slotType: 'LOW',
-    legacyCategory: 'HULL',
     basePrice: 860,
     powerGridCost: 14.0,
     cpuCost: 28.0,
@@ -234,7 +225,6 @@ export const MODULE_SUBTYPE_CATALOG: readonly ModuleSubtypeDef[] = [
     mainCategory: 'TRAVEL',
     blueprintId: 'MOD_SUB_PLASMA_DRIVE',
     slotType: 'MID',
-    legacyCategory: 'PROPULSION',
     basePrice: 680,
     powerGridCost: 24.0,
     cpuCost: 18.0,
@@ -247,7 +237,6 @@ export const MODULE_SUBTYPE_CATALOG: readonly ModuleSubtypeDef[] = [
     mainCategory: 'TRAVEL',
     blueprintId: 'MOD_SUB_FUEL_POD',
     slotType: 'LOW',
-    legacyCategory: 'PROPULSION',
     basePrice: 460,
     powerGridCost: 6.0,
     cpuCost: 10.0,
@@ -260,7 +249,6 @@ export const MODULE_SUBTYPE_CATALOG: readonly ModuleSubtypeDef[] = [
     mainCategory: 'TRAVEL',
     blueprintId: 'MOD_SUB_HYPERDRIVE_BOOSTER',
     slotType: 'LOW',
-    legacyCategory: 'PROPULSION',
     basePrice: 1250,
     powerGridCost: 16.0,
     cpuCost: 26.0,
@@ -275,7 +263,6 @@ export const MODULE_SUBTYPE_CATALOG: readonly ModuleSubtypeDef[] = [
     mainCategory: 'COMMERCE',
     blueprintId: 'MOD_SUB_CARGO_BAY',
     slotType: 'LOW',
-    legacyCategory: 'CARGO',
     basePrice: 420,
     powerGridCost: 8.0,
     cpuCost: 10.0,
@@ -288,7 +275,6 @@ export const MODULE_SUBTYPE_CATALOG: readonly ModuleSubtypeDef[] = [
     mainCategory: 'COMMERCE',
     blueprintId: 'MOD_SUB_CREW_POD',
     slotType: 'LOW',
-    legacyCategory: 'CARGO',
     basePrice: 620,
     powerGridCost: 10.0,
     cpuCost: 16.0,
@@ -303,7 +289,6 @@ export const MODULE_SUBTYPE_CATALOG: readonly ModuleSubtypeDef[] = [
     mainCategory: 'UTILITY_DRONE',
     blueprintId: 'MOD_SUB_MINING_DRONE',
     slotType: 'HIGH',
-    legacyCategory: 'MINING',
     basePrice: 640,
     powerGridCost: 16.0,
     cpuCost: 24.0,
@@ -316,7 +301,6 @@ export const MODULE_SUBTYPE_CATALOG: readonly ModuleSubtypeDef[] = [
     mainCategory: 'UTILITY_DRONE',
     blueprintId: 'MOD_SUB_SALVAGE_DRONE',
     slotType: 'MID',
-    legacyCategory: 'UTILITY',
     basePrice: 780,
     powerGridCost: 14.0,
     cpuCost: 30.0,
@@ -336,12 +320,12 @@ export function getModuleSubtypeDef(subtype: string): ModuleSubtypeDef | undefin
 
 export function mapBlueprintToTaxonomy(
   bpName: string,
-  slotType: string,
-  category: string
-): { mainCategory: ModuleMainCategory; subtype: ModuleSubtype } {
-  const lower = `${bpName} ${category}`.toLowerCase();
-  if (lower.includes('ion')) return { mainCategory: 'OFFENSE', subtype: 'Ion Cannon' };
-  if (lower.includes('rail') || lower.includes('plasma') && slotType === 'HIGH') return { mainCategory: 'OFFENSE', subtype: 'Railgun' };
+  slotType: string
+): { mainCategory: ModuleMainCategory; subtype: string } {
+  const lower = bpName.toLowerCase();
+  if (lower.includes('bridge')) return { mainCategory: 'UTILITY_DRONE', subtype: 'Command Bridge' };
+  if (lower.includes('ion') || lower.includes('flak')) return { mainCategory: 'OFFENSE', subtype: 'Ion Cannon' };
+  if (lower.includes('rail') || (lower.includes('plasma') && slotType === 'HIGH')) return { mainCategory: 'OFFENSE', subtype: 'Railgun' };
   if (lower.includes('torpedo') || lower.includes('lance')) return { mainCategory: 'OFFENSE', subtype: 'Torpedo Bay' };
   if (lower.includes('mining')) return { mainCategory: 'UTILITY_DRONE', subtype: 'Mining Drone' };
   if (lower.includes('salvage') || lower.includes('jammer') || lower.includes('drone')) return { mainCategory: 'UTILITY_DRONE', subtype: 'Salvage Drone' };
@@ -516,7 +500,6 @@ export function generateProceduralModule(opts: ProceduralModuleOptions = {}): Pr
     name: sub.subtype,
     customName,
     slotType: sub.slotType,
-    category: sub.legacyCategory,
     manufacturer: opts.factionAffinity ? `${opts.factionAffinity.replace('FACTION_', '')} Foundry` : 'Galactic Consortium',
     rarity,
     powerGridCost,

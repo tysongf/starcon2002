@@ -101,12 +101,7 @@ export class DatabaseManager {
         }
       }
     } else {
-      // Legacy fallback
-      const schemaPath = path.resolve(__dirname, 'schema.sql');
-      if (fs.existsSync(schemaPath)) {
-        const sql = fs.readFileSync(schemaPath, 'utf-8');
-        await this.exec(sql);
-      }
+      throw new Error(`[DB] Migrations directory not found at ${migrationsDir}`);
     }
 
     // 3. Auto-seed if database is fresh (0 sectors exist)
@@ -153,25 +148,24 @@ export class DatabaseManager {
       for (const p of generated) {
         await this.query(
           `INSERT INTO planets (
-            id, sector_id, name, archetype, main_class, subtype, radius,
+            id, sector_id, name, main_class, subtype, radius,
             pos_x, pos_y, pos_z, texture_seed, orbit_index,
             atmosphere_color, atmosphere_density, surface_temp_k, hazard_class, habitability_rating,
             hazard_thermal_level, hazard_ion_level, hazard_caustic_level,
             abundance_rating, tectonics_rating, atmosphere_rating, density_rating,
             controlling_faction, planet_palette, description
           ) VALUES (
-            $1, $2, $3, $4, $5, $6, $7,
-            $8, $9, $10, $11, $12,
-            $13, $14, $15, $16, $17,
-            $18, $19, $20,
-            $21, $22, $23, $24,
-            $25, $26::jsonb, $27
+            $1, $2, $3, $4, $5, $6,
+            $7, $8, $9, $10, $11,
+            $12, $13, $14, $15, $16,
+            $17, $18, $19,
+            $20, $21, $22, $23,
+            $24, $25::jsonb, $26
           ) ON CONFLICT (id) DO NOTHING`,
           [
             p.id,
             p.sectorId,
             p.name,
-            p.archetype,
             p.mainClass,
             p.subtype,
             p.radius,

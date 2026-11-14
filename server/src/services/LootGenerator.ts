@@ -9,7 +9,10 @@ export interface DroppedModule {
   name: string;
   customName: string;
   slotType: 'HIGH' | 'MID' | 'LOW';
-  category: string;
+  mainCategory: string;
+  subtype: string;
+  techPrefix?: string;
+  techSuffix?: string;
   manufacturer: string;
   rarity: 'COMMON' | 'UNCOMMON' | 'RARE' | 'EPIC' | 'LEGENDARY';
   powerGridCost: number;
@@ -18,10 +21,6 @@ export interface DroppedModule {
   baseStats: Record<string, any>;
   affixes: LootAffix[];
   description: string;
-  mainCategory?: string;
-  subtype?: string;
-  techPrefix?: string;
-  techSuffix?: string;
 }
 
 import {
@@ -38,25 +37,6 @@ export class LootGenerator {
     { rarity: 'RARE' as const, weight: 12 },
     { rarity: 'EPIC' as const, weight: 5 },
     { rarity: 'LEGENDARY' as const, weight: 2 },
-  ];
-
-  private static readonly PREFIXES: Record<string, string[]> = {
-    COMMON: ['Standard', 'Field-Tested', 'Surplus', 'Industrial'],
-    UNCOMMON: ['Calibrated', 'Reinforced', 'Overclocked', 'Fine-Tuned'],
-    RARE: ['Vanguard', 'Precision', 'High-Output', 'Heavy-Duty'],
-    EPIC: ['Void-Forged', 'Prototype', 'Devastating', 'Dark-Matter'],
-    LEGENDARY: ['Singularity', 'Axiomatic', 'Annihilator', 'Omega-Class'],
-  };
-
-  private static readonly SUFFIXES: string[] = [
-    'of Ruin',
-    'of the Vanguard',
-    'of the Void Expanse',
-    'of Hegemony Ordnance',
-    'of Overdrive',
-    'of the Nexus',
-    'of Defiance',
-    'of the Eclipse',
   ];
 
   public static rollRarity(): 'COMMON' | 'UNCOMMON' | 'RARE' | 'EPIC' | 'LEGENDARY' {
@@ -79,10 +59,10 @@ export class LootGenerator {
     const bp = blueprints[Math.floor(Math.random() * blueprints.length)];
     const rarity = preferredRarity || this.rollRarity();
 
-    // Map blueprint onto Milestone 1.0 Main Category & Subtype + Semantic Tech Prefix/Suffix
+    // Map blueprint onto Main Category & Subtype + Semantic Tech Prefix/Suffix
     const mapped = bp.main_category && bp.subtype
       ? { mainCategory: bp.main_category, subtype: bp.subtype }
-      : mapBlueprintToTaxonomy(bp.name || '', bp.slot_type || 'HIGH', bp.category || 'WEAPON');
+      : mapBlueprintToTaxonomy(bp.name || '', bp.slot_type || 'HIGH');
     const subDef = getModuleSubtypeDef(mapped.subtype);
 
     const rarityOrder = ['COMMON', 'UNCOMMON', 'RARE', 'EPIC', 'LEGENDARY'];
@@ -158,7 +138,6 @@ export class LootGenerator {
       name: bp.name,
       customName,
       slotType: bp.slot_type,
-      category: bp.category,
       manufacturer: bp.manufacturer || 'Independent',
       rarity,
       powerGridCost: pgCost,

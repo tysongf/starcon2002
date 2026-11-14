@@ -1099,7 +1099,7 @@ export class AudioEngine {
   /**
    * Starts ambient planetary background soundscape
    */
-  public startPlanetaryAmbience(archetype: string): void {
+  public startPlanetaryAmbience(mainClass: string): void {
     this.stopPlanetaryAmbience();
     this.initContext();
     if (!this.ctx) return;
@@ -1109,21 +1109,21 @@ export class AudioEngine {
     const filter = this.ctx.createBiquadFilter();
     const gain = this.ctx.createGain();
 
-    if (archetype === 'VOLCANIC') {
+    if (mainClass === 'PYRO_TECTONIC' || mainClass === 'RADIOLOGIC_ISOTOPIC') {
       osc.type = 'sawtooth';
       osc.frequency.setValueAtTime(65, now);
       filter.type = 'lowpass';
       filter.frequency.setValueAtTime(140, now);
       gain.gain.setValueAtTime(0.01, now);
       gain.gain.linearRampToValueAtTime(0.08, now + 0.5);
-    } else if (archetype === 'GAS_GIANT') {
+    } else if (mainClass === 'GAS_ICE_GIANT' || mainClass === 'MAGNETOSPHERIC') {
       osc.type = 'triangle';
       osc.frequency.setValueAtTime(90, now);
       filter.type = 'bandpass';
       filter.frequency.setValueAtTime(220, now);
       gain.gain.setValueAtTime(0.01, now);
       gain.gain.linearRampToValueAtTime(0.07, now + 0.5);
-    } else if (archetype === 'PRECURSOR_RUIN') {
+    } else if (mainClass === 'PRECURSOR_ANOMALOUS' || mainClass === 'SYNTHETIC_CYBERNETIC') {
       osc.type = 'sine';
       osc.frequency.setValueAtTime(220, now);
       filter.type = 'peaking';

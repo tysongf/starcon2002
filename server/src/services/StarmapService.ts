@@ -321,7 +321,7 @@ export class StarmapService {
     const s = sysRows[0];
 
     const { rows: planetRows } = await db.query<any>(
-      `SELECT pl.id, pl.name, pl.archetype, pl.main_class, pl.subtype, pl.orbit_index,
+      `SELECT pl.id, pl.name, pl.main_class, pl.subtype, pl.orbit_index,
               pl.abundance_rating, pl.density_rating, pl.radius, pl.hazard_class, pl.pos_x, pl.pos_z,
               CASE WHEN c.id IS NOT NULL THEN true ELSE false END as has_colony
        FROM planets pl
@@ -354,7 +354,7 @@ export class StarmapService {
       planets: planetRows.map((p: any) => ({
         id: p.id,
         name: p.name,
-        type: p.archetype,
+        type: p.subtype || p.main_class,
         mainClass: p.main_class || undefined,
         subtype: p.subtype || undefined,
         abundanceRating: p.abundance_rating != null ? Number(p.abundance_rating) : undefined,

@@ -79,7 +79,7 @@ export class PlanetaryFaunaService {
 
     if (rows.length > 0) {
       const { rows: pRows } = await db.query<any>(
-        `SELECT id, name, subtype, archetype, texture_seed FROM planets WHERE id = $1`,
+        `SELECT id, name, main_class, subtype, texture_seed FROM planets WHERE id = $1`,
         [planetId]
       );
       const p = pRows[0];
@@ -88,7 +88,7 @@ export class PlanetaryFaunaService {
             id: p.id,
             name: p.name,
             subtype: p.subtype,
-            archetype: p.archetype,
+            mainClass: p.main_class,
             textureSeed: Number(p.texture_seed || 101),
           })
         : undefined;
@@ -127,7 +127,7 @@ export class PlanetaryFaunaService {
   }
 
   /**
-   * Synthesizes and anchors a procedural Apex Titan based on planet archetype and hazard levels
+   * Synthesizes and anchors a procedural Apex Titan based on planet main class and hazard levels
    */
   public async ensureProceduralTitan(planetId: string): Promise<PlanetFauna | null> {
     const { rows: existing } = await db.query<any>(
@@ -157,7 +157,7 @@ export class PlanetaryFaunaService {
     let lairX = 310.0;
     let lairY = -240.0;
 
-    if (planet.archetype === 'VOLCANIC' || (planet.hazard_thermal_level && planet.hazard_thermal_level >= 2)) {
+    if (planet.main_class === 'PYRO_TECTONIC' || (planet.hazard_thermal_level && planet.hazard_thermal_level >= 2)) {
       speciesName = `${planet.name} Magma Behemoth`;
       lairName = 'Molten Caldera Lair';
       color = '#f97316';
@@ -168,7 +168,12 @@ export class PlanetaryFaunaService {
       stunHitsRequired = 3;
       lairX = 350.0;
       lairY = 280.0;
-    } else if (planet.archetype === 'TERRESTRIAL' || (planet.hazard_caustic_level && planet.hazard_caustic_level >= 2)) {
+    } else if (
+      planet.main_class === 'LIVING_BIOSPHERE' ||
+      planet.main_class === 'FUNGAL_MYCELIAL' ||
+      planet.main_class === 'HYDROSPHERE' ||
+      (planet.hazard_caustic_level && planet.hazard_caustic_level >= 2)
+    ) {
       speciesName = `${planet.name} Spore Colossus`;
       lairName = 'Primordial Spore Hollow';
       color = '#10b981';
@@ -179,7 +184,11 @@ export class PlanetaryFaunaService {
       stunHitsRequired = 3;
       lairX = -280.0;
       lairY = 320.0;
-    } else if (planet.archetype === 'GAS_GIANT' || (planet.hazard_ion_level && planet.hazard_ion_level >= 2)) {
+    } else if (
+      planet.main_class === 'GAS_ICE_GIANT' ||
+      planet.main_class === 'MAGNETOSPHERIC' ||
+      (planet.hazard_ion_level && planet.hazard_ion_level >= 2)
+    ) {
       speciesName = `${planet.name} Galvanic Leviathan`;
       lairName = 'Sub-Surface Ion Trench';
       color = '#38bdf8';
@@ -631,7 +640,7 @@ export class PlanetaryFaunaService {
    */
   private async generateProceduralFauna(planetId: string): Promise<PlanetFauna[]> {
     const { rows: pRows } = await db.query<any>(
-      `SELECT id, name, subtype, archetype, texture_seed FROM planets WHERE id = $1`,
+      `SELECT id, name, main_class, subtype, texture_seed FROM planets WHERE id = $1`,
       [planetId]
     );
     if (pRows.length === 0) {
@@ -642,7 +651,7 @@ export class PlanetaryFaunaService {
       id: p.id,
       name: p.name,
       subtype: p.subtype,
-      archetype: p.archetype,
+      mainClass: p.main_class,
       textureSeed: Number(p.texture_seed || 101),
     });
 

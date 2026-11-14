@@ -25,8 +25,7 @@ export interface PlanetData {
   id: string;
   sectorId: number;
   name: string;
-  archetype: 'TERRESTRIAL' | 'VOLCANIC' | 'BARREN' | 'GAS_GIANT' | 'PRECURSOR_RUIN';
-  mainClass?: string;
+  mainClass: string;
   mainClassLabel?: string;
   subtype?: string;
   abundanceRating?: number;
@@ -73,14 +72,14 @@ export class ProceduralPlanet {
     const radius = data.radius || 22.0;
 
     const palette = data.planetPalette;
-    const emissiveStr = palette?.emissiveStrength ?? (data.archetype === 'VOLCANIC' ? 0.35 : 0);
+    const emissiveStr = palette?.emissiveStrength ?? (data.mainClass === 'PYRO_TECTONIC' ? 0.35 : 0);
 
     // 1. Surface Texture & Material
     const surfaceTexture = this.generateProceduralTexture(data);
     const surfaceMat = new THREE.MeshStandardMaterial({
       map: surfaceTexture,
-      roughness: data.archetype === 'GAS_GIANT' ? 0.3 : palette?.patternStyle === 'CRYSTAL_FACETS' ? 0.25 : 0.78,
-      metalness: data.archetype === 'BARREN' ? 0.42 : palette?.patternStyle === 'CYBER_GRID' ? 0.55 : 0.12,
+      roughness: data.mainClass === 'GAS_ICE_GIANT' ? 0.3 : palette?.patternStyle === 'CRYSTAL_FACETS' ? 0.25 : 0.78,
+      metalness: data.mainClass === 'METALLIC_ORE' ? 0.42 : palette?.patternStyle === 'CYBER_GRID' ? 0.55 : 0.12,
       emissive: emissiveStr > 0.2 ? new THREE.Color(palette?.glow || data.atmosphereColor) : new THREE.Color(0x000000),
       emissiveIntensity: emissiveStr * 0.28,
       flatShading: false,
@@ -129,7 +128,7 @@ export class ProceduralPlanet {
     }
 
     // 3. Clouds Layer
-    if (palette?.hasClouds || data.archetype === 'TERRESTRIAL') {
+    if (palette?.hasClouds || data.mainClass === 'LIVING_BIOSPHERE' || data.mainClass === 'HYDROSPHERE') {
       const cloudGeo = new THREE.SphereGeometry(radius * 1.02, 36, 28);
       const cloudMat = new THREE.MeshStandardMaterial({
         color: palette ? new THREE.Color(palette.accent) : 0xffffff,
@@ -143,7 +142,7 @@ export class ProceduralPlanet {
     }
 
     // 4. Planetary Rings
-    if (palette?.hasRings || data.archetype === 'GAS_GIANT') {
+    if (palette?.hasRings || data.mainClass === 'GAS_ICE_GIANT') {
       const ringGeo = new THREE.RingGeometry(radius * 1.4, radius * 2.35, 64);
       const ringMat = new THREE.MeshStandardMaterial({
         color: palette ? new THREE.Color(palette.glow) : 0x93c5fd,
@@ -189,44 +188,23 @@ export class ProceduralPlanet {
     const ctx = canvas.getContext('2d')!;
 
     const seed = data.textureSeed || 101;
-    const archetype = data.archetype;
+    const mc = data.mainClass;
     const pal = data.planetPalette;
 
-    let baseColor = pal?.base || '#334155';
-    let bandColor1 = pal?.band1 || '#1e293b';
-    let bandColor2 = pal?.band2 || '#475569';
-    let accentColor = pal?.accent || '#94a3b8';
+    const baseColor = pal?.base || '#334155';
+    const bandColor1 = pal?.band1 || '#1e293b';
+    const bandColor2 = pal?.band2 || '#475569';
+    const accentColor = pal?.accent || '#94a3b8';
     const glowColor = pal?.glow || accentColor;
     const patternStyle = pal?.patternStyle || (
-      archetype === 'VOLCANIC' ? 'MAGMA_FISSURE' :
-      archetype === 'GAS_GIANT' ? 'BANDED' :
-      archetype === 'TERRESTRIAL' ? 'ARCHIPELAGO' :
-      archetype === 'PRECURSOR_RUIN' ? 'PRECURSOR_GLYPH' : 'CRATERED'
+      mc === 'PYRO_TECTONIC' ? 'MAGMA_FISSURE' :
+      mc === 'GAS_ICE_GIANT' ? 'BANDED' :
+      mc === 'LIVING_BIOSPHERE' || mc === 'HYDROSPHERE' ? 'ARCHIPELAGO' :
+      mc === 'PRECURSOR_ANOMALOUS' ? 'PRECURSOR_GLYPH' :
+      mc === 'FUNGAL_MYCELIAL' ? 'MYCELIAL_WEB' :
+      mc === 'SYNTHETIC_CYBERNETIC' ? 'CYBER_GRID' :
+      mc === 'CRYSTALLINE_GEM' ? 'CRYSTAL_FACETS' : 'CRATERED'
     );
-
-    if (!pal) {
-      if (archetype === 'VOLCANIC') {
-        baseColor = '#450a0a';
-        bandColor1 = '#7f1d1d';
-        bandColor2 = '#991b1b';
-        accentColor = '#f97316';
-      } else if (archetype === 'TERRESTRIAL') {
-        baseColor = '#065f46';
-        bandColor1 = '#047857';
-        bandColor2 = '#15803d';
-        accentColor = '#3b82f6';
-      } else if (archetype === 'GAS_GIANT') {
-        baseColor = '#1e3a8a';
-        bandColor1 = '#0284c7';
-        bandColor2 = '#38bdf8';
-        accentColor = '#bae6fd';
-      } else if (archetype === 'PRECURSOR_RUIN') {
-        baseColor = '#3b0764';
-        bandColor1 = '#581c87';
-        bandColor2 = '#701a75';
-        accentColor = '#f472b6';
-      }
-    }
 
     // Fill base
     ctx.fillStyle = baseColor;

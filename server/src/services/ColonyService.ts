@@ -128,13 +128,13 @@ export class ColonyService {
       }
     }
 
-    // 6. Look up planet archetype to determine primary commodity
-    const pRes = await db.query<any>('SELECT name, archetype FROM planets WHERE id = $1', [planetId]);
+    // 6. Look up planet main_class to determine primary commodity
+    const pRes = await db.query<any>('SELECT name, main_class FROM planets WHERE id = $1', [planetId]);
     const planet = pRes.rows[0];
     let commodityId = 'COMM_ORE';
-    if (planet.archetype === 'TERRESTRIAL') commodityId = 'COMM_RATIONS';
-    else if (planet.archetype === 'GAS_GIANT') commodityId = 'COMM_FUEL';
-    else if (planet.archetype === 'PRECURSOR_RUIN') commodityId = 'COMM_ALLOY';
+    if (planet.main_class === 'LIVING_BIOSPHERE' || planet.main_class === 'FUNGAL_MYCELIAL' || planet.main_class === 'HYDROSPHERE') commodityId = 'COMM_RATIONS';
+    else if (planet.main_class === 'GAS_ICE_GIANT' || planet.main_class === 'MAGNETOSPHERIC') commodityId = 'COMM_FUEL';
+    else if (planet.main_class === 'PRECURSOR_ANOMALOUS' || planet.main_class === 'SYNTHETIC_CYBERNETIC' || planet.main_class === 'CRYSTALLINE_GEM') commodityId = 'COMM_ALLOY';
 
     const colonyId = `colony_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
     const colonyName = name || `${planet.name} Outpost Alpha`;

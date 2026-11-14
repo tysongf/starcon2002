@@ -1,17 +1,9 @@
 /**
- * Milestone 1.0: 15 Main Planet Classes x 3 Subtypes = 45 Creative Planet Types
- * Curated from the design Planet Types sheet + sci-fi additions, cleanly mapped onto
- * the 5 legacy macro-archetypes for full backward compatibility.
+ * 15 Main Planet Classes x 3 Subtypes = 45 Creative Planet Types.
+ * Native first-class taxonomy with full geophysical profiles, palettes, and resource curves.
  */
 
 import { createMulberry32, rngFloat, rngInt } from './DeterministicPRNG';
-
-export type LegacyPlanetArchetype =
-  | 'TERRESTRIAL'
-  | 'VOLCANIC'
-  | 'BARREN'
-  | 'GAS_GIANT'
-  | 'PRECURSOR_RUIN';
 
 export type PlanetMainClass =
   | 'LIVING_BIOSPHERE'
@@ -57,7 +49,6 @@ export interface PlanetSubtypeDef {
   subtype: string;
   mainClass: PlanetMainClass;
   mainClassLabel: string;
-  legacyArchetype: LegacyPlanetArchetype;
   abundanceRating: number;   // 1-10
   tectonicsRating: number;   // 1-10
   atmosphereRating: number;  // 0-10
@@ -80,7 +71,6 @@ export const PLANET_SUBTYPE_CATALOG: readonly PlanetSubtypeDef[] = [
     subtype: 'Verdant Jungle',
     mainClass: 'LIVING_BIOSPHERE',
     mainClassLabel: 'Living Biosphere',
-    legacyArchetype: 'TERRESTRIAL',
     abundanceRating: 7,
     tectonicsRating: 3,
     atmosphereRating: 6,
@@ -104,7 +94,6 @@ export const PLANET_SUBTYPE_CATALOG: readonly PlanetSubtypeDef[] = [
     subtype: 'Mire Fen',
     mainClass: 'LIVING_BIOSPHERE',
     mainClassLabel: 'Living Biosphere',
-    legacyArchetype: 'TERRESTRIAL',
     abundanceRating: 6,
     tectonicsRating: 2,
     atmosphereRating: 7,
@@ -128,7 +117,6 @@ export const PLANET_SUBTYPE_CATALOG: readonly PlanetSubtypeDef[] = [
     subtype: 'Savanna Canopy',
     mainClass: 'LIVING_BIOSPHERE',
     mainClassLabel: 'Living Biosphere',
-    legacyArchetype: 'TERRESTRIAL',
     abundanceRating: 6,
     tectonicsRating: 2,
     atmosphereRating: 5,
@@ -154,7 +142,6 @@ export const PLANET_SUBTYPE_CATALOG: readonly PlanetSubtypeDef[] = [
     subtype: 'Abyssal Pelagic',
     mainClass: 'HYDROSPHERE',
     mainClassLabel: 'Hydrosphere',
-    legacyArchetype: 'TERRESTRIAL',
     abundanceRating: 5,
     tectonicsRating: 4,
     atmosphereRating: 6,
@@ -178,7 +165,6 @@ export const PLANET_SUBTYPE_CATALOG: readonly PlanetSubtypeDef[] = [
     subtype: 'Pellucid Archipelagic',
     mainClass: 'HYDROSPHERE',
     mainClassLabel: 'Hydrosphere',
-    legacyArchetype: 'TERRESTRIAL',
     abundanceRating: 6,
     tectonicsRating: 3,
     atmosphereRating: 5,
@@ -202,7 +188,6 @@ export const PLANET_SUBTYPE_CATALOG: readonly PlanetSubtypeDef[] = [
     subtype: 'Cyanic Atoll',
     mainClass: 'HYDROSPHERE',
     mainClassLabel: 'Hydrosphere',
-    legacyArchetype: 'TERRESTRIAL',
     abundanceRating: 6,
     tectonicsRating: 5,
     atmosphereRating: 6,
@@ -228,7 +213,6 @@ export const PLANET_SUBTYPE_CATALOG: readonly PlanetSubtypeDef[] = [
     subtype: 'Sulfuric Acidic',
     mainClass: 'CAUSTIC_SOLVENT',
     mainClassLabel: 'Caustic & Solvent',
-    legacyArchetype: 'VOLCANIC',
     abundanceRating: 6,
     tectonicsRating: 6,
     atmosphereRating: 8,
@@ -252,7 +236,6 @@ export const PLANET_SUBTYPE_CATALOG: readonly PlanetSubtypeDef[] = [
     subtype: 'Halide Brine',
     mainClass: 'CAUSTIC_SOLVENT',
     mainClassLabel: 'Caustic & Solvent',
-    legacyArchetype: 'VOLCANIC',
     abundanceRating: 7,
     tectonicsRating: 5,
     atmosphereRating: 5,
@@ -276,7 +259,6 @@ export const PLANET_SUBTYPE_CATALOG: readonly PlanetSubtypeDef[] = [
     subtype: 'Chlorine Vapor',
     mainClass: 'CAUSTIC_SOLVENT',
     mainClassLabel: 'Caustic & Solvent',
-    legacyArchetype: 'VOLCANIC',
     abundanceRating: 5,
     tectonicsRating: 4,
     atmosphereRating: 7,
@@ -302,7 +284,6 @@ export const PLANET_SUBTYPE_CATALOG: readonly PlanetSubtypeDef[] = [
     subtype: 'Rime Tundra',
     mainClass: 'CRYO_GLACIAL',
     mainClassLabel: 'Cryo-Glacial',
-    legacyArchetype: 'BARREN',
     abundanceRating: 4,
     tectonicsRating: 3,
     atmosphereRating: 4,
@@ -326,7 +307,6 @@ export const PLANET_SUBTYPE_CATALOG: readonly PlanetSubtypeDef[] = [
     subtype: 'Hydrocarbon Cryo-Dune',
     mainClass: 'CRYO_GLACIAL',
     mainClassLabel: 'Cryo-Glacial',
-    legacyArchetype: 'BARREN',
     abundanceRating: 7,
     tectonicsRating: 2,
     atmosphereRating: 6,
@@ -350,7 +330,6 @@ export const PLANET_SUBTYPE_CATALOG: readonly PlanetSubtypeDef[] = [
     subtype: 'Selenic Permafrost',
     mainClass: 'CRYO_GLACIAL',
     mainClassLabel: 'Cryo-Glacial',
-    legacyArchetype: 'BARREN',
     abundanceRating: 3,
     tectonicsRating: 1,
     atmosphereRating: 1,
@@ -376,7 +355,6 @@ export const PLANET_SUBTYPE_CATALOG: readonly PlanetSubtypeDef[] = [
     subtype: 'Magmatic Crucible',
     mainClass: 'PYRO_TECTONIC',
     mainClassLabel: 'Pyro-Tectonic',
-    legacyArchetype: 'VOLCANIC',
     abundanceRating: 8,
     tectonicsRating: 10,
     atmosphereRating: 6,
@@ -400,7 +378,6 @@ export const PLANET_SUBTYPE_CATALOG: readonly PlanetSubtypeDef[] = [
     subtype: 'Basalt Flood',
     mainClass: 'PYRO_TECTONIC',
     mainClassLabel: 'Pyro-Tectonic',
-    legacyArchetype: 'VOLCANIC',
     abundanceRating: 6,
     tectonicsRating: 9,
     atmosphereRating: 5,
@@ -424,7 +401,6 @@ export const PLANET_SUBTYPE_CATALOG: readonly PlanetSubtypeDef[] = [
     subtype: 'Primordial Ember',
     mainClass: 'PYRO_TECTONIC',
     mainClassLabel: 'Pyro-Tectonic',
-    legacyArchetype: 'VOLCANIC',
     abundanceRating: 9,
     tectonicsRating: 10,
     atmosphereRating: 7,
@@ -450,7 +426,6 @@ export const PLANET_SUBTYPE_CATALOG: readonly PlanetSubtypeDef[] = [
     subtype: 'Auric Lode',
     mainClass: 'METALLIC_ORE',
     mainClassLabel: 'Metallic & Ore-Rich',
-    legacyArchetype: 'BARREN',
     abundanceRating: 10,
     tectonicsRating: 2,
     atmosphereRating: 1,
@@ -474,7 +449,6 @@ export const PLANET_SUBTYPE_CATALOG: readonly PlanetSubtypeDef[] = [
     subtype: 'Cupric Rustworld',
     mainClass: 'METALLIC_ORE',
     mainClassLabel: 'Metallic & Ore-Rich',
-    legacyArchetype: 'BARREN',
     abundanceRating: 8,
     tectonicsRating: 3,
     atmosphereRating: 2,
@@ -498,7 +472,6 @@ export const PLANET_SUBTYPE_CATALOG: readonly PlanetSubtypeDef[] = [
     subtype: 'Ferric Foundry',
     mainClass: 'METALLIC_ORE',
     mainClassLabel: 'Metallic & Ore-Rich',
-    legacyArchetype: 'BARREN',
     abundanceRating: 9,
     tectonicsRating: 4,
     atmosphereRating: 0,
@@ -524,7 +497,6 @@ export const PLANET_SUBTYPE_CATALOG: readonly PlanetSubtypeDef[] = [
     subtype: 'Ruby Corundum',
     mainClass: 'CRYSTALLINE_GEM',
     mainClassLabel: 'Crystalline & Gemstone',
-    legacyArchetype: 'BARREN',
     abundanceRating: 9,
     tectonicsRating: 3,
     atmosphereRating: 2,
@@ -548,7 +520,6 @@ export const PLANET_SUBTYPE_CATALOG: readonly PlanetSubtypeDef[] = [
     subtype: 'Sapphire Quartzite',
     mainClass: 'CRYSTALLINE_GEM',
     mainClassLabel: 'Crystalline & Gemstone',
-    legacyArchetype: 'BARREN',
     abundanceRating: 8,
     tectonicsRating: 4,
     atmosphereRating: 2,
@@ -572,7 +543,6 @@ export const PLANET_SUBTYPE_CATALOG: readonly PlanetSubtypeDef[] = [
     subtype: 'Emerald Beryl',
     mainClass: 'CRYSTALLINE_GEM',
     mainClassLabel: 'Crystalline & Gemstone',
-    legacyArchetype: 'BARREN',
     abundanceRating: 9,
     tectonicsRating: 2,
     atmosphereRating: 3,
@@ -598,7 +568,6 @@ export const PLANET_SUBTYPE_CATALOG: readonly PlanetSubtypeDef[] = [
     subtype: 'Arid Regolith',
     mainClass: 'SILICATE_DESERT',
     mainClassLabel: 'Silicate & Dust Desert',
-    legacyArchetype: 'BARREN',
     abundanceRating: 3,
     tectonicsRating: 2,
     atmosphereRating: 3,
@@ -622,7 +591,6 @@ export const PLANET_SUBTYPE_CATALOG: readonly PlanetSubtypeDef[] = [
     subtype: 'Oolitic Chalk',
     mainClass: 'SILICATE_DESERT',
     mainClassLabel: 'Silicate & Dust Desert',
-    legacyArchetype: 'BARREN',
     abundanceRating: 4,
     tectonicsRating: 1,
     atmosphereRating: 2,
@@ -646,7 +614,6 @@ export const PLANET_SUBTYPE_CATALOG: readonly PlanetSubtypeDef[] = [
     subtype: 'Telluric Silt',
     mainClass: 'SILICATE_DESERT',
     mainClassLabel: 'Silicate & Dust Desert',
-    legacyArchetype: 'BARREN',
     abundanceRating: 6,
     tectonicsRating: 3,
     atmosphereRating: 3,
@@ -672,7 +639,6 @@ export const PLANET_SUBTYPE_CATALOG: readonly PlanetSubtypeDef[] = [
     subtype: 'Lanthanide Monazite',
     mainClass: 'RARE_EARTH',
     mainClassLabel: 'Rare-Earth & Lanthanide',
-    legacyArchetype: 'BARREN',
     abundanceRating: 9,
     tectonicsRating: 4,
     atmosphereRating: 2,
@@ -696,7 +662,6 @@ export const PLANET_SUBTYPE_CATALOG: readonly PlanetSubtypeDef[] = [
     subtype: 'Yttric Badlands',
     mainClass: 'RARE_EARTH',
     mainClassLabel: 'Rare-Earth & Lanthanide',
-    legacyArchetype: 'BARREN',
     abundanceRating: 9,
     tectonicsRating: 5,
     atmosphereRating: 1,
@@ -720,7 +685,6 @@ export const PLANET_SUBTYPE_CATALOG: readonly PlanetSubtypeDef[] = [
     subtype: 'Carbide Obsidian',
     mainClass: 'RARE_EARTH',
     mainClassLabel: 'Rare-Earth & Lanthanide',
-    legacyArchetype: 'BARREN',
     abundanceRating: 8,
     tectonicsRating: 2,
     atmosphereRating: 1,
@@ -746,7 +710,6 @@ export const PLANET_SUBTYPE_CATALOG: readonly PlanetSubtypeDef[] = [
     subtype: 'Fissionable Wasteland',
     mainClass: 'RADIOLOGIC_ISOTOPIC',
     mainClassLabel: 'Radiologic & Isotopic',
-    legacyArchetype: 'VOLCANIC',
     abundanceRating: 9,
     tectonicsRating: 7,
     atmosphereRating: 4,
@@ -770,7 +733,6 @@ export const PLANET_SUBTYPE_CATALOG: readonly PlanetSubtypeDef[] = [
     subtype: 'Fluorescent Aurora',
     mainClass: 'RADIOLOGIC_ISOTOPIC',
     mainClassLabel: 'Radiologic & Isotopic',
-    legacyArchetype: 'VOLCANIC',
     abundanceRating: 7,
     tectonicsRating: 5,
     atmosphereRating: 5,
@@ -794,7 +756,6 @@ export const PLANET_SUBTYPE_CATALOG: readonly PlanetSubtypeDef[] = [
     subtype: 'Ultraviolet Scorch',
     mainClass: 'RADIOLOGIC_ISOTOPIC',
     mainClassLabel: 'Radiologic & Isotopic',
-    legacyArchetype: 'VOLCANIC',
     abundanceRating: 6,
     tectonicsRating: 6,
     atmosphereRating: 2,
@@ -820,7 +781,6 @@ export const PLANET_SUBTYPE_CATALOG: readonly PlanetSubtypeDef[] = [
     subtype: 'Lodestone Dynamo',
     mainClass: 'MAGNETOSPHERIC',
     mainClassLabel: 'Magnetospheric & Gravitic',
-    legacyArchetype: 'BARREN',
     abundanceRating: 8,
     tectonicsRating: 6,
     atmosphereRating: 2,
@@ -844,7 +804,6 @@ export const PLANET_SUBTYPE_CATALOG: readonly PlanetSubtypeDef[] = [
     subtype: 'Quasi-Degenerate Core',
     mainClass: 'MAGNETOSPHERIC',
     mainClassLabel: 'Magnetospheric & Gravitic',
-    legacyArchetype: 'BARREN',
     abundanceRating: 10,
     tectonicsRating: 1,
     atmosphereRating: 1,
@@ -868,7 +827,6 @@ export const PLANET_SUBTYPE_CATALOG: readonly PlanetSubtypeDef[] = [
     subtype: 'Cimmerian Shadow',
     mainClass: 'MAGNETOSPHERIC',
     mainClassLabel: 'Magnetospheric & Gravitic',
-    legacyArchetype: 'BARREN',
     abundanceRating: 5,
     tectonicsRating: 3,
     atmosphereRating: 2,
@@ -894,7 +852,6 @@ export const PLANET_SUBTYPE_CATALOG: readonly PlanetSubtypeDef[] = [
     subtype: 'Jovian Hydrogen',
     mainClass: 'GAS_ICE_GIANT',
     mainClassLabel: 'Gas & Ice Giant',
-    legacyArchetype: 'GAS_GIANT',
     abundanceRating: 7,
     tectonicsRating: 0,
     atmosphereRating: 10,
@@ -918,7 +875,6 @@ export const PLANET_SUBTYPE_CATALOG: readonly PlanetSubtypeDef[] = [
     subtype: 'Noble Neon-Xenon',
     mainClass: 'GAS_ICE_GIANT',
     mainClassLabel: 'Gas & Ice Giant',
-    legacyArchetype: 'GAS_GIANT',
     abundanceRating: 8,
     tectonicsRating: 0,
     atmosphereRating: 10,
@@ -942,7 +898,6 @@ export const PLANET_SUBTYPE_CATALOG: readonly PlanetSubtypeDef[] = [
     subtype: 'Indigo Cryo-Giant',
     mainClass: 'GAS_ICE_GIANT',
     mainClassLabel: 'Gas & Ice Giant',
-    legacyArchetype: 'GAS_GIANT',
     abundanceRating: 7,
     tectonicsRating: 0,
     atmosphereRating: 10,
@@ -968,7 +923,6 @@ export const PLANET_SUBTYPE_CATALOG: readonly PlanetSubtypeDef[] = [
     subtype: 'Mycelial Superorganism',
     mainClass: 'FUNGAL_MYCELIAL',
     mainClassLabel: 'Fungal & Xeno-Mycelial',
-    legacyArchetype: 'TERRESTRIAL',
     abundanceRating: 8,
     tectonicsRating: 2,
     atmosphereRating: 7,
@@ -992,7 +946,6 @@ export const PLANET_SUBTYPE_CATALOG: readonly PlanetSubtypeDef[] = [
     subtype: 'Spore-Drift Canopy',
     mainClass: 'FUNGAL_MYCELIAL',
     mainClassLabel: 'Fungal & Xeno-Mycelial',
-    legacyArchetype: 'TERRESTRIAL',
     abundanceRating: 6,
     tectonicsRating: 3,
     atmosphereRating: 8,
@@ -1016,7 +969,6 @@ export const PLANET_SUBTYPE_CATALOG: readonly PlanetSubtypeDef[] = [
     subtype: 'Chitinous Reefworld',
     mainClass: 'FUNGAL_MYCELIAL',
     mainClassLabel: 'Fungal & Xeno-Mycelial',
-    legacyArchetype: 'TERRESTRIAL',
     abundanceRating: 7,
     tectonicsRating: 2,
     atmosphereRating: 6,
@@ -1042,7 +994,6 @@ export const PLANET_SUBTYPE_CATALOG: readonly PlanetSubtypeDef[] = [
     subtype: 'Ecumenopolis Derelict',
     mainClass: 'SYNTHETIC_CYBERNETIC',
     mainClassLabel: 'Synthetic & Cybernetic',
-    legacyArchetype: 'PRECURSOR_RUIN',
     abundanceRating: 7,
     tectonicsRating: 1,
     atmosphereRating: 4,
@@ -1066,7 +1017,6 @@ export const PLANET_SUBTYPE_CATALOG: readonly PlanetSubtypeDef[] = [
     subtype: 'Nano-Lattice Foundry',
     mainClass: 'SYNTHETIC_CYBERNETIC',
     mainClassLabel: 'Synthetic & Cybernetic',
-    legacyArchetype: 'PRECURSOR_RUIN',
     abundanceRating: 9,
     tectonicsRating: 4,
     atmosphereRating: 2,
@@ -1090,7 +1040,6 @@ export const PLANET_SUBTYPE_CATALOG: readonly PlanetSubtypeDef[] = [
     subtype: 'Computronium Husk',
     mainClass: 'SYNTHETIC_CYBERNETIC',
     mainClassLabel: 'Synthetic & Cybernetic',
-    legacyArchetype: 'PRECURSOR_RUIN',
     abundanceRating: 8,
     tectonicsRating: 1,
     atmosphereRating: 1,
@@ -1116,7 +1065,6 @@ export const PLANET_SUBTYPE_CATALOG: readonly PlanetSubtypeDef[] = [
     subtype: 'Xenolithic Vault',
     mainClass: 'PRECURSOR_ANOMALOUS',
     mainClassLabel: 'Precursor & Anomalous',
-    legacyArchetype: 'PRECURSOR_RUIN',
     abundanceRating: 8,
     tectonicsRating: 2,
     atmosphereRating: 3,
@@ -1140,7 +1088,6 @@ export const PLANET_SUBTYPE_CATALOG: readonly PlanetSubtypeDef[] = [
     subtype: 'Tachyon Resonator',
     mainClass: 'PRECURSOR_ANOMALOUS',
     mainClassLabel: 'Precursor & Anomalous',
-    legacyArchetype: 'PRECURSOR_RUIN',
     abundanceRating: 9,
     tectonicsRating: 5,
     atmosphereRating: 4,
@@ -1164,7 +1111,6 @@ export const PLANET_SUBTYPE_CATALOG: readonly PlanetSubtypeDef[] = [
     subtype: 'Void-Crystal Relic',
     mainClass: 'PRECURSOR_ANOMALOUS',
     mainClassLabel: 'Precursor & Anomalous',
-    legacyArchetype: 'PRECURSOR_RUIN',
     abundanceRating: 10,
     tectonicsRating: 2,
     atmosphereRating: 2,
@@ -1190,14 +1136,17 @@ const SUBTYPE_MAP = new Map<string, PlanetSubtypeDef>(
   PLANET_SUBTYPE_CATALOG.map((s) => [s.subtype.toLowerCase(), s])
 );
 
-export function getPlanetSubtypeDef(subtype?: string | null, fallbackArchetype?: string): PlanetSubtypeDef {
+export function getPlanetSubtypeDef(subtype?: string | null, mainClass?: string | null): PlanetSubtypeDef {
   if (subtype) {
     const exact = SUBTYPE_MAP.get(subtype.toLowerCase());
     if (exact) return exact;
   }
-  const arch = (fallbackArchetype || 'BARREN').toUpperCase();
-  const byArch = PLANET_SUBTYPE_CATALOG.find((s) => s.legacyArchetype === arch);
-  return byArch || PLANET_SUBTYPE_CATALOG[0];
+  if (mainClass) {
+    const mc = mainClass.toUpperCase();
+    const byClass = PLANET_SUBTYPE_CATALOG.find((s) => s.mainClass === mc);
+    if (byClass) return byClass;
+  }
+  return PLANET_SUBTYPE_CATALOG[0];
 }
 
 export function getAllPlanetSubtypes(): readonly PlanetSubtypeDef[] {
@@ -1245,7 +1194,6 @@ export interface GeneratedSectorPlanetRow {
   id: string;
   sectorId: number;
   name: string;
-  archetype: LegacyPlanetArchetype;
   mainClass: PlanetMainClass;
   subtype: string;
   radius: number;
@@ -1332,7 +1280,7 @@ export function buildGalaxyCompanionPlanets(sectors: SectorMetaInput[]): Generat
       const posY = Math.round(rngFloat(rng, -6, 6) * 10) / 10;
 
       const radius =
-        def.legacyArchetype === 'GAS_GIANT'
+        def.mainClass === 'GAS_ICE_GIANT'
           ? rngInt(rng, 30, 38)
           : rngInt(rng, 20, 29);
 
@@ -1342,7 +1290,6 @@ export function buildGalaxyCompanionPlanets(sectors: SectorMetaInput[]): Generat
         id: `planet_sec${sector.id}_orb${orbit}`,
         sectorId: sector.id,
         name,
-        archetype: def.legacyArchetype,
         mainClass: def.mainClass,
         subtype: def.subtype,
         radius,

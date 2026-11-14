@@ -2973,7 +2973,7 @@ class GameEngine {
 
             const mfg = mod.manufacturer ? `<span class="mfg-badge">${mod.manufacturer}</span>` : '';
             const subTag = mod.subtype ? `<span class="mfg-badge" style="border-color:#38bdf8;color:#7dd3fc;">${mod.mainCategory || ''} • ${mod.subtype}</span>` : '';
-            const cat = mod.slotType || mod.slot_type || mod.category || 'HIGH';
+            const cat = mod.slotType || mod.slot_type || 'HIGH';
             let affixesText = '';
             if (mod.affixes && mod.affixes.length > 0) {
               affixesText = mod.affixes.map((a: any) => a.label || a.description || `${a.stat}: x${a.multiplier}`).join(' • ');
@@ -3152,7 +3152,7 @@ class GameEngine {
         this.elArmoryCatalogGrid.innerHTML = '';
         for (const bp of blueprints) {
           const card = document.createElement('div');
-          const cat = bp.slot_type || bp.slotType || bp.category || 'HIGH';
+          const cat = bp.slot_type || bp.slotType || 'HIGH';
           card.className = 'armory-card';
 
           const mfg = bp.manufacturer ? `<span class="mfg-badge">${bp.manufacturer}</span>` : '';

@@ -1,10 +1,9 @@
 import { db } from '../db/Database';
 import { apService } from './ActionPointService';
 import { reputationService } from './ReputationService';
-import { getPlanetSubtypeDef, type PlanetPalette } from '../procgen/PlanetTaxonomyCatalog';
+import { getPlanetSubtypeDef, type PlanetMainClass, type PlanetPalette } from '../procgen/PlanetTaxonomyCatalog';
 import { generatePlanetEcosystem, type ProceduralLifeform } from '../procgen/XenobiologyEngine';
 
-export type PlanetArchetype = 'TERRESTRIAL' | 'VOLCANIC' | 'BARREN' | 'GAS_GIANT' | 'PRECURSOR_RUIN';
 export type ScanBand = 'MINERALS' | 'BIO' | 'ANOMALIES';
 export type HotspotCategory =
   | 'SILICATE_DEPOSIT'
@@ -40,8 +39,7 @@ export interface PlanetDetail {
   id: string;
   sectorId: number;
   name: string;
-  archetype: PlanetArchetype;
-  mainClass: string;
+  mainClass: PlanetMainClass;
   mainClassLabel: string;
   subtype: string;
   abundanceRating: number;
@@ -79,14 +77,17 @@ export class PlanetaryService {
   /**
    * Generates deterministic hotspots for a planet using its texture_seed.
    */
-  public generateDeterministicHotspots(planetId: string, archetype: PlanetArchetype, seed: number): PlanetHotspot[] {
+  public generateDeterministicHotspots(planetId: string, mainClass: PlanetMainClass, seed: number): PlanetHotspot[] {
     const spots: PlanetHotspot[] = [];
 
-    // Mineral hotspots
-    if (archetype === 'BARREN' || archetype === 'VOLCANIC' || archetype === 'PRECURSOR_RUIN') {
+    const mineralRichClasses: readonly PlanetMainClass[] = [
+      'METALLIC_ORE', 'PYRO_TECTONIC', 'PRECURSOR_ANOMALOUS', 'CRYSTALLINE_GEM',
+      'SILICATE_DESERT', 'RARE_EARTH', 'CRYO_GLACIAL', 'SYNTHETIC_CYBERNETIC', 'RADIOLOGIC_ISOTOPIC',
+    ];
+    if (mineralRichClasses.includes(mainClass)) {
       spots.push({
         id: `${planetId}_min_1`,
-        name: archetype === 'VOLCANIC' ? 'Heavy Basalt Pyrite Chimney' : 'High-Density Silicate Vein',
+        name: mainClass === 'PYRO_TECTONIC' ? 'Heavy Basalt Pyrite Chimney' : 'High-Density Silicate Vein',
         category: 'SILICATE_DEPOSIT',
         scanBand: 'MINERALS',
         lat: Math.sin(seed * 1.1) * 55,
@@ -110,7 +111,7 @@ export class PlanetaryService {
       });
     }
 
-    if (archetype === 'VOLCANIC') {
+    if (mainClass === 'PYRO_TECTONIC' || mainClass === 'RADIOLOGIC_ISOTOPIC') {
       spots.push({
         id: `${planetId}_min_3`,
         name: 'Radioactive Magma Geode',
@@ -125,8 +126,12 @@ export class PlanetaryService {
       });
     }
 
-    // Bio / Atmospheric hotspots
-    if (archetype === 'TERRESTRIAL') {
+    if (
+      mainClass === 'LIVING_BIOSPHERE' ||
+      mainClass === 'FUNGAL_MYCELIAL' ||
+      mainClass === 'HYDROSPHERE' ||
+      mainClass === 'CAUSTIC_SOLVENT'
+    ) {
       spots.push({
         id: `${planetId}_bio_1`,
         name: 'Symbiotic Spore Canopy Biome',
@@ -151,7 +156,7 @@ export class PlanetaryService {
         rarity: 'RARE',
         color: '#a855f7',
       });
-    } else if (archetype === 'GAS_GIANT') {
+    } else if (mainClass === 'GAS_ICE_GIANT' || mainClass === 'MAGNETOSPHERIC') {
       spots.push({
         id: `${planetId}_bio_1`,
         name: 'Supercooled Deuterium Vapour Current',
@@ -166,8 +171,11 @@ export class PlanetaryService {
       });
     }
 
-    // Precursor Anomaly hotspots
-    if (archetype === 'PRECURSOR_RUIN' || archetype === 'BARREN' || archetype === 'TERRESTRIAL') {
+    const anomalyClasses: readonly PlanetMainClass[] = [
+      'PRECURSOR_ANOMALOUS', 'SYNTHETIC_CYBERNETIC', 'METALLIC_ORE',
+      'LIVING_BIOSPHERE', 'FUNGAL_MYCELIAL', 'CRYSTALLINE_GEM',
+    ];
+    if (anomalyClasses.includes(mainClass)) {
       spots.push({
         id: `${planetId}_ano_1`,
         name: 'Resonant Sub-Crustal Monolith',
@@ -261,15 +269,16 @@ export class PlanetaryService {
       createdAt: b.created_at,
     }));
 
-    const subtypeDef = getPlanetSubtypeDef(p.subtype, p.archetype);
+    const subtypeDef = getPlanetSubtypeDef(p.subtype, p.main_class);
     const parsedPalette: PlanetPalette = p.planet_palette
       ? (typeof p.planet_palette === 'string' ? JSON.parse(p.planet_palette) : p.planet_palette)
       : subtypeDef.palette;
+    const resolvedMainClass = (p.main_class || subtypeDef.mainClass) as PlanetMainClass;
     const lifeforms = generatePlanetEcosystem({
       id: p.id,
       name: p.name,
       subtype: p.subtype || subtypeDef.subtype,
-      archetype: p.archetype,
+      mainClass: resolvedMainClass,
       textureSeed: Number(p.texture_seed || 101),
     });
 
@@ -277,8 +286,7 @@ export class PlanetaryService {
       id: p.id,
       sectorId: p.sector_id,
       name: p.name,
-      archetype: p.archetype,
-      mainClass: p.main_class || subtypeDef.mainClass,
+      mainClass: resolvedMainClass,
       mainClassLabel: subtypeDef.mainClassLabel,
       subtype: p.subtype || subtypeDef.subtype,
       abundanceRating: p.abundance_rating != null ? Number(p.abundance_rating) : subtypeDef.abundanceRating,
@@ -316,7 +324,7 @@ export class PlanetaryService {
       id: planet.id,
       name: planet.name,
       subtype: planet.subtype,
-      archetype: planet.archetype,
+      mainClass: planet.mainClass,
       textureSeed: planet.textureSeed,
     });
     return { planet, lifeforms };
@@ -380,7 +388,7 @@ export class PlanetaryService {
     }
 
     const planet = await this.getPlanetDetail(planetId, accountId);
-    const allHotspots = this.generateDeterministicHotspots(planet.id, planet.archetype, planet.textureSeed);
+    const allHotspots = this.generateDeterministicHotspots(planet.id, planet.mainClass, planet.textureSeed);
 
     const bandHotspots = allHotspots.filter((h) => h.scanBand === scanBand);
 
@@ -429,7 +437,7 @@ export class PlanetaryService {
         id: planet.id,
         name: planet.name,
         subtype: planet.subtype,
-        archetype: planet.archetype,
+        mainClass: planet.mainClass,
         textureSeed: planet.textureSeed,
       });
       for (const sp of lifeformsDiscovered) {
@@ -506,19 +514,27 @@ export class PlanetaryService {
     let commodityName = 'Silicate Ore';
     let maxQty = 8;
 
-    if (planet.archetype === 'VOLCANIC') {
+    if (planet.mainClass === 'PYRO_TECTONIC' || planet.mainClass === 'RADIOLOGIC_ISOTOPIC') {
       commodityId = 'COMM_ORE';
       commodityName = 'Sulfur Pyrite Ore';
       maxQty = 10;
-    } else if (planet.archetype === 'TERRESTRIAL') {
+    } else if (
+      planet.mainClass === 'LIVING_BIOSPHERE' ||
+      planet.mainClass === 'FUNGAL_MYCELIAL' ||
+      planet.mainClass === 'HYDROSPHERE'
+    ) {
       commodityId = 'COMM_RATIONS';
       commodityName = 'Bio-Protein Organics';
       maxQty = 10;
-    } else if (planet.archetype === 'GAS_GIANT') {
+    } else if (planet.mainClass === 'GAS_ICE_GIANT' || planet.mainClass === 'MAGNETOSPHERIC') {
       commodityId = 'COMM_FUEL';
       commodityName = 'Cryo-Deuterium Fuel';
       maxQty = 14;
-    } else if (planet.archetype === 'PRECURSOR_RUIN') {
+    } else if (
+      planet.mainClass === 'PRECURSOR_ANOMALOUS' ||
+      planet.mainClass === 'SYNTHETIC_CYBERNETIC' ||
+      planet.mainClass === 'CRYSTALLINE_GEM'
+    ) {
       commodityId = 'COMM_ALLOY';
       commodityName = 'Precursor Alloy Relic';
       maxQty = 6;
@@ -604,12 +620,21 @@ export class PlanetaryService {
 
     // Faction strategic value multiplier
     let multiplier = 1.0;
-    if (factionId === 'FACTION_KRYLL' && (planet.archetype === 'VOLCANIC' || planet.archetype === 'GAS_GIANT')) {
+    if (
+      factionId === 'FACTION_KRYLL' &&
+      (planet.mainClass === 'PYRO_TECTONIC' || planet.mainClass === 'GAS_ICE_GIANT' || planet.mainClass === 'CAUSTIC_SOLVENT' || planet.mainClass === 'RADIOLOGIC_ISOTOPIC')
+    ) {
       multiplier = 1.5; // Kryll pays premium for fuels and dense heavy metals
-    } else if (factionId === 'FACTION_SOL' && (planet.archetype === 'BARREN' || planet.archetype === 'TERRESTRIAL')) {
+    } else if (
+      factionId === 'FACTION_SOL' &&
+      (planet.mainClass === 'METALLIC_ORE' || planet.mainClass === 'LIVING_BIOSPHERE' || planet.mainClass === 'HYDROSPHERE' || planet.mainClass === 'FUNGAL_MYCELIAL' || planet.mainClass === 'SILICATE_DESERT')
+    ) {
       multiplier = 1.4; // Sol Nexus pays premium for habitability and structural silicates
-    } else if (factionId === 'FACTION_LITHOS' && planet.archetype === 'PRECURSOR_RUIN') {
-      multiplier = 1.6; // Lithos Axiom (Obsidian Smelter) values ancient precursor tech anomalies
+    } else if (
+      factionId === 'FACTION_LITHOS' &&
+      (planet.mainClass === 'PRECURSOR_ANOMALOUS' || planet.mainClass === 'CRYSTALLINE_GEM' || planet.mainClass === 'RARE_EARTH' || planet.mainClass === 'SYNTHETIC_CYBERNETIC')
+    ) {
+      multiplier = 1.6; // Lithos Axiom values ancient precursor tech anomalies and rare crystals
     }
 
     // Base credits: 100% = 1,000 CR, 66% = 660 CR, 33% = 330 CR, scaled by faction multiplier

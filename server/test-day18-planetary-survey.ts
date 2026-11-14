@@ -31,9 +31,10 @@ async function runTests() {
   assert.ok(sec1Data.planets.length >= 1, 'Sector 1 should contain at least 1 planet');
 
   const aegis = sec1Data.planets[0];
-  console.log(` -> Found Planet: ${aegis.name} (${aegis.id}), Archetype: ${aegis.archetype}, Radius: ${aegis.radius}`);
+  console.log(` -> Found Planet: ${aegis.name} (${aegis.id}), Class: ${aegis.mainClass} (${aegis.subtype}), Radius: ${aegis.radius}`);
   assert.equal(aegis.id, 'planet_sec1_aegis', 'Planet ID should be planet_sec1_aegis');
-  assert.equal(aegis.archetype, 'BARREN', 'Aegis Prime should be BARREN archetype');
+  assert.equal(aegis.mainClass, 'METALLIC_ORE', 'Aegis Prime should be METALLIC_ORE main class');
+  assert.equal(aegis.subtype, 'Auric Lode', 'Aegis Prime should be Auric Lode subtype');
   assert.equal(aegis.habitabilityRating, 18, 'Aegis Prime habitability should be 18%');
 
   // 2. Query Planet Detail

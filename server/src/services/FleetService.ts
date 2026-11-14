@@ -47,7 +47,7 @@ export class FleetService {
       SELECT pi.blueprint_id, eb.name, eb.base_stats
       FROM player_inventory pi
       JOIN equipment_blueprints eb ON pi.blueprint_id = eb.id
-      WHERE pi.account_id = $1 AND pi.is_fitted = true AND (eb.category = 'COMMAND' OR pi.blueprint_id LIKE 'MOD_BRIDGE_%')
+      WHERE pi.account_id = $1 AND pi.is_fitted = true AND (eb.subtype = 'Command Bridge' OR pi.blueprint_id LIKE 'MOD_BRIDGE_%')
       LIMIT 1
     `;
     const { rows: bridgeRows } = await db.query<any>(bridgeQuery, [accountId]);

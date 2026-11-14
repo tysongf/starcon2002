@@ -24,7 +24,8 @@ export interface PrecursorPrototypeTech {
   name: string;
   blueprintId: string;
   slotType: 'HIGH' | 'MID' | 'LOW';
-  category: string;
+  mainCategory: string;
+  subtype: string;
   relicCost: number;
   creditCost: number;
   apCost: number;
@@ -39,7 +40,8 @@ export const PROTOTYPE_CATALOG: Omit<PrecursorPrototypeTech, 'isSynthesized'>[] 
     name: 'Precursor Phase Lance',
     blueprintId: 'BP_PRECURSOR_PHASE_LANCE',
     slotType: 'HIGH',
-    category: 'WEAPON',
+    mainCategory: 'OFFENSE',
+    subtype: 'Torpedo Bay',
     relicCost: 1,
     creditCost: 1000,
     apCost: 3,
@@ -51,7 +53,8 @@ export const PROTOTYPE_CATALOG: Omit<PrecursorPrototypeTech, 'isSynthesized'>[] 
     name: 'Tachyon Warp Accelerator',
     blueprintId: 'BP_PRECURSOR_TACHYON_DRIVE',
     slotType: 'LOW',
-    category: 'PROPULSION',
+    mainCategory: 'TRAVEL',
+    subtype: 'Hyperdrive Booster',
     relicCost: 1,
     creditCost: 800,
     apCost: 3,
@@ -63,7 +66,8 @@ export const PROTOTYPE_CATALOG: Omit<PrecursorPrototypeTech, 'isSynthesized'>[] 
     name: 'Crystalline Matrix Shield',
     blueprintId: 'BP_PRECURSOR_CRYSTAL_SHIELD',
     slotType: 'MID',
-    category: 'SHIELD',
+    mainCategory: 'DEFENSE',
+    subtype: 'Shield Generator',
     relicCost: 1,
     creditCost: 900,
     apCost: 3,
@@ -75,7 +79,8 @@ export const PROTOTYPE_CATALOG: Omit<PrecursorPrototypeTech, 'isSynthesized'>[] 
     name: 'Living Biosphere Matrix',
     blueprintId: 'BP_PRECURSOR_BIOSPHERE_GEN',
     slotType: 'LOW',
-    category: 'HULL',
+    mainCategory: 'DEFENSE',
+    subtype: 'Engineering Bay',
     relicCost: 1,
     creditCost: 750,
     apCost: 3,
@@ -354,14 +359,16 @@ export class PrecursorService {
 
     // 7. Insert prototype item into player inventory
     const invRes = await db.query<any>(
-      `INSERT INTO player_inventory (account_id, blueprint_id, custom_name, rarity, affixes, is_fitted, fit_slot)
-       VALUES ($1, $2, $3, 'LEGENDARY', $4, FALSE, NULL)
+      `INSERT INTO player_inventory (account_id, blueprint_id, custom_name, rarity, affixes, main_category, subtype, is_fitted, fit_slot)
+       VALUES ($1, $2, $3, 'LEGENDARY', $4, $5, $6, FALSE, NULL)
        RETURNING id`,
       [
         accountId,
         techDef.blueprintId,
         techDef.name,
         JSON.stringify([{ type: 'PRECURSOR_PROTOTYPE', label: 'Harmonic Precursor Engineering' }]),
+        techDef.mainCategory,
+        techDef.subtype,
       ]
     );
     const itemId = invRes.rows[0].id;

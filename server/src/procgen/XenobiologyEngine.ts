@@ -236,7 +236,7 @@ export interface PlanetEcosystemInput {
   id: string;
   name?: string;
   subtype?: string | null;
-  archetype?: string;
+  mainClass?: string | null;
   textureSeed?: number;
 }
 
@@ -245,7 +245,7 @@ export interface PlanetEcosystemInput {
  * Calling with the same planet seed/subtype always reproduces identical genotypes.
  */
 export function generatePlanetEcosystem(planet: PlanetEcosystemInput): ProceduralLifeform[] {
-  const def = getPlanetSubtypeDef(planet.subtype, planet.archetype);
+  const def = getPlanetSubtypeDef(planet.subtype, planet.mainClass);
   const seed = planet.textureSeed || 101;
   const masterRng = createMulberry32(`xeno_eco_${planet.id}_${seed}_${def.subtype}`);
 

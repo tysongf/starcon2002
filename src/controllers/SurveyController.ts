@@ -189,7 +189,9 @@ export class SurveyController {
         id: 'planet_sec1_aegis',
         sectorId: 1,
         name: 'Aegis Prime',
-        archetype: 'BARREN',
+        mainClass: 'METALLIC_ORE',
+        mainClassLabel: 'Metallic Ore',
+        subtype: 'Auric Lode',
         radius: 24.0,
         posX: -140.0,
         posY: 0.0,
@@ -212,13 +214,13 @@ export class SurveyController {
 
     // Sensory Immersion
     this.audio.playOrbitalCaptureSound();
-    this.audio.startPlanetaryAmbience(this.activePlanet.data.archetype);
+    this.audio.startPlanetaryAmbience(this.activePlanet.data.mainClass || 'METALLIC_ORE');
 
     // Populate modal telemetry
     const p = this.activePlanet.data;
     const ap = this.callbacks.getPlayerAP();
     const elName = document.getElementById('survey-planet-name');
-    const elArch = document.getElementById('survey-planet-archetype');
+    const elClass = document.getElementById('survey-planet-classification');
     const elHab = document.getElementById('survey-hab-val');
     const elTemp = document.getElementById('val-telemetry-temp');
     const elDensity = document.getElementById('val-telemetry-density');
@@ -227,9 +229,9 @@ export class SurveyController {
     const elAp = document.getElementById('survey-player-ap');
 
     if (elName) elName.textContent = p.name.toUpperCase();
-    const subTag = p.subtype ? `${p.subtype.toUpperCase()} [${(p.mainClassLabel || p.archetype).toUpperCase()}]` : `${p.archetype} CELESTIAL WORLD`;
+    const subTag = `${(p.subtype || p.mainClass).toUpperCase()} [${(p.mainClassLabel || p.mainClass).toUpperCase()}]`;
     const geoStats = p.abundanceRating != null ? ` // ABUND ${p.abundanceRating} • TECT ${p.tectonicsRating ?? 3} • DENS ${p.densityRating ?? 5}` : '';
-    if (elArch) elArch.textContent = `${subTag} // SECTOR ${String(p.sectorId).padStart(2, '0')}${geoStats}`;
+    if (elClass) elClass.textContent = `${subTag} // SECTOR ${String(p.sectorId).padStart(2, '0')}${geoStats}`;
     if (elHab) elHab.textContent = `${p.habitabilityRating}%`;
     if (elTemp) elTemp.textContent = `${p.surfaceTempK} K`;
     if (elDensity) elDensity.textContent = `${p.atmosphereDensity.toFixed(2)} Bar`;
@@ -527,29 +529,11 @@ export class SurveyController {
     ctx.fillStyle = '#020617';
     ctx.fillRect(0, 0, w, h);
 
-    // 1. Shaded Sphere Base with Archetype Gradient
-    const archetype = this.activePlanetDetail?.archetype || 'BARREN';
-    let lightColor = '#64748b';
-    let darkColor = '#0f172a';
-    let rimColor = 'rgba(56, 189, 248, 0.4)';
-
-    if (archetype === 'VOLCANIC') {
-      lightColor = '#b91c1c';
-      darkColor = '#450a0a';
-      rimColor = 'rgba(249, 115, 22, 0.5)';
-    } else if (archetype === 'TERRESTRIAL') {
-      lightColor = '#059669';
-      darkColor = '#022c22';
-      rimColor = 'rgba(16, 185, 129, 0.5)';
-    } else if (archetype === 'GAS_GIANT') {
-      lightColor = '#0284c7';
-      darkColor = '#082f49';
-      rimColor = 'rgba(56, 189, 248, 0.6)';
-    } else if (archetype === 'PRECURSOR_RUIN') {
-      lightColor = '#7e22ce';
-      darkColor = '#3b0764';
-      rimColor = 'rgba(236, 72, 153, 0.5)';
-    }
+    // 1. Shaded Sphere Base using Subtype Palette
+    const pal = this.activePlanetDetail?.planetPalette;
+    const lightColor = pal?.band1 || '#64748b';
+    const darkColor = pal?.base || '#0f172a';
+    const rimColor = pal?.glow || 'rgba(56, 189, 248, 0.45)';
 
     ctx.save();
     ctx.beginPath();
@@ -1203,7 +1187,7 @@ export class SurveyController {
                   <span class="astrometry-comp-badge">${comp}% SURVEYED</span>
                 </div>
                 <div class="astrometry-planet-details">
-                  ${p.archetype} WORLD // HABITABILITY: ${p.habitabilityRating}% // BEACONS: ${p.beacons?.length || 0}
+                  ${(p.subtype || p.mainClass || 'CELESTIAL').toUpperCase()} WORLD // HABITABILITY: ${p.habitabilityRating}% // BEACONS: ${p.beacons?.length || 0}
                 </div>
               </div>
               <button class="astrometry-bounty-btn" data-planet-id="${p.id}" ${isSold ? 'disabled' : ''}>
