@@ -51,11 +51,24 @@ export const colonyRoutes: FastifyPluginAsync = async (server) => {
     const { colonyId } = req.params as { colonyId: string };
     const body = (req.body || {}) as {
       accountId?: string;
-      facilityType: 'DERRICK' | 'HABITATION' | 'TERRAFORMER' | 'SILO';
+      facilityType: 'DERRICK' | 'HABITATION' | 'TERRAFORMER' | 'SILO' | 'SHIPYARD';
     };
     const accountId = body.accountId || 'acc_sol_captain';
     try {
       const result = await colonyService.upgradeFacility(colonyId, accountId, body.facilityType);
+      reply.send(result);
+    } catch (err: any) {
+      reply.status(400).send({ success: false, error: err.message });
+    }
+  });
+
+  // Dedicated Colony Shipyard Upgrade Endpoint
+  server.post('/api/colonies/:colonyId/shipyard/upgrade', async (req, reply) => {
+    const { colonyId } = req.params as { colonyId: string };
+    const body = (req.body || {}) as { accountId?: string };
+    const accountId = body.accountId || 'acc_sol_captain';
+    try {
+      const result = await colonyService.upgradeFacility(colonyId, accountId, 'SHIPYARD');
       reply.send(result);
     } catch (err: any) {
       reply.status(400).send({ success: false, error: err.message });

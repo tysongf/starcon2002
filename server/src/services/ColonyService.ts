@@ -25,6 +25,7 @@ export interface ColonyDetail {
   productionRatePerMinute: number;
   lastHarvestAt: string;
   createdAt: string;
+  shipyardTier?: number;
   biosphereTier?: number;
   biosphereMoraleBonus?: number;
   taxBonus?: number;
@@ -277,6 +278,7 @@ export class ColonyService {
       habitationTier: c.habitation_tier,
       terraformerTier: c.terraformer_tier,
       siloTier: c.silo_tier,
+      shipyardTier: c.shipyard_tier || 0,
       terraformingProgress: Math.round(newTerraform * 10) / 10,
       productionRatePerMinute,
       lastHarvestAt: needsUpdate ? new Date().toISOString() : c.last_harvest_at,
@@ -312,23 +314,32 @@ export class ColonyService {
   public async upgradeFacility(
     colonyId: string,
     accountId: string = 'acc_sol_captain',
-    facilityType: 'DERRICK' | 'HABITATION' | 'TERRAFORMER' | 'SILO'
+    facilityType: 'DERRICK' | 'HABITATION' | 'TERRAFORMER' | 'SILO' | 'SHIPYARD'
   ): Promise<{ success: boolean; colony: ColonyDetail; message: string }> {
     const colony = await this.getColonyDetail(colonyId, accountId);
 
     let currentTier = 1;
+    let maxTier = 3;
     if (facilityType === 'DERRICK') currentTier = colony.derrickTier;
     else if (facilityType === 'HABITATION') currentTier = colony.habitationTier;
     else if (facilityType === 'TERRAFORMER') currentTier = colony.terraformerTier;
     else if (facilityType === 'SILO') currentTier = colony.siloTier;
+    else if (facilityType === 'SHIPYARD') {
+      currentTier = colony.shipyardTier || 0;
+      maxTier = 2;
+    }
 
-    if (currentTier >= 3) {
-      throw new Error(`MAX_TIER_REACHED: ${facilityType} facility is already at maximum industrial efficiency (Tier 3).`);
+    if (currentTier >= maxTier) {
+      throw new Error(`MAX_TIER_REACHED: ${facilityType} facility is already at maximum industrial efficiency (Tier ${maxTier}).`);
     }
 
     const nextTier = currentTier + 1;
-    const creditCost = nextTier === 2 ? 400 : 1000;
-    const apCost = nextTier === 2 ? 3 : 5;
+    let creditCost = nextTier === 2 ? 400 : 1000;
+    let apCost = nextTier === 2 ? 3 : 5;
+    if (facilityType === 'SHIPYARD') {
+      creditCost = nextTier === 1 ? 500 : 1200;
+      apCost = nextTier === 1 ? 4 : 8;
+    }
 
     // 1. Deduct Credits
     const accRes = await db.query<any>('SELECT credits FROM accounts WHERE id = $1', [accountId]);
@@ -357,6 +368,8 @@ export class ColonyService {
     } else if (facilityType === 'SILO') {
       const newCapacity = nextTier === 2 ? 250 : 1000;
       updateSql = `UPDATE colonies SET silo_tier = $1, silo_capacity = ${newCapacity} WHERE id = $2`;
+    } else if (facilityType === 'SHIPYARD') {
+      updateSql = 'UPDATE colonies SET shipyard_tier = $1 WHERE id = $2';
     }
 
     await db.query(updateSql, [nextTier, colonyId]);

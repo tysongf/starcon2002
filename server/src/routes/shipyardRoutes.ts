@@ -1,6 +1,7 @@
 import { FastifyPluginAsync } from 'fastify';
 import { planetaryHazardService, LANDER_MODULE_CATALOG } from '../services/PlanetaryHazardService';
 import { planetaryFaunaService } from '../services/PlanetaryFaunaService';
+import { shipyardService } from '../services/ShipyardService';
 import {
   PurchaseLanderBodySchema,
   ClaimLoanerBodySchema,
@@ -80,5 +81,38 @@ export const shipyardRoutes: FastifyPluginAsync = async (server) => {
       reply.send(result);
     }
   );
+
+  // 6. Get Starship Fleet Blueprints Catalog (Day 33)
+  server.get('/fleet/blueprints', async (req, reply) => {
+    const query = (req.query || {}) as { accountId?: string; colonyId?: string };
+    const accountId = query.accountId || 'acc_sol_captain';
+    const result = await shipyardService.getFleetBlueprints(accountId, query.colonyId);
+    reply.send(result);
+  });
+
+  // 7. Fabricate Escort Starship Hull (Day 33)
+  server.post('/fleet/fabricate', async (req, reply) => {
+    const body = (req.body || {}) as {
+      accountId?: string;
+      blueprintId: string;
+      customName?: string;
+      colonyId?: string;
+    };
+    const accountId = body.accountId || 'acc_sol_captain';
+    if (!body.blueprintId) {
+      return reply.status(400).send({ success: false, error: 'blueprintId is required.' });
+    }
+
+    const result = await shipyardService.fabricateFleetHull(
+      accountId,
+      body.blueprintId,
+      body.customName,
+      body.colonyId
+    );
+    if (!result.success) {
+      return reply.status(400).send(result);
+    }
+    reply.send(result);
+  });
 };
 

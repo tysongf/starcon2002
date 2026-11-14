@@ -7500,6 +7500,109 @@ kbd {
   border-radius: 4px;
 }
 
+/* Day 33: Orbital Shipyard Manufacturing Styles */
+.fleet-subtabs-nav {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.fleet-subtab-btn {
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #94a3b8;
+  font-family: monospace;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.fleet-subtab-btn:hover {
+  background: rgba(30, 41, 59, 0.8);
+  color: #f1f5f9;
+}
+
+.fleet-subtab-btn.active {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: #38bdf8;
+  color: #38bdf8;
+}
+
+.shipyard-blueprints-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 1rem;
+}
+
+.blueprint-card {
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 8px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+
+.blueprint-card:hover {
+  border-color: rgba(56, 189, 248, 0.6);
+  transform: translateY(-2px);
+}
+
+.blueprint-card.locked {
+  border-color: rgba(239, 68, 68, 0.3);
+  opacity: 0.8;
+}
+
+.blueprint-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.blueprint-title {
+  font-weight: 700;
+  color: #f8fafc;
+  font-size: 1rem;
+}
+
+.bom-checklist {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.4rem;
+  background: rgba(0, 0, 0, 0.35);
+  padding: 0.5rem;
+  border-radius: 6px;
+  font-family: monospace;
+  font-size: 0.72rem;
+}
+
+.bom-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.bom-item.ok .bom-val {
+  color: #4ade80;
+}
+
+.bom-item.missing .bom-val {
+  color: #f87171;
+}
+
+.bom-label {
+  color: #64748b;
+  font-size: 0.65rem;
+}
+
+.bom-val {
+  font-weight: bold;
+}
+
 
 
 

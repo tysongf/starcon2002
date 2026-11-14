@@ -17,7 +17,17 @@ export class FleetController {
   public activeWingmenGrid: HTMLElement | null = null;
   public reserveHangarList: HTMLElement | null = null;
 
+  // Day 33: Orbital Shipyard Subview Elements
+  public btnSubtabRoster: HTMLElement | null = null;
+  public btnSubtabShipyard: HTMLElement | null = null;
+  public fleetSubviewRoster: HTMLElement | null = null;
+  public fleetSubviewShipyard: HTMLElement | null = null;
+  public shipyardBlueprintsGrid: HTMLElement | null = null;
+  public shipyardDiscountPill: HTMLElement | null = null;
+
   public rosterData: any = null;
+  public shipyardData: any = null;
+  public activeSubtab: 'roster' | 'shipyard' = 'roster';
 
   constructor(ctx: FleetContext) {
     this.ctx = ctx;
@@ -33,6 +43,34 @@ export class FleetController {
     this.fleetUpkeepVal = document.getElementById('fleet-upkeep-val');
     this.activeWingmenGrid = document.getElementById('active-wingmen-grid');
     this.reserveHangarList = document.getElementById('reserve-hangar-list');
+
+    // Day 33: Sub-tabs
+    this.btnSubtabRoster = document.getElementById('btn-subtab-roster');
+    this.btnSubtabShipyard = document.getElementById('btn-subtab-shipyard');
+    this.fleetSubviewRoster = document.getElementById('fleet-subview-roster');
+    this.fleetSubviewShipyard = document.getElementById('fleet-subview-shipyard');
+    this.shipyardBlueprintsGrid = document.getElementById('shipyard-blueprints-grid');
+    this.shipyardDiscountPill = document.getElementById('shipyard-discount-pill');
+
+    this.btnSubtabRoster?.addEventListener('click', () => this.switchFleetSubtab('roster'));
+    this.btnSubtabShipyard?.addEventListener('click', () => this.switchFleetSubtab('shipyard'));
+  }
+
+  public switchFleetSubtab(subtab: 'roster' | 'shipyard'): void {
+    this.activeSubtab = subtab;
+    this.ctx.playUiBlip?.();
+
+    this.btnSubtabRoster?.classList.toggle('active', subtab === 'roster');
+    this.btnSubtabShipyard?.classList.toggle('active', subtab === 'shipyard');
+
+    this.fleetSubviewRoster?.classList.toggle('hidden', subtab !== 'roster');
+    this.fleetSubviewShipyard?.classList.toggle('hidden', subtab !== 'shipyard');
+
+    if (subtab === 'shipyard') {
+      this.loadShipyardData();
+    } else {
+      this.loadFleetData();
+    }
   }
 
   public async loadFleetData(): Promise<void> {
@@ -337,6 +375,170 @@ export class FleetController {
       }
     } catch (err: any) {
       console.error('[FleetController] Failed to scrap ship:', err);
+    }
+  }
+
+  // =========================================================================
+  // Day 33: Orbital Shipyard Manufacturing
+  // =========================================================================
+
+  public async loadShipyardData(colonyId?: string): Promise<void> {
+    const accountId = this.ctx.getAccountId();
+    try {
+      let url = `/api/shipyard/fleet/blueprints?accountId=${encodeURIComponent(accountId)}`;
+      if (colonyId) url += `&colonyId=${encodeURIComponent(colonyId)}`;
+
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        this.shipyardData = data;
+        this.renderShipyard(data, colonyId);
+      } else {
+        const err = await res.json();
+        this.ctx.showNotification?.(err.error || 'Failed to load shipyard blueprints', true);
+      }
+    } catch (err: any) {
+      console.error('[FleetController] Failed to load shipyard data:', err);
+    }
+  }
+
+  public renderShipyard(data: any, colonyId?: string): void {
+    if (!data || !this.shipyardBlueprintsGrid) return;
+
+    if (this.shipyardDiscountPill) {
+      this.shipyardDiscountPill.classList.toggle('hidden', !data.isColonyShipyard);
+    }
+
+    this.shipyardBlueprintsGrid.innerHTML = '';
+
+    for (const bp of data.blueprints || []) {
+      const card = document.createElement('div');
+      card.className = `blueprint-card ${!bp.canAfford ? 'locked' : ''}`;
+
+      const factionColor =
+        bp.factionId === 'FACTION_SOL'
+          ? '#38bdf8'
+          : bp.factionId === 'FACTION_KRYLL'
+          ? '#fbbf24'
+          : bp.factionId === 'FACTION_VAELIC' || bp.factionId === 'FACTION_HEGEMONY'
+          ? '#f87171'
+          : bp.factionId === 'FACTION_PHORID'
+          ? '#a855f7'
+          : '#34d399';
+
+      const missingText = (bp.missingRequirements || []).join(' • ');
+
+      card.innerHTML = `
+        <div class="blueprint-header">
+          <div>
+            <div class="blueprint-title">${bp.name}</div>
+            <div style="font-family: monospace; font-size: 0.75rem; color: ${factionColor}; font-weight: bold;">
+              [${bp.factionId.replace('FACTION_', '')}] • TIER ${bp.tier} ${bp.hullClass}
+            </div>
+          </div>
+          <span class="ability-badge">⚡ ${bp.specialAbility}</span>
+        </div>
+
+        <p style="font-size: 0.78rem; color: #94a3b8; margin: 0; line-height: 1.3;">
+          ${bp.description}
+        </p>
+
+        <div class="slot-stats-row">
+          <div class="slot-stat-item">
+            <span class="slot-stat-label">HULL</span>
+            <span class="slot-stat-val" style="color: #4ade80;">${bp.baseHull}</span>
+          </div>
+          <div class="slot-stat-item">
+            <span class="slot-stat-label">SHIELD</span>
+            <span class="slot-stat-val" style="color: #60a5fa;">${bp.baseShield}</span>
+          </div>
+          <div class="slot-stat-item">
+            <span class="slot-stat-label">SPEED</span>
+            <span class="slot-stat-val">${bp.baseSpeed} m/s</span>
+          </div>
+          <div class="slot-stat-item">
+            <span class="slot-stat-label">DPS</span>
+            <span class="slot-stat-val">${bp.baseFirepower}</span>
+          </div>
+        </div>
+
+        <div class="bom-checklist">
+          <div class="bom-item">
+            <span class="bom-label">CREDITS</span>
+            <span class="bom-val">${bp.effectiveCreditCost} Cr</span>
+          </div>
+          <div class="bom-item">
+            <span class="bom-label">ACTION PTS</span>
+            <span class="bom-val">${bp.effectiveApCost} AP</span>
+          </div>
+          <div class="bom-item">
+            <span class="bom-label">PLASTEEL</span>
+            <span class="bom-val">${bp.effectiveAlloyCost} Alloy</span>
+          </div>
+          <div class="bom-item">
+            <span class="bom-label">SILICATE</span>
+            <span class="bom-val">${bp.effectiveOreCost} Ore</span>
+          </div>
+          <div class="bom-item">
+            <span class="bom-label">DEUTERIUM</span>
+            <span class="bom-val">${bp.effectiveFuelCost} Fuel</span>
+          </div>
+          <div class="bom-item">
+            <span class="bom-label">REQ. STANDING</span>
+            <span class="bom-val" style="color: ${bp.hasReputation ? '#4ade80' : '#f87171'};">+${bp.requiredReputation}</span>
+          </div>
+        </div>
+
+        ${
+          !bp.canAfford
+            ? `
+          <div style="font-family: monospace; font-size: 0.72rem; color: #f87171; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.25); border-radius: 4px; padding: 0.35rem 0.5rem;">
+            ⚠️ ${missingText}
+          </div>
+        `
+            : ''
+        }
+
+        <div class="fleet-actions-row">
+          <input type="text" class="hud-input name-input" id="hull-name-${bp.id}" placeholder="${bp.name}" style="flex: 1; font-size: 0.78rem;" />
+          <button class="hud-btn primary small-btn fabricate-btn" data-blueprint-id="${bp.id}" ${!bp.canAfford ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
+            FABRICATE HULL
+          </button>
+        </div>
+      `;
+
+      const fabBtn = card.querySelector('.fabricate-btn');
+      const nameInput = card.querySelector(`#hull-name-${bp.id}`) as HTMLInputElement | null;
+      fabBtn?.addEventListener('click', () => {
+        const customName = nameInput?.value?.trim() || bp.name;
+        this.fabricateShip(bp.id, customName, colonyId);
+      });
+
+      this.shipyardBlueprintsGrid.appendChild(card);
+    }
+  }
+
+  public async fabricateShip(blueprintId: string, customName?: string, colonyId?: string): Promise<void> {
+    const accountId = this.ctx.getAccountId();
+    this.ctx.playUiBlip?.();
+    try {
+      const res = await fetch('/api/shipyard/fleet/fabricate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId, blueprintId, customName, colonyId }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        this.ctx.showNotification?.(`Commissioned "${data.ship?.name}" into Fleet Hangar Reserve!`);
+        this.ctx.onFleetUpdated?.();
+        // Refresh shipyard and switch to roster subtab to see the new ship
+        await this.loadShipyardData(colonyId);
+        this.switchFleetSubtab('roster');
+      } else {
+        this.ctx.showNotification?.(data.error || 'Fabrication failed.', true);
+      }
+    } catch (err: any) {
+      console.error('[FleetController] Failed to fabricate ship:', err);
     }
   }
 }

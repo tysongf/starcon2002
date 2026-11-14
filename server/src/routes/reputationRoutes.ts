@@ -38,14 +38,16 @@ export const reputationRoutes: FastifyPluginAsync = async (server) => {
     const body = (req.body || {}) as {
       accountId?: string;
       factionId: any;
-      standing: number;
+      standing?: number;
+      score?: number;
     };
     const accountId = body.accountId || 'acc_sol_captain';
+    const targetStanding = body.standing !== undefined ? body.standing : (body.score !== undefined ? body.score : 0);
     try {
       const updatedStandings = await reputationService.debugSetStanding(
         accountId,
         body.factionId,
-        body.standing
+        targetStanding
       );
       reply.send({ success: true, standings: updatedStandings });
     } catch (err: any) {

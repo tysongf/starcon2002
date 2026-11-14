@@ -820,37 +820,67 @@
           </div>
         </div>
 
-        <!-- Tab View 7: Fleet Hangar & Escort Command (Day 32) -->
+        <!-- Tab View 7: Fleet Hangar & Escort Command (Day 32 & 33) -->
         <div id="view-tab-fleet" class="station-tab-content hidden">
-          <div class="salvage-header fleet-header-panel">
-            <div class="fleet-bridge-telemetry">
-              <span class="bridge-badge" id="fleet-bridge-badge">COMMAND BRIDGE // TIER 1</span>
-              <h4 id="fleet-bridge-title">Standard Command Cockpit (Baseline)</h4>
-              <span class="col-subtext" id="fleet-bridge-subtext">MAX COMBAT ESCORTS: 1 WINGMAN</span>
+          <!-- Sub-tabs nav: Roster vs Shipyard -->
+          <div class="fleet-subtabs-nav">
+            <button class="fleet-subtab-btn active" id="btn-subtab-roster">🚀 FLEET ROSTER & WINGMEN</button>
+            <button class="fleet-subtab-btn" id="btn-subtab-shipyard">🏭 ORBITAL SHIPYARD & FABRICATION</button>
+          </div>
+
+          <!-- Subview 1: Fleet Roster -->
+          <div id="fleet-subview-roster">
+            <div class="salvage-header fleet-header-panel">
+              <div class="fleet-bridge-telemetry">
+                <span class="bridge-badge" id="fleet-bridge-badge">COMMAND BRIDGE // TIER 1</span>
+                <h4 id="fleet-bridge-title">Standard Command Cockpit (Baseline)</h4>
+                <span class="col-subtext" id="fleet-bridge-subtext">MAX COMBAT ESCORTS: 1 WINGMAN</span>
+              </div>
+              <div class="fleet-header-right">
+                <div class="stat-pill upkeep-pill">
+                  <span class="pill-label">FLEET UPKEEP:</span>
+                  <span class="pill-value" id="fleet-upkeep-val">15 Cr / cycle</span>
+                </div>
+              </div>
             </div>
-            <div class="fleet-header-right">
-              <div class="stat-pill upkeep-pill">
-                <span class="pill-label">FLEET UPKEEP:</span>
-                <span class="pill-value" id="fleet-upkeep-val">15 Cr / cycle</span>
+
+            <div class="fleet-hangar-layout">
+              <!-- Active Combat Formation Wing -->
+              <div class="fleet-section">
+                <div class="section-title">ACTIVE COMBAT WING (FORMATION FLIGHT)</div>
+                <div class="active-wingmen-grid" id="active-wingmen-grid">
+                  <!-- Dynamically rendered active wingman slots 1..4 -->
+                </div>
+              </div>
+
+              <!-- Reserve Hangar Garage -->
+              <div class="fleet-section">
+                <div class="section-title">RESERVE HANGAR GARAGE</div>
+                <div class="reserve-hangar-list" id="reserve-hangar-list">
+                  <!-- Dynamically rendered reserve ship cards -->
+                </div>
               </div>
             </div>
           </div>
 
-          <div class="fleet-hangar-layout">
-            <!-- Active Combat Formation Wing -->
-            <div class="fleet-section">
-              <div class="section-title">ACTIVE COMBAT WING (FORMATION FLIGHT)</div>
-              <div class="active-wingmen-grid" id="active-wingmen-grid">
-                <!-- Dynamically rendered active wingman slots 1..4 -->
+          <!-- Subview 2: Orbital Shipyard Fabrication (Day 33) -->
+          <div id="fleet-subview-shipyard" class="hidden">
+            <div class="salvage-header fleet-header-panel">
+              <div class="fleet-bridge-telemetry">
+                <span class="bridge-badge" style="color: #a855f7; border-color: rgba(168, 85, 247, 0.4); background: rgba(168, 85, 247, 0.15);">ORBITAL SHIPYARD GANTRY</span>
+                <h4>Naval Hull Requisition & Blueprint Fabrication</h4>
+                <span class="col-subtext">COMMISSION ADVANCED FACTION COMBAT CRAFT FROM INDUSTRIAL RAW MATERIALS</span>
+              </div>
+              <div class="fleet-header-right">
+                <div class="stat-pill shipyard-discount-pill hidden" id="shipyard-discount-pill">
+                  <span class="pill-label">COLONY DISCOUNT:</span>
+                  <span class="pill-value">-25% (LOCAL SILO)</span>
+                </div>
               </div>
             </div>
 
-            <!-- Reserve Hangar Garage -->
-            <div class="fleet-section">
-              <div class="section-title">RESERVE HANGAR GARAGE</div>
-              <div class="reserve-hangar-list" id="reserve-hangar-list">
-                <!-- Dynamically rendered reserve ship cards -->
-              </div>
+            <div class="shipyard-blueprints-grid" id="shipyard-blueprints-grid">
+              <!-- Dynamically populated 5 faction blueprints -->
             </div>
           </div>
         </div>
