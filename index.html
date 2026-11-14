@@ -64,6 +64,52 @@
           <div class="orbital-pulse-dot"></div>
           <span class="orbital-text" id="orbital-msg">SYNCHRONOUS ORBIT BEACON // DIST: 0.0u [O]</span>
         </div>
+
+        <!-- Day 38: Hyperspace Flight HUD Overlay -->
+        <div class="hyperspace-flight-hud hidden" id="hyperspace-hud" style="display: none;">
+          <div class="hyper-hud-left">
+            <div class="hyper-telemetry-badge">
+              <span class="hyper-badge-label">SUBSPACE REALM // REAL-TIME KINEMATICS</span>
+              <div class="hyper-coords-row">
+                <span class="hyper-coords-label">GALACTIC POS:</span>
+                <span class="hyper-coords-val" id="hyper-hud-coords">[X: 500.0, Y: 500.0]</span>
+              </div>
+            </div>
+            <div class="hyper-fuel-cluster">
+              <div class="hyper-fuel-header">
+                <span class="hyper-fuel-title">WARP FUEL RESERVES</span>
+                <span class="hyper-fuel-val" id="hyper-hud-fuel-val">100 / 100</span>
+              </div>
+              <div class="hyper-fuel-track">
+                <div class="hyper-fuel-bar" id="hyper-hud-fuel-bar" style="width: 100%;"></div>
+              </div>
+              <div class="hyper-fuel-subtext">
+                <span id="hyper-hud-burn-rate">0.25 FUEL/LY (1 ESCORT)</span>
+                <span id="hyper-hud-speed">25.0 LY/s</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="hyper-hud-center">
+            <div class="hyper-compass-container">
+              <div class="hyper-compass-dial">
+                <div class="hyper-compass-needle" id="hyper-hud-compass-needle">▲</div>
+                <div class="hyper-compass-center-dot"></div>
+              </div>
+              <div class="hyper-target-info">
+                <span class="hyper-target-label">ACTIVE AUTOPILOT VECTOR</span>
+                <span class="hyper-target-val" id="hyper-hud-target-text">NO ACTIVE WAYPOINT</span>
+              </div>
+            </div>
+            <div class="hyper-autopilot-status">
+              <span class="hyper-badge standby" id="hyper-hud-autopilot-badge">AUTOPILOT: STANDBY [X]</span>
+              <span class="hyper-cam-badge">CAMERA: [C]</span>
+            </div>
+            <div class="hyper-gravity-alert hidden" id="hyper-hud-gravity-alert">
+              GRAVITY WELL DETECTED // PRESS [ENTER / J] TO DROP OUT
+            </div>
+          </div>
+        </div>
       </header>
 
       <div class="hud-panels">
@@ -438,6 +484,7 @@
 
       <footer class="hud-footer">
         <div class="hud-actions">
+          <button id="btn-enter-hyperspace" class="hud-btn primary" title="Energize Warp Drive and Enter Hyperspace (H)">⚡ Hyperspace (H)</button>
           <button id="btn-open-starmap" class="hud-btn primary" title="Open CRT Galactic Starmap (M)">🌌 Starmap (M)</button>
           <button id="btn-open-nav" class="hud-btn primary" title="Open Hyperspace Nav Console (J)">🚀 Warp Nav (J)</button>
           <button id="btn-hud-orbit" class="hud-btn primary" title="Enter Planetary Orbit & Surface Survey (O)">🪐 Orbit Survey (O)</button>

@@ -390,6 +390,234 @@ export class StarmapService {
     await db.query('UPDATE ships SET nav_target_sector_id = NULL WHERE account_id = $1', [accountId]);
     return { success: true, message: 'Active navigation waypoint cleared.' };
   }
+
+  /**
+   * Day 38: Initiates continuous Hyperspace flight for the player's flagship and escort task force.
+   */
+  public async enterHyperspace(accountId: string = 'acc_sol_captain'): Promise<{
+    success: boolean;
+    isInHyperspace: boolean;
+    coordinates: [number, number];
+    currentSectorId: number;
+    fuel: number;
+    activeEscortsCount: number;
+    navTargetSectorId: number | null;
+    error?: string;
+  }> {
+    const { rows: shipRows } = await db.query<any>(
+      'SELECT current_sector_id, fuel, nav_target_sector_id, hyperspace_x, hyperspace_y FROM ships WHERE account_id = $1',
+      [accountId]
+    );
+    if (shipRows.length === 0) {
+      return {
+        success: false,
+        isInHyperspace: false,
+        coordinates: [500, 500],
+        currentSectorId: 1,
+        fuel: 0,
+        activeEscortsCount: 0,
+        navTargetSectorId: null,
+        error: `SHIP_NOT_FOUND: Account "${accountId}" possesses no registered flagship.`,
+      };
+    }
+    const ship = shipRows[0];
+    const currentSectorId = Number(ship.current_sector_id);
+
+    // Resolve current sector's canonical coordinates
+    const { rows: sectorRows } = await db.query<any>(
+      'SELECT coordinates_x, coordinates_y FROM sectors WHERE id = $1',
+      [currentSectorId]
+    );
+    const startX = sectorRows.length > 0 ? Number(sectorRows[0].coordinates_x ?? 500.0) : 500.0;
+    const startY = sectorRows.length > 0 ? Number(sectorRows[0].coordinates_y ?? 500.0) : 500.0;
+
+    // Check active escorts count
+    let activeEscortsCount = 0;
+    try {
+      const { rows: escortRows } = await db.query<any>(
+        `SELECT id FROM player_fleet WHERE account_id = $1 AND deployment_slot IS NOT NULL AND status = 'READY'`,
+        [accountId]
+      );
+      activeEscortsCount = escortRows.length;
+    } catch {
+      activeEscortsCount = 0;
+    }
+
+    // Update ship state to in-hyperspace
+    await db.query(
+      'UPDATE ships SET is_in_hyperspace = TRUE, hyperspace_x = $1, hyperspace_y = $2 WHERE account_id = $3',
+      [startX, startY, accountId]
+    );
+
+    return {
+      success: true,
+      isInHyperspace: true,
+      coordinates: [startX, startY],
+      currentSectorId,
+      fuel: Number(ship.fuel),
+      activeEscortsCount,
+      navTargetSectorId: ship.nav_target_sector_id !== null ? Number(ship.nav_target_sector_id) : null,
+    };
+  }
+
+  /**
+   * Day 38: Periodically synchronizes real-time continuous Hyperspace coordinates and distance-based fuel burn.
+   */
+  public async syncHyperspaceFlight(
+    accountId: string = 'acc_sol_captain',
+    currentCoords: [number, number],
+    fuelBurned: number
+  ): Promise<{
+    success: boolean;
+    coordinates: [number, number];
+    remainingFuel: number;
+    isFuelDepleted: boolean;
+    error?: string;
+  }> {
+    const { rows: shipRows } = await db.query<any>(
+      'SELECT fuel, hyperspace_x, hyperspace_y, is_in_hyperspace FROM ships WHERE account_id = $1',
+      [accountId]
+    );
+    if (shipRows.length === 0) {
+      return { success: false, coordinates: currentCoords, remainingFuel: 0, isFuelDepleted: true, error: 'SHIP_NOT_FOUND' };
+    }
+    const ship = shipRows[0];
+    const prevX = Number(ship.hyperspace_x ?? currentCoords[0]);
+    const prevY = Number(ship.hyperspace_y ?? currentCoords[1]);
+
+    // Validate displacement
+    const displacement = Math.hypot(currentCoords[0] - prevX, currentCoords[1] - prevY);
+    if (displacement > 150.0) {
+      return {
+        success: false,
+        coordinates: [prevX, prevY],
+        remainingFuel: Number(ship.fuel),
+        isFuelDepleted: false,
+        error: `INVALID_HYPERSPACE_TELEPORT: Displacement of ${displacement.toFixed(1)} LY exceeds maximum continuous flight envelope.`,
+      };
+    }
+
+    const currentFuel = Number(ship.fuel);
+    const validFuelBurn = Math.max(0, Math.round(fuelBurned));
+    const newFuel = Math.max(0, currentFuel - validFuelBurn);
+
+    await db.query(
+      'UPDATE ships SET hyperspace_x = $1, hyperspace_y = $2, fuel = $3, is_in_hyperspace = TRUE WHERE account_id = $4',
+      [currentCoords[0], currentCoords[1], newFuel, accountId]
+    );
+
+    return {
+      success: true,
+      coordinates: currentCoords,
+      remainingFuel: newFuel,
+      isFuelDepleted: newFuel <= 0,
+    };
+  }
+
+  /**
+   * Day 38: Drops the flagship and active escort task force out of Hyperspace into a local Star System's gravity well.
+   */
+  public async arriveAtStarSystem(
+    accountId: string = 'acc_sol_captain',
+    targetSectorId: number,
+    finalCoords?: [number, number],
+    remainingFuel?: number
+  ): Promise<{
+    success: boolean;
+    arrivedSectorId: number;
+    sectorName: string;
+    remainingFuel: number;
+    coordinates: [number, number];
+    system?: any;
+    error?: string;
+  }> {
+    // 1. Fetch target star system
+    const { rows: sectorRows } = await db.query<any>(
+      'SELECT id, name, coordinates_x, coordinates_y FROM sectors WHERE id = $1',
+      [targetSectorId]
+    );
+    if (sectorRows.length === 0) {
+      return {
+        success: false,
+        arrivedSectorId: targetSectorId,
+        sectorName: `Sector ${targetSectorId}`,
+        remainingFuel: 0,
+        coordinates: [0, 0],
+        error: `TARGET_SECTOR_NOT_FOUND: Star system #${targetSectorId} does not exist in the galactic registry.`,
+      };
+    }
+    const star = sectorRows[0];
+    const starX = Number(star.coordinates_x ?? 500.0);
+    const starY = Number(star.coordinates_y ?? 500.0);
+
+    // 2. Fetch ship state
+    const { rows: shipRows } = await db.query<any>(
+      'SELECT fuel, hyperspace_x, hyperspace_y FROM ships WHERE account_id = $1',
+      [accountId]
+    );
+    if (shipRows.length === 0) {
+      return {
+        success: false,
+        arrivedSectorId: targetSectorId,
+        sectorName: star.name,
+        remainingFuel: 0,
+        coordinates: [starX, starY],
+        error: 'SHIP_NOT_FOUND',
+      };
+    }
+    const ship = shipRows[0];
+
+    const shipX = finalCoords ? finalCoords[0] : Number(ship.hyperspace_x ?? starX);
+    const shipY = finalCoords ? finalCoords[1] : Number(ship.hyperspace_y ?? starY);
+
+    // 3. Gravity Well Proximity Validation (Within 8.0 Light Years)
+    const distanceToStar = Number(Math.hypot(shipX - starX, shipY - starY).toFixed(2));
+    if (distanceToStar > 8.0) {
+      return {
+        success: false,
+        arrivedSectorId: targetSectorId,
+        sectorName: star.name,
+        remainingFuel: Number(ship.fuel),
+        coordinates: [shipX, shipY],
+        error: `OUTSIDE_GRAVITY_WELL: Vessel is ${distanceToStar} LY away from ${star.name}. Orbital drop-out requires proximity within 8.0 Light Years.`,
+      };
+    }
+
+    const fuelToCommit = remainingFuel !== undefined ? Math.max(0, Math.round(remainingFuel)) : Number(ship.fuel);
+
+    // 4. Atomic Transition into TrueSpace
+    await db.query(
+      `UPDATE ships 
+       SET is_in_hyperspace = FALSE, 
+           current_sector_id = $1, 
+           fuel = $2, 
+           hyperspace_x = $3, 
+           hyperspace_y = $4,
+           nav_target_sector_id = CASE WHEN nav_target_sector_id = $1 THEN NULL ELSE nav_target_sector_id END,
+           updated_at = NOW()
+       WHERE account_id = $5`,
+      [targetSectorId, fuelToCommit, starX, starY, accountId]
+    );
+
+    // Synchronize active escorts in player_fleet
+    await db.query(
+      `UPDATE player_fleet 
+       SET current_sector_id = $1, updated_at = NOW() 
+       WHERE account_id = $2 AND deployment_slot IS NOT NULL AND status != 'DESTROYED'`,
+      [targetSectorId, accountId]
+    );
+
+    const detailedSystem = await this.getStarSystemById(targetSectorId);
+
+    return {
+      success: true,
+      arrivedSectorId: targetSectorId,
+      sectorName: star.name,
+      remainingFuel: fuelToCommit,
+      coordinates: [starX, starY],
+      system: detailedSystem,
+    };
+  }
 }
 
 export const starmapService = new StarmapService();

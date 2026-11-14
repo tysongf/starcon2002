@@ -20,6 +20,7 @@ import { XenobiologyController } from './controllers/XenobiologyController';
 import { FleetController } from './controllers/FleetController';
 import { TacticalCommandWheel } from './controllers/TacticalCommandWheel';
 import { StarmapController } from './controllers/StarmapController';
+import { HyperspaceFlightController } from './controllers/HyperspaceFlightController';
 
 class GameEngine {
   private canvas: HTMLCanvasElement;
@@ -48,6 +49,7 @@ class GameEngine {
   public fleetController!: FleetController;
   public tacticalCommandWheel!: TacticalCommandWheel;
   public starmapController!: StarmapController;
+  public hyperspaceFlightController!: HyperspaceFlightController;
 
   // Navigation & Sector Jump System (Day 8)
   private currentSectorId: number = 1;
@@ -1823,6 +1825,22 @@ class GameEngine {
       playNavPlotTone: () => this.audio.playNavPlotTone(),
       playStarmapOpen: () => this.audio.playStarmapOpen(),
     });
+
+    this.hyperspaceFlightController = new HyperspaceFlightController(
+      {
+        getAccountId: () => 'acc_sol_captain',
+        showNotification: (msg, isErr) => this.showApNotification(msg, isErr ?? false),
+        playUiBlip: () => this.audio.playUiBlip(),
+        audio: this.audio,
+        onExitHyperspace: (newSectorId) => {
+          this.currentSectorId = newSectorId;
+          this.loadSectorScene(newSectorId, 101 * newSectorId);
+          this.loadShipAndSector();
+        },
+      },
+      this.scene,
+      this.camera
+    );
   }
 
   private setupEventListeners(): void {
@@ -1942,7 +1960,15 @@ class GameEngine {
       this.spendAP('EXTRACTION', 8);
     });
 
-    // Navigation & Hyperspace Modal Triggers (Day 8 & Day 37)
+    // Navigation & Hyperspace Flight Triggers (Day 8, 37 & 38)
+    document.getElementById('btn-enter-hyperspace')?.addEventListener('click', () => {
+      if (this.hyperspaceFlightController.isInHyperspace) {
+        this.showApNotification('Already cruising in Hyperspace.', false);
+      } else {
+        this.hyperspaceFlightController.enterHyperspace(this.shipMesh || undefined);
+      }
+    });
+
     document.getElementById('btn-open-starmap')?.addEventListener('click', () => {
       this.starmapController.toggleStarmap();
     });
@@ -2098,6 +2124,15 @@ class GameEngine {
         }
       }
 
+      if (e.code === 'KeyH') {
+        if (this.hyperspaceFlightController?.isInHyperspace) {
+          this.showApNotification('Already cruising in Hyperspace.', false);
+        } else {
+          this.hyperspaceFlightController?.enterHyperspace(this.shipMesh || undefined);
+        }
+        return;
+      }
+
       if (e.code === 'KeyM') {
         this.starmapController.toggleStarmap();
         return;
@@ -2139,8 +2174,8 @@ class GameEngine {
         }
       }
 
-      // If docked or currently warping, suppress flight movement keys
-      if (this.isDocked || this.isWarping) {
+      // If docked, warping, or in Hyperspace, suppress local flight movement keys
+      if (this.isDocked || this.isWarping || this.hyperspaceFlightController?.isInHyperspace) {
         return;
       }
 
@@ -2527,6 +2562,13 @@ class GameEngine {
     if (this.apSyncTimer >= 15.0) {
       this.apSyncTimer = 0;
       this.fetchPlayerAP();
+    }
+
+    // 0. Update Hyperspace Flight Simulation if active (Day 38)
+    if (this.hyperspaceFlightController?.isInHyperspace) {
+      this.hyperspaceFlightController.update(deltaSec);
+      this.renderer.render(this.scene, this.camera);
+      return;
     }
 
     // 1. Update Physics Integration (only if undocked)

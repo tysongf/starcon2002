@@ -103,5 +103,73 @@ export const starmapRoutes: FastifyPluginAsync = async (server) => {
     const result = await starmapService.clearCourse(accountId);
     reply.send(result);
   });
+
+  // 6. Enter Hyperspace Flight (Day 38)
+  server.post('/hyperspace/enter', async (req, reply) => {
+    const body = (req.body || {}) as {
+      accountId?: string;
+      playerId?: string;
+    };
+    const accountId = body.accountId || body.playerId || 'acc_sol_captain';
+
+    const result = await starmapService.enterHyperspace(accountId);
+    if (!result.success) {
+      return reply.status(400).send(result);
+    }
+    reply.send(result);
+  });
+
+  // 7. Synchronize Continuous Hyperspace Coordinates & Distance Fuel Burn (Day 38)
+  server.post('/hyperspace/sync', async (req, reply) => {
+    const body = (req.body || {}) as {
+      accountId?: string;
+      playerId?: string;
+      currentCoords: [number, number];
+      fuelBurned: number;
+    };
+    const accountId = body.accountId || body.playerId || 'acc_sol_captain';
+
+    if (!body.currentCoords || !Array.isArray(body.currentCoords) || body.currentCoords.length < 2) {
+      return reply.status(400).send({ success: false, error: 'currentCoords [x, y] is required.' });
+    }
+
+    const result = await starmapService.syncHyperspaceFlight(
+      accountId,
+      [Number(body.currentCoords[0]), Number(body.currentCoords[1])],
+      Number(body.fuelBurned || 0)
+    );
+    if (!result.success) {
+      return reply.status(400).send(result);
+    }
+    reply.send(result);
+  });
+
+  // 8. Orbital Gravity Well Arrival & Drop-Out into TrueSpace (Day 38)
+  server.post('/hyperspace/arrive', async (req, reply) => {
+    const body = (req.body || {}) as {
+      accountId?: string;
+      playerId?: string;
+      targetSectorId: number;
+      finalCoords?: [number, number];
+      remainingFuel?: number;
+    };
+    const accountId = body.accountId || body.playerId || 'acc_sol_captain';
+    const targetSectorId = Number(body.targetSectorId);
+
+    if (isNaN(targetSectorId)) {
+      return reply.status(400).send({ success: false, error: 'targetSectorId is required.' });
+    }
+
+    const result = await starmapService.arriveAtStarSystem(
+      accountId,
+      targetSectorId,
+      body.finalCoords,
+      body.remainingFuel !== undefined ? Number(body.remainingFuel) : undefined
+    );
+    if (!result.success) {
+      return reply.status(400).send(result);
+    }
+    reply.send(result);
+  });
 };
 

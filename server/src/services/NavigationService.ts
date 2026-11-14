@@ -38,6 +38,9 @@ export interface PlayerShip {
   max_shield: number;
   cargo_capacity: number;
   nav_target_sector_id?: number | null;
+  is_in_hyperspace?: boolean;
+  hyperspace_x?: number;
+  hyperspace_y?: number;
 }
 
 export interface JumpResult {

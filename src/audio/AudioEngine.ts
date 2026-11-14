@@ -20,6 +20,12 @@ export class AudioEngine {
   private carrierDroneFilter: BiquadFilterNode | null = null;
   private isCarrierDronePlaying: boolean = false;
 
+  // Day 38: Hyperspace Relativistic Warp Drone
+  private hyperspaceDroneOsc: OscillatorNode | null = null;
+  private hyperspaceDroneGain: GainNode | null = null;
+  private hyperspaceDroneFilter: BiquadFilterNode | null = null;
+  private isHyperspaceDronePlaying: boolean = false;
+
   private initContext(): void {
     if (!this.ctx) {
       const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
@@ -1979,6 +1985,116 @@ export class AudioEngine {
 
       osc.start(now + i * 0.05);
       osc.stop(now + i * 0.05 + 0.5);
+    });
+  }
+
+  /**
+   * Day 38: Sub-space Relativistic Warp Field Looping Drone
+   */
+  public startHyperspaceDrone(): void {
+    this.initContext();
+    if (!this.ctx || this.isHyperspaceDronePlaying) return;
+
+    const now = this.ctx.currentTime;
+    this.hyperspaceDroneOsc = this.ctx.createOscillator();
+    this.hyperspaceDroneGain = this.ctx.createGain();
+    this.hyperspaceDroneFilter = this.ctx.createBiquadFilter();
+
+    this.hyperspaceDroneOsc.type = 'sawtooth';
+    this.hyperspaceDroneOsc.frequency.setValueAtTime(55, now); // Low sub-bass A1
+
+    this.hyperspaceDroneFilter.type = 'lowpass';
+    this.hyperspaceDroneFilter.frequency.setValueAtTime(140, now);
+    this.hyperspaceDroneFilter.Q.setValueAtTime(3.0, now);
+
+    this.hyperspaceDroneGain.gain.setValueAtTime(0.001, now);
+    this.hyperspaceDroneGain.gain.linearRampToValueAtTime(0.18, now + 1.2);
+
+    this.hyperspaceDroneOsc.connect(this.hyperspaceDroneFilter);
+    this.hyperspaceDroneFilter.connect(this.hyperspaceDroneGain);
+    this.hyperspaceDroneGain.connect(this.ctx.destination);
+
+    this.hyperspaceDroneOsc.start(now);
+    this.isHyperspaceDronePlaying = true;
+  }
+
+  public stopHyperspaceDrone(): void {
+    if (!this.ctx || !this.isHyperspaceDronePlaying || !this.hyperspaceDroneGain || !this.hyperspaceDroneOsc) return;
+
+    const now = this.ctx.currentTime;
+    this.hyperspaceDroneGain.gain.setValueAtTime(this.hyperspaceDroneGain.gain.value, now);
+    this.hyperspaceDroneGain.gain.linearRampToValueAtTime(0.001, now + 0.6);
+
+    const osc = this.hyperspaceDroneOsc;
+    setTimeout(() => {
+      try {
+        osc.stop();
+        osc.disconnect();
+      } catch {}
+    }, 650);
+
+    this.isHyperspaceDronePlaying = false;
+    this.hyperspaceDroneOsc = null;
+  }
+
+  /**
+   * Day 38: Warp Field Collapse & Gravity Well Drop-Out Harmonic Audio Stinger
+   */
+  public playWarpCollapse(): void {
+    this.initContext();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    const filter = this.ctx.createBiquadFilter();
+
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(440, now);
+    osc.frequency.exponentialRampToValueAtTime(75, now + 0.55);
+
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(800, now);
+    filter.frequency.exponentialRampToValueAtTime(120, now + 0.55);
+
+    gain.gain.setValueAtTime(0.01, now);
+    gain.gain.linearRampToValueAtTime(0.3, now + 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.65);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.7);
+  }
+
+  /**
+   * Day 38: Autopilot Engage / Disengage Crisp Digital Chirp
+   */
+  public playAutopilotChime(engaged: boolean = true): void {
+    this.initContext();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+
+    const notes = engaged ? [440, 659.25, 880] : [880, 587.33];
+    notes.forEach((freq, idx) => {
+      if (!this.ctx) return;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, now + idx * 0.06);
+
+      gain.gain.setValueAtTime(0.01, now + idx * 0.06);
+      gain.gain.linearRampToValueAtTime(0.18, now + idx * 0.06 + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.06 + 0.18);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      osc.start(now + idx * 0.06);
+      osc.stop(now + idx * 0.06 + 0.2);
     });
   }
 }
