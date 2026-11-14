@@ -26,6 +26,12 @@ export class AudioEngine {
   private hyperspaceDroneFilter: BiquadFilterNode | null = null;
   private isHyperspaceDronePlaying: boolean = false;
 
+  // Day 40: Precursor Quasi-Space Shimmer Drone
+  private quasiDroneOsc1: OscillatorNode | null = null;
+  private quasiDroneOsc2: OscillatorNode | null = null;
+  private quasiDroneGain: GainNode | null = null;
+  private isQuasiDronePlaying: boolean = false;
+
   private initContext(): void {
     if (!this.ctx) {
       const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
@@ -2235,6 +2241,124 @@ export class AudioEngine {
 
     osc.start(now);
     osc.stop(now + 1.0);
+  }
+
+  // =========================================================================
+  // Day 40: Precursor Quasi-Space & Emergency SOS Audio
+  // =========================================================================
+
+  /**
+   * Day 40: Starts the ethereal Precursor Quasi-Space neon-green harmonic shimmer drone
+   */
+  public startQuasiSpaceDrone(): void {
+    this.initContext();
+    if (!this.ctx || this.isQuasiDronePlaying) return;
+
+    const now = this.ctx.currentTime;
+    this.quasiDroneOsc1 = this.ctx.createOscillator();
+    this.quasiDroneOsc2 = this.ctx.createOscillator();
+    this.quasiDroneGain = this.ctx.createGain();
+
+    this.quasiDroneOsc1.type = 'sine';
+    this.quasiDroneOsc1.frequency.setValueAtTime(528, now); // Solfeggio 528Hz DNA / Precursor resonance
+
+    this.quasiDroneOsc2.type = 'sine';
+    this.quasiDroneOsc2.frequency.setValueAtTime(532, now); // 4Hz binaural beat shimmer
+
+    this.quasiDroneGain.gain.setValueAtTime(0.001, now);
+    this.quasiDroneGain.gain.linearRampToValueAtTime(0.12, now + 1.5);
+
+    this.quasiDroneOsc1.connect(this.quasiDroneGain);
+    this.quasiDroneOsc2.connect(this.quasiDroneGain);
+    this.quasiDroneGain.connect(this.ctx.destination);
+
+    this.quasiDroneOsc1.start(now);
+    this.quasiDroneOsc2.start(now);
+    this.isQuasiDronePlaying = true;
+  }
+
+  /**
+   * Day 40: Stops the Quasi-Space shimmer drone
+   */
+  public stopQuasiSpaceDrone(): void {
+    if (!this.ctx || !this.isQuasiDronePlaying || !this.quasiDroneGain) return;
+
+    const now = this.ctx.currentTime;
+    this.quasiDroneGain.gain.linearRampToValueAtTime(0.001, now + 0.6);
+    setTimeout(() => {
+      try {
+        this.quasiDroneOsc1?.stop();
+        this.quasiDroneOsc2?.stop();
+        this.quasiDroneOsc1?.disconnect();
+        this.quasiDroneOsc2?.disconnect();
+        this.quasiDroneGain?.disconnect();
+      } catch {}
+      this.isQuasiDronePlaying = false;
+    }, 650);
+  }
+
+  /**
+   * Day 40: Precursor Portal Gateway Transition Whoosh
+   */
+  public playPortalTransition(): void {
+    this.initContext();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+
+    const osc = this.ctx.createOscillator();
+    const filter = this.ctx.createBiquadFilter();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, now);
+    osc.frequency.exponentialRampToValueAtTime(110, now + 0.9);
+
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(1200, now);
+    filter.frequency.exponentialRampToValueAtTime(200, now + 0.9);
+    filter.Q.setValueAtTime(5.0, now);
+
+    gain.gain.setValueAtTime(0.01, now);
+    gain.gain.linearRampToValueAtTime(0.35, now + 0.1);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 1.0);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 1.05);
+  }
+
+  /**
+   * Day 40: Emergency Zero-Fuel SOS Transponder Distress Klaxon
+   */
+  public playSosDistressBeacon(): void {
+    this.initContext();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+
+    // Three rapid beeps followed by one resonant tone
+    const beeps = [0, 0.12, 0.24, 0.45];
+    beeps.forEach((startTime, idx) => {
+      if (!this.ctx) return;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = idx === 3 ? 'sawtooth' : 'triangle';
+      osc.frequency.setValueAtTime(idx === 3 ? 440 : 880, now + startTime);
+
+      const duration = idx === 3 ? 0.35 : 0.08;
+      gain.gain.setValueAtTime(0.01, now + startTime);
+      gain.gain.linearRampToValueAtTime(0.2, now + startTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + startTime + duration);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      osc.start(now + startTime);
+      osc.stop(now + startTime + duration + 0.02);
+    });
   }
 }
 

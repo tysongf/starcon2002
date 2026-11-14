@@ -74,6 +74,14 @@ export class HyperspaceFlightController {
   private decoyMeshes: Map<string, THREE.Group> = new Map();
   private stealthShieldMesh: THREE.Mesh | null = null;
 
+  // Day 40: Precursor Quasi-Space & Emergency SOS Transponder
+  public isInQuasiSpace: boolean = false;
+  public quasiPortals: any[] = [];
+  public nearestPortal: any = null;
+  public nearestPortalDistance: number = 9999.0;
+  public isSosDistressActive: boolean = false;
+  private portalMeshes: Map<string, THREE.Group> = new Map();
+
   // Navigation & Autopilot
   public activeCourse: CoursePlotResult | null = null;
   public isAutopilotActive: boolean = false;
@@ -120,6 +128,13 @@ export class HyperspaceFlightController {
   private hudDecoyCount: HTMLElement | null = null;
   private hudStealthPill: HTMLElement | null = null;
   private hudStealthVal: HTMLElement | null = null;
+  private hudPortalAlert: HTMLElement | null = null;
+  private hudSosAlert: HTMLElement | null = null;
+  private hudRealmBadge: HTMLElement | null = null;
+  private modalEmergencySos: HTMLElement | null = null;
+  private sosResponderName: HTMLElement | null = null;
+  private sosDialogueText: HTMLElement | null = null;
+  private sosActionsContainer: HTMLElement | null = null;
 
   constructor(ctx: HyperspaceContext, scene: THREE.Scene, camera: THREE.PerspectiveCamera) {
     this.ctx = ctx;
@@ -151,6 +166,13 @@ export class HyperspaceFlightController {
     this.hudDecoyCount = document.getElementById('hyper-hud-decoy-count');
     this.hudStealthPill = document.getElementById('hyper-hud-stealth-pill');
     this.hudStealthVal = document.getElementById('hyper-hud-stealth-val');
+    this.hudPortalAlert = document.getElementById('hyper-hud-portal-alert');
+    this.hudSosAlert = document.getElementById('hyper-hud-sos-alert');
+    this.hudRealmBadge = document.getElementById('hyper-hud-realm-badge');
+    this.modalEmergencySos = document.getElementById('modal-emergency-sos');
+    this.sosResponderName = document.getElementById('sos-responder-name');
+    this.sosDialogueText = document.getElementById('sos-dialogue-text');
+    this.sosActionsContainer = document.getElementById('sos-actions-container');
 
     this.hudDecoyBtn?.addEventListener('click', () => {
       if (this.isInHyperspace) {
@@ -191,8 +213,14 @@ export class HyperspaceFlightController {
         this.ctx.playUiBlip?.();
       }
 
-      // Orbital Gravity Well Drop-Out
-      if ((e.code === 'Enter' || e.code === 'KeyJ') && this.nearestSystem && this.nearestDistance <= 8.0) {
+      // Precursor Portal Transit (Quasi-Space)
+      if ((e.code === 'Enter' || e.code === 'KeyJ') && this.isInQuasiSpace && this.nearestPortal && this.nearestPortalDistance <= 8.0) {
+        this.exitQuasiSpaceViaPortal(this.nearestPortal.id);
+        return;
+      }
+
+      // Orbital Gravity Well Drop-Out (TrueSpace)
+      if ((e.code === 'Enter' || e.code === 'KeyJ') && !this.isInQuasiSpace && this.nearestSystem && this.nearestDistance <= 8.0) {
         this.dropOutOfHyperspace(this.nearestSystem.id);
       }
     });
@@ -455,6 +483,7 @@ export class HyperspaceFlightController {
    */
   public update(delta: number): void {
     if (!this.isInHyperspace) return;
+    if (this.isSosDistressActive) return;
 
     // 1. Process Steering (Angular)
     if (this.isAutopilotActive && this.activeCourse) {
@@ -485,10 +514,12 @@ export class HyperspaceFlightController {
     while (this.heading < 0) this.heading += Math.PI * 2;
     while (this.heading >= Math.PI * 2) this.heading -= Math.PI * 2;
 
-    // 2. Process Thrusters & Acceleration
-    const targetMaxSpeed = this.keys.afterburner ? this.afterburnerSpeed : this.maxCruisingSpeed;
+    // 2. Process Thrusters & Acceleration (Quasi-Space doubles speed: 50 LY/s cruise, 80 LY/s afterburner)
+    const baseCruise = this.isInQuasiSpace ? 50.0 : this.maxCruisingSpeed;
+    const baseBoost = this.isInQuasiSpace ? 80.0 : this.afterburnerSpeed;
+    const targetMaxSpeed = this.keys.afterburner ? baseBoost : baseCruise;
 
-    if (this.keys.forward && this.currentFuel > 0) {
+    if (this.keys.forward && (this.currentFuel > 0 || this.isInQuasiSpace)) {
       this.speed = Math.min(targetMaxSpeed, this.speed + this.accelerationRate * delta);
     } else if (this.keys.backward) {
       this.speed = Math.max(0, this.speed - this.accelerationRate * delta * 1.5);
@@ -498,7 +529,8 @@ export class HyperspaceFlightController {
       if (this.speed < 0.1) this.speed = 0;
     }
 
-    // 3. Integrate Kinematic Position (X, Y in Light-Years)
+    // 3. Integrate Kinematic Position
+    const maxBound = this.isInQuasiSpace ? 300.0 : 1000.0;
     const vx = Math.cos(this.heading) * this.speed;
     const vy = Math.sin(this.heading) * this.speed;
     this.velocity = [vx, vy];
@@ -507,24 +539,32 @@ export class HyperspaceFlightController {
     this.coordinates[0] += vx * delta;
     this.coordinates[1] += vy * delta;
 
-    // Clamp coordinates within galactic bounds [0, 1000]
-    this.coordinates[0] = Math.max(0, Math.min(1000, this.coordinates[0]));
-    this.coordinates[1] = Math.max(0, Math.min(1000, this.coordinates[1]));
+    // Clamp coordinates within galactic/quasi bounds
+    this.coordinates[0] = Math.max(0, Math.min(maxBound, this.coordinates[0]));
+    this.coordinates[1] = Math.max(0, Math.min(maxBound, this.coordinates[1]));
 
-    // 4. Distance-Based Fuel Burn Calculation
-    // Effective Rate = 0.20 * (1 + 0.25 * escorts) (+50% in afterburner)
-    const escortMult = 1.0 + 0.25 * this.activeEscortsCount;
-    const afterburnerMult = this.keys.afterburner ? 1.5 : 1.0;
-    const currentBurnRate = this.baseBurnRate * escortMult * afterburnerMult;
+    // 4. Distance-Based Fuel Burn Calculation (ZERO Fuel Burn in Quasi-Space!)
+    let currentBurnRate = 0.0;
+    if (!this.isInQuasiSpace) {
+      const escortMult = 1.0 + 0.25 * this.activeEscortsCount;
+      const afterburnerMult = this.keys.afterburner ? 1.5 : 1.0;
+      currentBurnRate = this.baseBurnRate * escortMult * afterburnerMult;
 
-    if (deltaDist > 0) {
-      const fuelCostDelta = deltaDist * currentBurnRate;
-      this.accumulatedFuelBurn += fuelCostDelta;
+      if (deltaDist > 0) {
+        const fuelCostDelta = deltaDist * currentBurnRate;
+        this.accumulatedFuelBurn += fuelCostDelta;
 
-      if (this.accumulatedFuelBurn >= 1.0) {
-        const wholeFuelDeducted = Math.floor(this.accumulatedFuelBurn);
-        this.currentFuel = Math.max(0, this.currentFuel - wholeFuelDeducted);
-        this.accumulatedFuelBurn -= wholeFuelDeducted;
+        if (this.accumulatedFuelBurn >= 1.0) {
+          const wholeFuelDeducted = Math.floor(this.accumulatedFuelBurn);
+          this.currentFuel = Math.max(0, this.currentFuel - wholeFuelDeducted);
+          this.accumulatedFuelBurn -= wholeFuelDeducted;
+        }
+      }
+
+      // Check Zero-Fuel Crisis in Hyperspace
+      if (this.currentFuel <= 0 && !this.isSosDistressActive) {
+        this.triggerEmergencySos();
+        return;
       }
     }
 
@@ -540,14 +580,14 @@ export class HyperspaceFlightController {
       this.immunityRemainingSeconds = Math.max(0, this.immunityRemainingSeconds - delta);
     }
 
-    // Day 39: Periodic Subspace Radar Polling (every 1.2 seconds)
-    if (now - this.lastRadarPollTime > 1200) {
+    // Day 39: Periodic Subspace Radar Polling (Hyperspace only)
+    if (!this.isInQuasiSpace && now - this.lastRadarPollTime > 1200) {
       this.pollRadarBlips();
       this.lastRadarPollTime = now;
     }
 
-    // Day 39: Interception Collision Detection (R <= 1.8 LY)
-    if (this.immunityRemainingSeconds <= 0 && !this.isInterceptionActive) {
+    // Day 39: Interception Collision Detection (R <= 1.8 LY in Hyperspace only)
+    if (!this.isInQuasiSpace && this.immunityRemainingSeconds <= 0 && !this.isInterceptionActive) {
       for (const blip of this.radarBlips) {
         if (blip.distanceLY !== undefined && blip.distanceLY <= 1.8 && blip.isHostile) {
           this.triggerInterception(blip.id);
@@ -556,13 +596,22 @@ export class HyperspaceFlightController {
       }
     }
 
-    // 5. Detect Nearest Star Gravity Well
-    this.detectNearestStar();
+    // Spatial Proximity Detection
+    if (this.isInQuasiSpace) {
+      this.detectNearestPortal();
+      if (this.nearestPortal && this.nearestPortalDistance <= 3.0) {
+        this.exitQuasiSpaceViaPortal(this.nearestPortal.id);
+        return;
+      }
+    } else {
+      // 5. Detect Nearest Star Gravity Well
+      this.detectNearestStar();
 
-    // Automatic drop-out if within 3.0 LY
-    if (this.nearestSystem && this.nearestDistance <= 3.0) {
-      this.dropOutOfHyperspace(this.nearestSystem.id);
-      return;
+      // Automatic drop-out if within 3.0 LY
+      if (this.nearestSystem && this.nearestDistance <= 3.0) {
+        this.dropOutOfHyperspace(this.nearestSystem.id);
+        return;
+      }
     }
 
     // 6. Update 3D Visual Positions & Warp Particles
@@ -674,76 +723,122 @@ export class HyperspaceFlightController {
       this.camera.lookAt(Math.cos(this.heading) * 50, 0, Math.sin(this.heading) * 50);
     }
 
-    // Day 39: Render Subspace Radar Blips
-    const currentBlipIds = new Set(this.radarBlips.map((b) => b.id));
-    for (const [id, grp] of this.blipMeshes.entries()) {
-      if (!currentBlipIds.has(id)) {
-        this.hyperspaceGroup.remove(grp);
-        this.blipMeshes.delete(id);
+    // Day 40: Render Precursor Quasi-Space Portals vs Hyperspace Radar Blips
+    if (this.isInQuasiSpace) {
+      this.blipMeshes.forEach((grp) => (grp.visible = false));
+      this.decoyMeshes.forEach((grp) => (grp.visible = false));
+      if (this.starPoints) this.starPoints.visible = false;
+
+      // Render Quasi-Space Portals
+      for (const portal of this.quasiPortals) {
+        let grp = this.portalMeshes.get(portal.id);
+        if (!grp) {
+          grp = new THREE.Group();
+          const obeliskGeo = new THREE.BoxGeometry(4.0, 16.0, 4.0);
+          const obeliskMat = new THREE.MeshBasicMaterial({
+            color: 0xa855f7,
+            wireframe: true,
+          });
+          grp.add(new THREE.Mesh(obeliskGeo, obeliskMat));
+
+          const haloGeo = new THREE.RingGeometry(6.0, 8.0, 16);
+          const haloMat = new THREE.MeshBasicMaterial({
+            color: 0x00ffaa,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.8,
+          });
+          const halo = new THREE.Mesh(haloGeo, haloMat);
+          halo.rotation.x = Math.PI / 2;
+          grp.add(halo);
+
+          this.hyperspaceGroup.add(grp);
+          this.portalMeshes.set(portal.id, grp);
+        }
+
+        grp.visible = true;
+        const relX = (portal.quasispaceX - this.coordinates[0]) * 4.0;
+        const relZ = (portal.quasispaceY - this.coordinates[1]) * 4.0;
+        grp.position.set(relX, 0, relZ);
+        grp.rotation.y += delta * 0.8;
       }
-    }
+    } else {
+      this.portalMeshes.forEach((grp) => (grp.visible = false));
+      if (this.starPoints) this.starPoints.visible = true;
 
-    for (const blip of this.radarBlips) {
-      let grp = this.blipMeshes.get(blip.id);
-      if (!grp) {
-        grp = new THREE.Group();
-        const coreGeo = new THREE.SphereGeometry(3.0, 10, 10);
-        const coreMat = new THREE.MeshBasicMaterial({
-          color: new THREE.Color(blip.factionColor),
-          transparent: true,
-          opacity: 0.9,
-        });
-        const core = new THREE.Mesh(coreGeo, coreMat);
-        grp.add(core);
-
-        const ringGeo = new THREE.RingGeometry(4.5, 6.0, 16);
-        const ringMat = new THREE.MeshBasicMaterial({
-          color: new THREE.Color(blip.factionColor),
-          side: THREE.DoubleSide,
-          transparent: true,
-          opacity: 0.6,
-        });
-        const ring = new THREE.Mesh(ringGeo, ringMat);
-        ring.rotation.x = Math.PI / 2;
-        grp.add(ring);
-
-        this.hyperspaceGroup.add(grp);
-        this.blipMeshes.set(blip.id, grp);
+      // Day 39: Render Subspace Radar Blips
+      const currentBlipIds = new Set(this.radarBlips.map((b) => b.id));
+      for (const [id, grp] of this.blipMeshes.entries()) {
+        if (!currentBlipIds.has(id)) {
+          this.hyperspaceGroup.remove(grp);
+          this.blipMeshes.delete(id);
+        }
       }
 
-      const relX = (blip.x - this.coordinates[0]) * 4.0;
-      const relZ = (blip.y - this.coordinates[1]) * 4.0;
-      grp.position.set(relX, 0, relZ);
+      for (const blip of this.radarBlips) {
+        let grp = this.blipMeshes.get(blip.id);
+        if (!grp) {
+          grp = new THREE.Group();
+          const coreGeo = new THREE.SphereGeometry(3.0, 10, 10);
+          const coreMat = new THREE.MeshBasicMaterial({
+            color: new THREE.Color(blip.factionColor),
+            transparent: true,
+            opacity: 0.9,
+          });
+          const core = new THREE.Mesh(coreGeo, coreMat);
+          grp.add(core);
 
-      const scale = 1.0 + Math.sin(performance.now() * 0.006) * 0.2;
-      grp.scale.set(scale, scale, scale);
-    }
+          const ringGeo = new THREE.RingGeometry(4.5, 6.0, 16);
+          const ringMat = new THREE.MeshBasicMaterial({
+            color: new THREE.Color(blip.factionColor),
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.6,
+          });
+          const ring = new THREE.Mesh(ringGeo, ringMat);
+          ring.rotation.x = Math.PI / 2;
+          grp.add(ring);
 
-    // Day 39: Render Active Decoys
-    const currentDecoyIds = new Set(this.activeDecoys.map((d) => d.id));
-    for (const [id, grp] of this.decoyMeshes.entries()) {
-      if (!currentDecoyIds.has(id)) {
-        this.hyperspaceGroup.remove(grp);
-        this.decoyMeshes.delete(id);
+          this.hyperspaceGroup.add(grp);
+          this.blipMeshes.set(blip.id, grp);
+        }
+
+        grp.visible = true;
+        const relX = (blip.x - this.coordinates[0]) * 4.0;
+        const relZ = (blip.y - this.coordinates[1]) * 4.0;
+        grp.position.set(relX, 0, relZ);
+
+        const scale = 1.0 + Math.sin(performance.now() * 0.006) * 0.2;
+        grp.scale.set(scale, scale, scale);
       }
-    }
 
-    for (const decoy of this.activeDecoys) {
-      let grp = this.decoyMeshes.get(decoy.id);
-      if (!grp) {
-        grp = new THREE.Group();
-        const geo = new THREE.SphereGeometry(4.0, 8, 8);
-        const mat = new THREE.MeshBasicMaterial({
-          color: 0xf59e0b,
-          wireframe: true,
-        });
-        grp.add(new THREE.Mesh(geo, mat));
-        this.hyperspaceGroup.add(grp);
-        this.decoyMeshes.set(decoy.id, grp);
+      // Day 39: Render Active Decoys
+      const currentDecoyIds = new Set(this.activeDecoys.map((d) => d.id));
+      for (const [id, grp] of this.decoyMeshes.entries()) {
+        if (!currentDecoyIds.has(id)) {
+          this.hyperspaceGroup.remove(grp);
+          this.decoyMeshes.delete(id);
+        }
       }
-      const relX = (decoy.x - this.coordinates[0]) * 4.0;
-      const relZ = (decoy.y - this.coordinates[1]) * 4.0;
-      grp.position.set(relX, 0, relZ);
+
+      for (const decoy of this.activeDecoys) {
+        let grp = this.decoyMeshes.get(decoy.id);
+        if (!grp) {
+          grp = new THREE.Group();
+          const geo = new THREE.SphereGeometry(4.0, 8, 8);
+          const mat = new THREE.MeshBasicMaterial({
+            color: 0xf59e0b,
+            wireframe: true,
+          });
+          grp.add(new THREE.Mesh(geo, mat));
+          this.hyperspaceGroup.add(grp);
+          this.decoyMeshes.set(decoy.id, grp);
+        }
+        grp.visible = true;
+        const relX = (decoy.x - this.coordinates[0]) * 4.0;
+        const relZ = (decoy.y - this.coordinates[1]) * 4.0;
+        grp.position.set(relX, 0, relZ);
+      }
     }
 
     // Day 39: Render Warp Stealth Shield
@@ -835,11 +930,38 @@ export class HyperspaceFlightController {
 
     // Gravity Well Alert
     if (this.hudGravityWellAlert) {
-      if (this.nearestSystem && this.nearestDistance <= 8.0) {
+      if (!this.isInQuasiSpace && this.nearestSystem && this.nearestDistance <= 8.0) {
         this.hudGravityWellAlert.classList.remove('hidden');
         this.hudGravityWellAlert.textContent = `GRAVITY WELL DETECTED: ${this.nearestSystem.name.toUpperCase()} (${this.nearestDistance} LY) // PRESS [ENTER / J] TO DROP OUT`;
       } else {
         this.hudGravityWellAlert.classList.add('hidden');
+      }
+    }
+
+    // Day 40: Precursor Portal Proximity Alert
+    if (this.hudPortalAlert) {
+      if (this.isInQuasiSpace && this.nearestPortal && this.nearestPortalDistance <= 8.0) {
+        this.hudPortalAlert.classList.remove('hidden');
+        this.hudPortalAlert.textContent = `PRECURSOR PORTAL: ${this.nearestPortal.name.toUpperCase()} (${this.nearestPortalDistance} LY) // PRESS [ENTER / J] TO TRANSIT`;
+      } else {
+        this.hudPortalAlert.classList.add('hidden');
+      }
+    }
+
+    // Day 40: Realm Badge & SOS Status
+    if (this.hudRealmBadge) {
+      if (this.isInQuasiSpace) {
+        this.hudRealmBadge.classList.remove('hidden');
+      } else {
+        this.hudRealmBadge.classList.add('hidden');
+      }
+    }
+
+    if (this.hudSosAlert) {
+      if (this.isSosDistressActive) {
+        this.hudSosAlert.classList.remove('hidden');
+      } else {
+        this.hudSosAlert.classList.add('hidden');
       }
     }
   }
@@ -1019,6 +1141,214 @@ export class HyperspaceFlightController {
       this.pollRadarBlips();
     } catch (err: any) {
       this.ctx.showNotification?.(`Hyperspace resumption error: ${err.message}`, true);
+    }
+  }
+
+  // =========================================================================
+  // Day 40: Precursor Quasi-Space & Emergency SOS Transponder Methods
+  // =========================================================================
+
+  public detectNearestPortal(): void {
+    let closest: any = null;
+    let minDist = 9999.0;
+
+    for (const portal of this.quasiPortals) {
+      const dist = Math.hypot(portal.quasispaceX - this.coordinates[0], portal.quasispaceY - this.coordinates[1]);
+      if (dist < minDist) {
+        minDist = dist;
+        closest = portal;
+      }
+    }
+
+    this.nearestPortal = closest;
+    this.nearestPortalDistance = Number(minDist.toFixed(1));
+  }
+
+  public populateQuasiPortals(portals: any[]): void {
+    this.quasiPortals = portals;
+  }
+
+  /**
+   * Transitions from real Hyperspace into Precursor Quasi-Space
+   */
+  public async enterQuasiSpace(): Promise<void> {
+    try {
+      const accountId = this.ctx.getAccountId();
+      const res = await fetch('/api/starmap/quasispace/enter', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        this.ctx.showNotification?.(data.error || 'Failed to enter Quasi-Space.', true);
+        return;
+      }
+
+      this.isInHyperspace = true;
+      this.isInQuasiSpace = true;
+      this.coordinates = [data.coordinates[0], data.coordinates[1]];
+      this.velocity = [0, 0];
+      this.speed = 0;
+
+      // Audio transition
+      this.ctx.audio.stopHyperspaceDrone();
+      this.ctx.audio.startQuasiSpaceDrone();
+      this.ctx.audio.playPortalTransition();
+
+      // Load portal beacons
+      if (this.quasiPortals.length === 0) {
+        const portalRes = await fetch('/api/starmap/quasispace/portals');
+        if (portalRes.ok) {
+          const pData = await portalRes.json();
+          this.populateQuasiPortals(pData.portals || []);
+        }
+      }
+
+      this.ctx.showNotification?.('🌀 Dimensional Phase Shift: Cruising in Precursor Quasi-Space.');
+    } catch (err: any) {
+      this.ctx.showNotification?.(`Quasi-Space Error: ${err.message}`, true);
+    }
+  }
+
+  /**
+   * Transits an ancient Precursor Portal, projecting back into real Hyperspace
+   */
+  public async exitQuasiSpaceViaPortal(portalId: string): Promise<void> {
+    try {
+      const accountId = this.ctx.getAccountId();
+      const res = await fetch('/api/starmap/quasispace/exit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId, portalId }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        this.ctx.showNotification?.(data.error || 'Failed to transit portal.', true);
+        return;
+      }
+
+      this.isInQuasiSpace = false;
+      this.coordinates = [data.coordinates[0], data.coordinates[1]];
+      this.immunityRemainingSeconds = 5.0;
+
+      // Audio transition
+      this.ctx.audio.stopQuasiSpaceDrone();
+      this.ctx.audio.startHyperspaceDrone();
+      this.ctx.audio.playPortalTransition();
+
+      this.ctx.showNotification?.(`⚡ Portal Transit Complete: Emerged at ${data.portalName}.`);
+    } catch (err: any) {
+      this.ctx.showNotification?.(`Portal Error: ${err.message}`, true);
+    }
+  }
+
+  /**
+   * Broadcasts an automated emergency SOS distress beacon when fuel drops to 0
+   */
+  public async triggerEmergencySos(): Promise<void> {
+    if (this.isSosDistressActive) return;
+
+    this.isSosDistressActive = true;
+    this.speed = 0;
+    this.velocity = [0, 0];
+    this.keys.forward = false;
+
+    this.ctx.audio.playSosDistressBeacon();
+
+    try {
+      const accountId = this.ctx.getAccountId();
+      const res = await fetch('/api/starmap/hyperspace/sos-trigger', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success || !data.encounter) {
+        this.isSosDistressActive = false;
+        return;
+      }
+
+      this.renderEmergencySosModal(data.encounter);
+    } catch (err) {
+      this.isSosDistressActive = false;
+    }
+  }
+
+  private renderEmergencySosModal(encounter: any): void {
+    if (this.modalEmergencySos) {
+      this.modalEmergencySos.classList.remove('hidden');
+    }
+    if (this.sosResponderName) {
+      this.sosResponderName.textContent = encounter.responderName.toUpperCase();
+    }
+    if (this.sosDialogueText) {
+      this.sosDialogueText.textContent = `"${encounter.dialogueText}"`;
+    }
+
+    if (this.sosActionsContainer) {
+      this.sosActionsContainer.innerHTML = (encounter.options || []).map((opt: any) => {
+        const isHostile = opt.action === 'FIGHT' || opt.action === 'SURRENDER';
+        return `
+          <button class="sos-action-btn ${isHostile ? 'hostile' : ''}" data-action="${opt.action}">
+            <span class="sos-action-label">${opt.label}</span>
+            <span class="sos-action-desc" style="color: #94a3b8; font-size: 0.7rem;">${opt.description}</span>
+          </button>
+        `;
+      }).join('');
+
+      this.sosActionsContainer.querySelectorAll('.sos-action-btn').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+          const action = (e.currentTarget as HTMLElement).getAttribute('data-action');
+          if (action) {
+            this.resolveEmergencySos(action);
+          }
+        });
+      });
+    }
+  }
+
+  /**
+   * Resolves the Emergency SOS transaction (fuel purchase, barter, or combat drop)
+   */
+  public async resolveEmergencySos(choice: string): Promise<void> {
+    try {
+      const accountId = this.ctx.getAccountId();
+      const res = await fetch('/api/starmap/hyperspace/sos-resolve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId, choice }),
+      });
+
+      const data = await res.json();
+      if (this.modalEmergencySos) {
+        this.modalEmergencySos.classList.add('hidden');
+      }
+
+      if (data.combatDropRequired) {
+        this.isSosDistressActive = false;
+        this.dropOutOfHyperspaceToCombat(data.combatSetup);
+        return;
+      }
+
+      if (data.success) {
+        this.isSosDistressActive = false;
+        this.currentFuel = Number(data.remainingFuel ?? 25);
+        this.immunityRemainingSeconds = 5.0;
+        this.ctx.showNotification?.(data.message || 'Emergency fuel transferred!');
+      } else {
+        this.ctx.showNotification?.(data.error || 'SOS transaction failed.', true);
+        this.isSosDistressActive = false;
+      }
+    } catch (err: any) {
+      this.isSosDistressActive = false;
+      if (this.modalEmergencySos) {
+        this.modalEmergencySos.classList.add('hidden');
+      }
+      this.ctx.showNotification?.(`SOS Error: ${err.message}`, true);
     }
   }
 

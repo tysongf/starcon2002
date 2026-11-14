@@ -104,9 +104,16 @@
             <div class="hyper-autopilot-status">
               <span class="hyper-badge standby" id="hyper-hud-autopilot-badge">AUTOPILOT: STANDBY [X]</span>
               <span class="hyper-cam-badge">CAMERA: [C]</span>
+              <span class="hyper-badge quasi hidden" id="hyper-hud-realm-badge">QUASI-SPACE</span>
             </div>
             <div class="hyper-gravity-alert hidden" id="hyper-hud-gravity-alert">
               GRAVITY WELL DETECTED // PRESS [ENTER / J] TO DROP OUT
+            </div>
+            <div class="hyper-portal-alert hidden" id="hyper-hud-portal-alert">
+              PRECURSOR PORTAL DETECTED // PRESS [ENTER / J] TO TRANSIT
+            </div>
+            <div class="hyper-sos-alert hidden" id="hyper-hud-sos-alert">
+              ⚠️ FUEL EXHAUSTED // EMERGENCY SOS DISTRESS TRANSPONDER ACTIVE
             </div>
           </div>
 
@@ -2065,6 +2072,35 @@
             DISMISS LAB CONSOLE [ESC]
           </button>
         </footer>
+      </div>
+    </div>
+
+    <!-- Day 40: Zero-Fuel Emergency SOS Transponder Modal -->
+    <div id="modal-emergency-sos" class="dock-modal-overlay hidden">
+      <div class="dock-modal-card sos-modal-card">
+        <header class="dock-modal-header sos-modal-header">
+          <div class="dock-title-group">
+            <span class="dock-badge alert-pulse" id="sos-badge">EMERGENCY SOS BROADCAST</span>
+            <h2 class="dock-station-name" id="sos-responder-name">SOL-AEGIS MOBILE TANKER 09</h2>
+            <span class="dock-subtext" id="sos-responder-subtitle">INCOMING RESCUE VESSEL // VECTOR LOCKED</span>
+          </div>
+        </header>
+
+        <div class="sos-modal-body">
+          <div class="officer-briefing-card sos-briefing-card">
+            <div class="officer-avatar" id="sos-avatar">⛽</div>
+            <div class="officer-dialog-bubble">
+              <span class="officer-name" id="sos-speaker-name">CHIEF ENGINEER VANCE</span>
+              <p class="officer-quote" id="sos-dialogue-text">
+                "Emergency distress beacon acknowledged, Flagship. Sol Logistics deployed our tanker to your coordinates. We can transfer 25 Deuterium fuel units for standard emergency rate (400 Credits)."
+              </p>
+            </div>
+          </div>
+
+          <div class="sos-actions-container" id="sos-actions-container">
+            <!-- Dynamic rescue action buttons -->
+          </div>
+        </div>
       </div>
     </div>
 

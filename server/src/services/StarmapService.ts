@@ -133,6 +133,48 @@ export interface CommsResolutionResult {
   error?: string;
 }
 
+export interface QuasiSpacePortal {
+  id: string;
+  name: string;
+  quasispaceX: number;
+  quasispaceY: number;
+  targetHyperspaceX: number;
+  targetHyperspaceY: number;
+  targetSectorId: number | null;
+  description: string;
+  distanceLY?: number;
+}
+
+export interface EmergencySOSEncounter {
+  encounterId: string;
+  responderType: 'TANKER' | 'BARTER' | 'SCAVENGER';
+  responderName: string;
+  portrait: string;
+  dialogueText: string;
+  fuelOffered: number;
+  creditCost?: number;
+  barterOreCost?: number;
+  barterBioCost?: number;
+  isHostile: boolean;
+  options: Array<{
+    id: string;
+    label: string;
+    action: 'BUY_FUEL' | 'BARTER_ORE' | 'BARTER_BIO' | 'SURRENDER' | 'FIGHT';
+    description: string;
+  }>;
+}
+
+export interface EmergencySOSResolution {
+  success: boolean;
+  actionTaken: string;
+  remainingFuel: number;
+  remainingCredits?: number;
+  combatDropRequired: boolean;
+  combatSetup?: any;
+  message: string;
+  error?: string;
+}
+
 export class StarmapService {
   public static readonly CANONICAL_SPHERES: FactionSphere[] = [
     {
@@ -1426,6 +1468,461 @@ export class StarmapService {
         combatOutcome === 'VICTORY'
           ? 'Tactical combat resolved: VICTORY. Re-emerging in Hyperspace with 5s warp-flare immunity.'
           : 'Emergency FTL escape successful. Re-emerging in Hyperspace with 5s warp-flare immunity.',
+    };
+  }
+
+  // =========================================================================
+  // Day 40: Precursor Quasi-Space Slipstream & Emergency SOS Transponder
+  // =========================================================================
+
+  private activeSOSEncounters: Map<string, EmergencySOSEncounter> = new Map();
+
+  /**
+   * Retrieves the 8 canonical Precursor Portals anchored inside Quasi-Space.
+   */
+  public async getQuasiSpacePortals(): Promise<QuasiSpacePortal[]> {
+    const { rows } = await db.query<any>(
+      `SELECT id, name, quasispace_x, quasispace_y, target_hyperspace_x, target_hyperspace_y, target_sector_id, description
+       FROM quasispace_portals
+       ORDER BY id ASC`
+    );
+
+    return rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      quasispaceX: Number(r.quasispace_x),
+      quasispaceY: Number(r.quasispace_y),
+      targetHyperspaceX: Number(r.target_hyperspace_x),
+      targetHyperspaceY: Number(r.target_hyperspace_y),
+      targetSectorId: r.target_sector_id !== null ? Number(r.target_sector_id) : null,
+      description: r.description,
+    }));
+  }
+
+  /**
+   * Enters Precursor Quasi-Space slipstream (gated by Precursor research resonance).
+   */
+  public async enterQuasiSpace(
+    accountId: string = 'acc_sol_captain'
+  ): Promise<{
+    success: boolean;
+    isInQuasiSpace: boolean;
+    coordinates: [number, number];
+    fuel: number;
+    message: string;
+    error?: string;
+  }> {
+    // 1. Verify Precursor Resonance
+    const { rows: siteRows } = await db.query<any>(
+      'SELECT COUNT(*) as count FROM precursor_sites WHERE is_deciphered = TRUE'
+    );
+    const { rows: researchRows } = await db.query<any>(
+      'SELECT COUNT(*) as count FROM precursor_research WHERE account_id = $1',
+      [accountId]
+    );
+
+    const decipheredCount = Number(siteRows[0]?.count ?? 0);
+    const researchCount = Number(researchRows[0]?.count ?? 0);
+
+    if (decipheredCount === 0 && researchCount === 0) {
+      return {
+        success: false,
+        isInQuasiSpace: false,
+        coordinates: [150.0, 150.0],
+        fuel: 0,
+        message: 'Precursor resonance required.',
+        error: 'PRECURSOR_RESONANCE_REQUIRED: Vessel lacks Precursor deciphering matrix to breach Quasi-Space.',
+      };
+    }
+
+    // 2. Fetch ship state
+    const { rows: shipRows } = await db.query<any>(
+      'SELECT fuel FROM ships WHERE account_id = $1',
+      [accountId]
+    );
+    const ship = shipRows[0] || { fuel: 100 };
+
+    // 3. Atomically transition into Quasi-Space at central meridian [150.0, 150.0]
+    await db.query(
+      `UPDATE ships 
+       SET is_in_quasispace = TRUE, 
+           is_in_hyperspace = FALSE, 
+           quasispace_x = 150.0, 
+           quasispace_y = 150.0, 
+           updated_at = NOW() 
+       WHERE account_id = $1`,
+      [accountId]
+    );
+
+    return {
+      success: true,
+      isInQuasiSpace: true,
+      coordinates: [150.0, 150.0],
+      fuel: Number(ship.fuel),
+      message: 'Dimensional phase transition complete: Entered Precursor Quasi-Space slipstream.',
+    };
+  }
+
+  /**
+   * Synchronizes coordinates within Quasi-Space with ZERO fuel consumption.
+   */
+  public async syncQuasiSpaceFlight(
+    accountId: string = 'acc_sol_captain',
+    currentCoords: [number, number]
+  ): Promise<{
+    success: boolean;
+    coordinates: [number, number];
+    remainingFuel: number;
+    error?: string;
+  }> {
+    const { rows } = await db.query<any>(
+      'SELECT fuel, quasispace_x, quasispace_y, is_in_quasispace FROM ships WHERE account_id = $1',
+      [accountId]
+    );
+    if (rows.length === 0) {
+      return { success: false, coordinates: currentCoords, remainingFuel: 0, error: 'SHIP_NOT_FOUND' };
+    }
+    const ship = rows[0];
+
+    const prevX = Number(ship.quasispace_x ?? currentCoords[0]);
+    const prevY = Number(ship.quasispace_y ?? currentCoords[1]);
+    const displacement = Math.hypot(currentCoords[0] - prevX, currentCoords[1] - prevY);
+
+    if (displacement > 250.0) {
+      return {
+        success: false,
+        coordinates: [prevX, prevY],
+        remainingFuel: Number(ship.fuel),
+        error: `INVALID_DISPLACEMENT: Quasi-Space displacement of ${displacement.toFixed(1)} exceeds continuous flight boundary.`,
+      };
+    }
+
+    // Update coordinates; FUEL CONSUMPTION IS STRICTLY ZERO
+    await db.query(
+      'UPDATE ships SET quasispace_x = $1, quasispace_y = $2, is_in_quasispace = TRUE WHERE account_id = $3',
+      [currentCoords[0], currentCoords[1], accountId]
+    );
+
+    return {
+      success: true,
+      coordinates: currentCoords,
+      remainingFuel: Number(ship.fuel),
+    };
+  }
+
+  /**
+   * Transits an ancient Precursor Portal, projecting back into real Hyperspace with 5s immunity.
+   */
+  public async exitQuasiSpaceViaPortal(
+    accountId: string = 'acc_sol_captain',
+    portalId: string
+  ): Promise<{
+    success: boolean;
+    isInHyperspace: boolean;
+    coordinates: [number, number];
+    immunityGrantedSeconds: number;
+    targetSectorId: number | null;
+    portalName: string;
+    error?: string;
+  }> {
+    const { rows: portalRows } = await db.query<any>(
+      'SELECT * FROM quasispace_portals WHERE id = $1',
+      [portalId]
+    );
+    if (portalRows.length === 0) {
+      return {
+        success: false,
+        isInHyperspace: false,
+        coordinates: [500, 500],
+        immunityGrantedSeconds: 0,
+        targetSectorId: null,
+        portalName: 'Unknown Portal',
+        error: `PORTAL_NOT_FOUND: Precursor portal gateway '${portalId}' does not exist.`,
+      };
+    }
+    const portal = portalRows[0];
+
+    const { rows: shipRows } = await db.query<any>(
+      'SELECT quasispace_x, quasispace_y FROM ships WHERE account_id = $1',
+      [accountId]
+    );
+    const ship = shipRows[0] || { quasispace_x: portal.quasispace_x, quasispace_y: portal.quasispace_y };
+
+    // Proximity check in Quasi-Space (R <= 8.0)
+    const dist = Math.hypot(Number(ship.quasispace_x) - Number(portal.quasispace_x), Number(ship.quasispace_y) - Number(portal.quasispace_y));
+    if (dist > 8.0) {
+      return {
+        success: false,
+        isInHyperspace: false,
+        coordinates: [Number(ship.quasispace_x), Number(ship.quasispace_y)],
+        immunityGrantedSeconds: 0,
+        targetSectorId: null,
+        portalName: portal.name,
+        error: `OUTSIDE_PORTAL_RANGE: Vessel is ${dist.toFixed(1)} LY away from ${portal.name}. Proximity within 8.0 LY required to transit.`,
+      };
+    }
+
+    const targetX = Number(portal.target_hyperspace_x);
+    const targetY = Number(portal.target_hyperspace_y);
+
+    await db.query(
+      `UPDATE ships 
+       SET is_in_quasispace = FALSE, 
+           is_in_hyperspace = TRUE, 
+           hyperspace_x = $1, 
+           hyperspace_y = $2, 
+           hyperspace_immunity_until = NOW() + INTERVAL '5 seconds',
+           updated_at = NOW() 
+       WHERE account_id = $3`,
+      [targetX, targetY, accountId]
+    );
+
+    return {
+      success: true,
+      isInHyperspace: true,
+      coordinates: [targetX, targetY],
+      immunityGrantedSeconds: 5,
+      targetSectorId: portal.target_sector_id ? Number(portal.target_sector_id) : null,
+      portalName: portal.name,
+    };
+  }
+
+  /**
+   * Broadcasts an automated SOS distress beacon when fuel drops to 0 in Hyperspace.
+   */
+  public async triggerEmergencySOS(
+    accountId: string = 'acc_sol_captain'
+  ): Promise<{
+    success: boolean;
+    encounter?: EmergencySOSEncounter;
+    error?: string;
+  }> {
+    const { rows: shipRows } = await db.query<any>(
+      'SELECT fuel, hyperspace_x, hyperspace_y, is_in_hyperspace FROM ships WHERE account_id = $1',
+      [accountId]
+    );
+    if (shipRows.length === 0) {
+      return { success: false, error: 'SHIP_NOT_FOUND' };
+    }
+    const ship = shipRows[0];
+
+    if (Number(ship.fuel) > 0) {
+      return {
+        success: false,
+        error: 'FUEL_RESERVES_REMAINING: Emergency SOS beacon can only be broadcast when fuel reserves are fully exhausted.',
+      };
+    }
+
+    const sx = Number(ship.hyperspace_x ?? 500);
+    const sy = Number(ship.hyperspace_y ?? 500);
+    const territory = this.getFactionSphereAtCoords(sx, sy);
+    const fid = territory ? territory.factionId : 'FACTION_SOL';
+
+    // Procedural roll biased by territory
+    const roll = Math.random();
+    let encounter: EmergencySOSEncounter;
+
+    if (fid === 'FACTION_VAELIC' || fid === 'FACTION_KRYLL') {
+      if (roll < 0.45) {
+        // Scavenger encounter
+        encounter = {
+          encounterId: `sos_${Date.now()}`,
+          responderType: 'SCAVENGER',
+          responderName: 'Kryll Scrap Corsair "Gutripper"',
+          portrait: 'kryll_raider',
+          dialogueText:
+            'Kekeke! A dead-in-the-water flagship drifting in the black! Hand over 500 Credits and your cargo hold, or our boarding hooks tear open your airlocks!',
+          fuelOffered: 15,
+          creditCost: 500,
+          isHostile: true,
+          options: [
+            {
+              id: 'surrender',
+              label: 'Pay 500 Credits Extortion (15 Fuel)',
+              action: 'SURRENDER',
+              description: 'Pay off the pirate scavenger pack for minimal fuel to reach a port.',
+            },
+            {
+              id: 'fight',
+              label: 'Power Anti-Boarding Cannons!',
+              action: 'FIGHT',
+              description: 'Refuse pirate demands and defend your flagship in direct tactical combat.',
+            },
+          ],
+        };
+      } else {
+        // Barter merchant
+        encounter = {
+          encounterId: `sos_${Date.now()}`,
+          responderType: 'BARTER',
+          responderName: 'Free Hauler "Rusty Comet"',
+          portrait: 'neutral_trader',
+          dialogueText:
+            'Caught drifting with empty tanks, traveler? We have emergency fuel canisters, but we deal in physical trade goods: 10 units of Ore or 5 Bio Specimens.',
+          fuelOffered: 20,
+          barterOreCost: 10,
+          barterBioCost: 5,
+          isHostile: false,
+          options: [
+            {
+              id: 'barter_ore',
+              label: 'Trade 10 Mineral Ore (20 Fuel)',
+              action: 'BARTER_ORE',
+              description: 'Barter 10 units of Mineral Ore from cargo for 20 fuel canisters.',
+            },
+            {
+              id: 'barter_bio',
+              label: 'Trade 5 Bio Specimens (20 Fuel)',
+              action: 'BARTER_BIO',
+              description: 'Trade 5 units of Biological Specimens for 20 fuel canisters.',
+            },
+            {
+              id: 'buy_fuel',
+              label: 'Pay Cash Surcharge (500 Credits)',
+              action: 'BUY_FUEL',
+              description: 'Pay an emergency cash fee to secure 20 fuel units.',
+            },
+          ],
+        };
+      }
+    } else {
+      // Sol Alliance or Independent Tanker
+      encounter = {
+        encounterId: `sos_${Date.now()}`,
+        responderType: 'TANKER',
+        responderName: 'Sol-Aegis Mobile Tanker 09',
+        portrait: 'sol_officer',
+        dialogueText:
+          'Emergency distress beacon acknowledged, Flagship. Sol Logistics deployed our tanker to your vector. We can transfer 25 Deuterium fuel units for standard emergency rate (400 Credits).',
+        fuelOffered: 25,
+        creditCost: 400,
+        isHostile: false,
+        options: [
+          {
+            id: 'buy_fuel',
+            label: 'Authorize 400 Credits (25 Fuel)',
+            action: 'BUY_FUEL',
+            description: 'Authorize transfer of 400 Credits for 25 fuel units.',
+          },
+        ],
+      };
+    }
+
+    this.activeSOSEncounters.set(accountId, encounter);
+
+    return {
+      success: true,
+      encounter,
+    };
+  }
+
+  /**
+   * Resolves the Emergency SOS transaction (fuel purchase, barter, or combat drop).
+   */
+  public async resolveEmergencySOSTrade(
+    accountId: string = 'acc_sol_captain',
+    choice: 'BUY_FUEL' | 'BARTER_ORE' | 'BARTER_BIO' | 'SURRENDER' | 'FIGHT'
+  ): Promise<EmergencySOSResolution> {
+    const { rows: accountRows } = await db.query<any>(
+      'SELECT credits FROM accounts WHERE id = $1',
+      [accountId]
+    );
+    const credits = Number(accountRows[0]?.credits ?? 0);
+
+    if (choice === 'BUY_FUEL') {
+      const cost = 400;
+      if (credits < cost) {
+        return {
+          success: false,
+          actionTaken: choice,
+          remainingFuel: 0,
+          remainingCredits: credits,
+          combatDropRequired: false,
+          message: `INSUFFICIENT_CREDITS: Required ${cost} Credits, but balance is ${credits}.`,
+          error: 'INSUFFICIENT_CREDITS',
+        };
+      }
+
+      await db.query('UPDATE accounts SET credits = credits - $1 WHERE id = $2', [cost, accountId]);
+      await db.query(
+        `UPDATE ships 
+         SET fuel = 25, 
+             is_in_hyperspace = TRUE, 
+             hyperspace_immunity_until = NOW() + INTERVAL '5 seconds',
+             updated_at = NOW() 
+         WHERE account_id = $1`,
+        [accountId]
+      );
+
+      return {
+        success: true,
+        actionTaken: choice,
+        remainingFuel: 25,
+        remainingCredits: credits - cost,
+        combatDropRequired: false,
+        message: 'Emergency Deuterium fuel transferred (25 units). Main thrusters re-energized!',
+      };
+    }
+
+    if (choice === 'BARTER_ORE' || choice === 'BARTER_BIO') {
+      await db.query(
+        `UPDATE ships 
+         SET fuel = 20, 
+             is_in_hyperspace = TRUE, 
+             hyperspace_immunity_until = NOW() + INTERVAL '5 seconds',
+             updated_at = NOW() 
+         WHERE account_id = $1`,
+        [accountId]
+      );
+
+      return {
+        success: true,
+        actionTaken: choice,
+        remainingFuel: 20,
+        remainingCredits: credits,
+        combatDropRequired: false,
+        message: 'Barter exchange accepted! 20 Fuel units siphoned into fuel manifold.',
+      };
+    }
+
+    if (choice === 'SURRENDER') {
+      const cost = Math.min(credits, 500);
+      await db.query('UPDATE accounts SET credits = credits - $1 WHERE id = $2', [cost, accountId]);
+      await db.query(
+        `UPDATE ships 
+         SET fuel = 15, 
+             is_in_hyperspace = TRUE, 
+             hyperspace_immunity_until = NOW() + INTERVAL '5 seconds',
+             updated_at = NOW() 
+         WHERE account_id = $1`,
+        [accountId]
+      );
+
+      return {
+        success: true,
+        actionTaken: choice,
+        remainingFuel: 15,
+        remainingCredits: credits - cost,
+        combatDropRequired: false,
+        message: 'Extortion tribute surrendered. 15 Emergency fuel units granted.',
+      };
+    }
+
+    // FIGHT
+    return {
+      success: true,
+      actionTaken: 'FIGHT',
+      remainingFuel: 0,
+      remainingCredits: credits,
+      combatDropRequired: true,
+      combatSetup: {
+        encounterId: `sos_combat_${Date.now()}`,
+        enemySquadron: [
+          { type: 'Kryll Boarding Skiff', hull: 80, shield: 40, weapons: ['PULSE_LASER', 'SWARM_MISSILE'] },
+          { type: 'Kryll Scrap Gunboat', hull: 90, shield: 50, weapons: ['HEAVY_CANNON'] },
+        ],
+      },
+      message: 'Anti-boarding alarms blaring! Dropping into 20Hz tactical combat arena.',
     };
   }
 }

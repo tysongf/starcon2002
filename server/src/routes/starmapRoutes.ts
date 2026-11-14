@@ -286,5 +286,111 @@ export const starmapRoutes: FastifyPluginAsync = async (server) => {
     );
     reply.send(result);
   });
+
+  // =========================================================================
+  // Day 40: Precursor Quasi-Space Slipstream & Emergency SOS Transponder
+  // =========================================================================
+
+  // 14. Get Precursor Quasi-Space Portal Gateways
+  server.get('/quasispace/portals', async (_req, reply) => {
+    const portals = await starmapService.getQuasiSpacePortals();
+    reply.send({
+      success: true,
+      portals,
+    });
+  });
+
+  // 15. Enter Precursor Quasi-Space (Requires Precursor Deciphering Resonance)
+  server.post('/quasispace/enter', async (req, reply) => {
+    const body = (req.body || {}) as {
+      accountId?: string;
+      playerId?: string;
+    };
+    const accountId = body.accountId || body.playerId || 'acc_sol_captain';
+
+    const result = await starmapService.enterQuasiSpace(accountId);
+    if (!result.success) {
+      return reply.status(400).send(result);
+    }
+    reply.send(result);
+  });
+
+  // 16. Synchronize Quasi-Space Coordinates (ZERO Fuel Burn)
+  server.post('/quasispace/sync', async (req, reply) => {
+    const body = (req.body || {}) as {
+      accountId?: string;
+      playerId?: string;
+      currentCoords: [number, number];
+    };
+    const accountId = body.accountId || body.playerId || 'acc_sol_captain';
+
+    if (!body.currentCoords || !Array.isArray(body.currentCoords) || body.currentCoords.length < 2) {
+      return reply.status(400).send({ success: false, error: 'currentCoords [x, y] is required.' });
+    }
+
+    const result = await starmapService.syncQuasiSpaceFlight(
+      accountId,
+      [Number(body.currentCoords[0]), Number(body.currentCoords[1])]
+    );
+    if (!result.success) {
+      return reply.status(400).send(result);
+    }
+    reply.send(result);
+  });
+
+  // 17. Exit Quasi-Space Through Precursor Portal (Returns to Real Hyperspace with 5s Immunity)
+  server.post('/quasispace/exit', async (req, reply) => {
+    const body = (req.body || {}) as {
+      accountId?: string;
+      playerId?: string;
+      portalId: string;
+    };
+    const accountId = body.accountId || body.playerId || 'acc_sol_captain';
+
+    if (!body.portalId) {
+      return reply.status(400).send({ success: false, error: 'portalId is required.' });
+    }
+
+    const result = await starmapService.exitQuasiSpaceViaPortal(accountId, body.portalId);
+    if (!result.success) {
+      return reply.status(400).send(result);
+    }
+    reply.send(result);
+  });
+
+  // 18. Broadcast Automated Emergency SOS Distress Beacon (Zero-Fuel Crisis)
+  server.post('/hyperspace/sos-trigger', async (req, reply) => {
+    const body = (req.body || {}) as {
+      accountId?: string;
+      playerId?: string;
+    };
+    const accountId = body.accountId || body.playerId || 'acc_sol_captain';
+
+    const result = await starmapService.triggerEmergencySOS(accountId);
+    if (!result.success) {
+      return reply.status(400).send(result);
+    }
+    reply.send(result);
+  });
+
+  // 19. Resolve Emergency SOS Transaction (Buy Fuel, Barter Cargo, Surrender, Fight)
+  server.post('/hyperspace/sos-resolve', async (req, reply) => {
+    const body = (req.body || {}) as {
+      accountId?: string;
+      playerId?: string;
+      choice: 'BUY_FUEL' | 'BARTER_ORE' | 'BARTER_BIO' | 'SURRENDER' | 'FIGHT';
+    };
+    const accountId = body.accountId || body.playerId || 'acc_sol_captain';
+
+    if (!body.choice) {
+      return reply.status(400).send({ success: false, error: 'choice is required.' });
+    }
+
+    const result = await starmapService.resolveEmergencySOSTrade(accountId, body.choice);
+    if (!result.success) {
+      return reply.status(400).send(result);
+    }
+    reply.send(result);
+  });
 };
 
