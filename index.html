@@ -541,6 +541,9 @@
           <button id="tab-btn-xenobiology" class="station-tab-btn" data-tab="xenobiology">
             🧪 XENOBIOLOGY & GENOMICS LAB
           </button>
+          <button id="tab-btn-fleet" class="station-tab-btn" data-tab="fleet">
+            🚀 FLEET HANGAR & ESCORTS
+          </button>
         </div>
 
         <!-- Tab View 1: Commodity Exchange (Default) -->
@@ -817,6 +820,40 @@
           </div>
         </div>
 
+        <!-- Tab View 7: Fleet Hangar & Escort Command (Day 32) -->
+        <div id="view-tab-fleet" class="station-tab-content hidden">
+          <div class="salvage-header fleet-header-panel">
+            <div class="fleet-bridge-telemetry">
+              <span class="bridge-badge" id="fleet-bridge-badge">COMMAND BRIDGE // TIER 1</span>
+              <h4 id="fleet-bridge-title">Standard Command Cockpit (Baseline)</h4>
+              <span class="col-subtext" id="fleet-bridge-subtext">MAX COMBAT ESCORTS: 1 WINGMAN</span>
+            </div>
+            <div class="fleet-header-right">
+              <div class="stat-pill upkeep-pill">
+                <span class="pill-label">FLEET UPKEEP:</span>
+                <span class="pill-value" id="fleet-upkeep-val">15 Cr / cycle</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="fleet-hangar-layout">
+            <!-- Active Combat Formation Wing -->
+            <div class="fleet-section">
+              <div class="section-title">ACTIVE COMBAT WING (FORMATION FLIGHT)</div>
+              <div class="active-wingmen-grid" id="active-wingmen-grid">
+                <!-- Dynamically rendered active wingman slots 1..4 -->
+              </div>
+            </div>
+
+            <!-- Reserve Hangar Garage -->
+            <div class="fleet-section">
+              <div class="section-title">RESERVE HANGAR GARAGE</div>
+              <div class="reserve-hangar-list" id="reserve-hangar-list">
+                <!-- Dynamically rendered reserve ship cards -->
+              </div>
+            </div>
+          </div>
+        </div>
 
         <footer class="dock-modal-footer">
           <span class="undock-hint">Press <kbd>ESC</kbd> or click button to release magnetic clamps</span>

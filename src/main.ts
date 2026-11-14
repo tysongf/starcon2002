@@ -17,6 +17,7 @@ import { ColonyController } from './controllers/ColonyController';
 import { SurveyController } from './controllers/SurveyController';
 import { CombatClient } from './controllers/CombatClient';
 import { XenobiologyController } from './controllers/XenobiologyController';
+import { FleetController } from './controllers/FleetController';
 
 class GameEngine {
   private canvas: HTMLCanvasElement;
@@ -42,6 +43,7 @@ class GameEngine {
   public surveyController!: SurveyController;
   public combatClient!: CombatClient;
   public xenobiologyController!: XenobiologyController;
+  public fleetController!: FleetController;
 
   // Navigation & Sector Jump System (Day 8)
   private currentSectorId: number = 1;
@@ -248,6 +250,8 @@ class GameEngine {
 
   private tabBtnDiplomacy: HTMLElement | null = null;
   private viewTabDiplomacy: HTMLElement | null = null;
+  private tabBtnFleet: HTMLElement | null = null;
+  private viewTabFleet: HTMLElement | null = null;
   private btnHudHailTarget: HTMLElement | null = null;
 
   public get activeTruceExpiresAt(): number | null {
@@ -737,6 +741,11 @@ class GameEngine {
     this.tabBtnDiplomacy = document.getElementById('tab-btn-diplomacy');
     this.viewTabDiplomacy = document.getElementById('view-tab-diplomacy');
     this.tabBtnDiplomacy?.addEventListener('click', () => this.switchStationTab('diplomacy'));
+
+    // Day 32: Fleet Hangar Bay Tab
+    this.tabBtnFleet = document.getElementById('tab-btn-fleet');
+    this.viewTabFleet = document.getElementById('view-tab-fleet');
+    this.tabBtnFleet?.addEventListener('click', () => this.switchStationTab('fleet'));
 
     // Day 29: Xenobiology & Genomics Lab Tab & Direct Trigger
     document.getElementById('tab-btn-xenobiology')?.addEventListener('click', () => this.openXenobiologyLab());
@@ -1790,6 +1799,13 @@ class GameEngine {
       getAccountId: () => 'acc_sol_captain',
       onCargoUpdated: () => this.refreshPlayerHold(),
     });
+
+    this.fleetController = new FleetController({
+      getAccountId: () => 'acc_sol_captain',
+      showNotification: (msg, isErr) => this.showApNotification(msg, isErr ?? false),
+      playUiBlip: () => this.audio.playUiBlip(),
+      onFleetUpdated: () => this.refreshPlayerHold(),
+    });
   }
 
   private setupEventListeners(): void {
@@ -2627,9 +2643,9 @@ class GameEngine {
   }
 
   /**
-   * Day 13, 14, 15 & 16: Station Dock Tab Switcher (Exchange / Outfitting / Armory / Contracts / Salvage / Diplomacy)
+   * Day 13, 14, 15, 16 & 32: Station Dock Tab Switcher (Exchange / Outfitting / Armory / Contracts / Salvage / Diplomacy / Fleet)
    */
-  public switchStationTab(tab: 'exchange' | 'outfitting' | 'armory' | 'contracts' | 'salvage' | 'diplomacy'): void {
+  public switchStationTab(tab: 'exchange' | 'outfitting' | 'armory' | 'contracts' | 'salvage' | 'diplomacy' | 'fleet'): void {
     this.activeStationTab = tab as any;
     this.audio.playUiBlip();
 
@@ -2639,6 +2655,7 @@ class GameEngine {
     this.tabBtnContracts?.classList.toggle('active', tab === 'contracts');
     this.tabBtnSalvage?.classList.toggle('active', tab === 'salvage');
     this.tabBtnDiplomacy?.classList.toggle('active', tab === 'diplomacy');
+    this.tabBtnFleet?.classList.toggle('active', tab === 'fleet');
 
     this.viewTabExchange?.classList.toggle('hidden', tab !== 'exchange');
     this.viewTabOutfitting?.classList.toggle('hidden', tab !== 'outfitting');
@@ -2646,6 +2663,7 @@ class GameEngine {
     this.viewTabContracts?.classList.toggle('hidden', tab !== 'contracts');
     this.viewTabSalvage?.classList.toggle('hidden', tab !== 'salvage');
     this.viewTabDiplomacy?.classList.toggle('hidden', tab !== 'diplomacy');
+    this.viewTabFleet?.classList.toggle('hidden', tab !== 'fleet');
 
     if (tab === 'outfitting') {
       this.loadOutfittingData();
@@ -2658,6 +2676,8 @@ class GameEngine {
     } else if (tab === 'diplomacy') {
       this.loadDiplomacyData();
       this.refreshAstrometryBureau();
+    } else if (tab === 'fleet') {
+      this.fleetController.loadFleetData();
     } else if (tab === 'exchange') {
       this.loadPortInventory();
     }
