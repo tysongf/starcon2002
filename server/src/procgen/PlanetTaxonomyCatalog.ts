@@ -1132,6 +1132,111 @@ export const PLANET_SUBTYPE_CATALOG: readonly PlanetSubtypeDef[] = [
   },
 ];
 
+export interface PlanetClassProfile {
+  primaryCommodity: { id: string; name: string; probeQty: number };
+  hotspotBands: { minerals: boolean; radioactive: boolean; bio: boolean; gas: boolean; anomalies: boolean };
+  preferredFaction: { factionId: string; multiplier: number } | null;
+  titanTheme: 'MAGMA' | 'SPORE' | 'LEVIATHAN' | 'CHITIN';
+}
+
+export const MAIN_CLASS_PROFILES: Record<PlanetMainClass, PlanetClassProfile> = {
+  LIVING_BIOSPHERE: {
+    primaryCommodity: { id: 'COMM_RATIONS', name: 'Bio-Protein Organics', probeQty: 10 },
+    hotspotBands: { minerals: false, radioactive: false, bio: true, gas: false, anomalies: true },
+    preferredFaction: { factionId: 'FACTION_SOL', multiplier: 1.4 },
+    titanTheme: 'SPORE',
+  },
+  HYDROSPHERE: {
+    primaryCommodity: { id: 'COMM_RATIONS', name: 'Bio-Protein Organics', probeQty: 10 },
+    hotspotBands: { minerals: false, radioactive: false, bio: true, gas: false, anomalies: false },
+    preferredFaction: { factionId: 'FACTION_SOL', multiplier: 1.4 },
+    titanTheme: 'LEVIATHAN',
+  },
+  CAUSTIC_SOLVENT: {
+    primaryCommodity: { id: 'COMM_ORE', name: 'Silicate Ore', probeQty: 8 },
+    hotspotBands: { minerals: false, radioactive: false, bio: true, gas: false, anomalies: false },
+    preferredFaction: { factionId: 'FACTION_KRYLL', multiplier: 1.5 },
+    titanTheme: 'SPORE',
+  },
+  CRYO_GLACIAL: {
+    primaryCommodity: { id: 'COMM_ORE', name: 'Silicate Ore', probeQty: 8 },
+    hotspotBands: { minerals: true, radioactive: false, bio: false, gas: false, anomalies: false },
+    preferredFaction: null,
+    titanTheme: 'CHITIN',
+  },
+  PYRO_TECTONIC: {
+    primaryCommodity: { id: 'COMM_ORE', name: 'Sulfur Pyrite Ore', probeQty: 10 },
+    hotspotBands: { minerals: true, radioactive: true, bio: false, gas: false, anomalies: false },
+    preferredFaction: { factionId: 'FACTION_KRYLL', multiplier: 1.5 },
+    titanTheme: 'MAGMA',
+  },
+  METALLIC_ORE: {
+    primaryCommodity: { id: 'COMM_ORE', name: 'Silicate Ore', probeQty: 8 },
+    hotspotBands: { minerals: true, radioactive: false, bio: false, gas: false, anomalies: true },
+    preferredFaction: { factionId: 'FACTION_SOL', multiplier: 1.4 },
+    titanTheme: 'CHITIN',
+  },
+  CRYSTALLINE_GEM: {
+    primaryCommodity: { id: 'COMM_ALLOY', name: 'Precursor Alloy Relic', probeQty: 6 },
+    hotspotBands: { minerals: true, radioactive: false, bio: false, gas: false, anomalies: true },
+    preferredFaction: { factionId: 'FACTION_LITHOS', multiplier: 1.6 },
+    titanTheme: 'CHITIN',
+  },
+  SILICATE_DESERT: {
+    primaryCommodity: { id: 'COMM_ORE', name: 'Silicate Ore', probeQty: 8 },
+    hotspotBands: { minerals: true, radioactive: false, bio: false, gas: false, anomalies: false },
+    preferredFaction: { factionId: 'FACTION_SOL', multiplier: 1.4 },
+    titanTheme: 'CHITIN',
+  },
+  RARE_EARTH: {
+    primaryCommodity: { id: 'COMM_ORE', name: 'Silicate Ore', probeQty: 8 },
+    hotspotBands: { minerals: true, radioactive: false, bio: false, gas: false, anomalies: false },
+    preferredFaction: { factionId: 'FACTION_LITHOS', multiplier: 1.6 },
+    titanTheme: 'CHITIN',
+  },
+  RADIOLOGIC_ISOTOPIC: {
+    primaryCommodity: { id: 'COMM_ORE', name: 'Sulfur Pyrite Ore', probeQty: 10 },
+    hotspotBands: { minerals: true, radioactive: true, bio: false, gas: false, anomalies: false },
+    preferredFaction: { factionId: 'FACTION_KRYLL', multiplier: 1.5 },
+    titanTheme: 'MAGMA',
+  },
+  MAGNETOSPHERIC: {
+    primaryCommodity: { id: 'COMM_FUEL', name: 'Cryo-Deuterium Fuel', probeQty: 14 },
+    hotspotBands: { minerals: false, radioactive: false, bio: false, gas: true, anomalies: false },
+    preferredFaction: null,
+    titanTheme: 'LEVIATHAN',
+  },
+  GAS_ICE_GIANT: {
+    primaryCommodity: { id: 'COMM_FUEL', name: 'Cryo-Deuterium Fuel', probeQty: 14 },
+    hotspotBands: { minerals: false, radioactive: false, bio: false, gas: true, anomalies: false },
+    preferredFaction: { factionId: 'FACTION_KRYLL', multiplier: 1.5 },
+    titanTheme: 'LEVIATHAN',
+  },
+  FUNGAL_MYCELIAL: {
+    primaryCommodity: { id: 'COMM_RATIONS', name: 'Bio-Protein Organics', probeQty: 10 },
+    hotspotBands: { minerals: false, radioactive: false, bio: true, gas: false, anomalies: true },
+    preferredFaction: { factionId: 'FACTION_SOL', multiplier: 1.4 },
+    titanTheme: 'SPORE',
+  },
+  SYNTHETIC_CYBERNETIC: {
+    primaryCommodity: { id: 'COMM_ALLOY', name: 'Precursor Alloy Relic', probeQty: 6 },
+    hotspotBands: { minerals: true, radioactive: false, bio: false, gas: false, anomalies: true },
+    preferredFaction: { factionId: 'FACTION_LITHOS', multiplier: 1.6 },
+    titanTheme: 'CHITIN',
+  },
+  PRECURSOR_ANOMALOUS: {
+    primaryCommodity: { id: 'COMM_ALLOY', name: 'Precursor Alloy Relic', probeQty: 6 },
+    hotspotBands: { minerals: true, radioactive: false, bio: false, gas: false, anomalies: true },
+    preferredFaction: { factionId: 'FACTION_LITHOS', multiplier: 1.6 },
+    titanTheme: 'CHITIN',
+  },
+};
+
+export function getPlanetClassProfile(mainClass?: string | null): PlanetClassProfile {
+  const key = (mainClass || 'METALLIC_ORE').toUpperCase() as PlanetMainClass;
+  return MAIN_CLASS_PROFILES[key] || MAIN_CLASS_PROFILES.METALLIC_ORE;
+}
+
 const SUBTYPE_MAP = new Map<string, PlanetSubtypeDef>(
   PLANET_SUBTYPE_CATALOG.map((s) => [s.subtype.toLowerCase(), s])
 );

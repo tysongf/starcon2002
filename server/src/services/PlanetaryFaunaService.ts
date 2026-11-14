@@ -1,4 +1,5 @@
 import { db } from '../db/Database';
+import { getPlanetClassProfile } from '../procgen/PlanetTaxonomyCatalog';
 import { generatePlanetEcosystem, type ProceduralLifeform } from '../procgen/XenobiologyEngine';
 
 export interface PlanetFauna {
@@ -146,60 +147,29 @@ export class PlanetaryFaunaService {
     const planet = pRows[0];
 
     const titanId = `titan_${planetId}`;
-    let speciesName = `${planet.name} Ancient Chitin Colossus`;
-    let lairName = 'Obsidian Basalt Rift';
-    let color = '#f59e0b';
-    let baseHp = 280;
-    let attackDamage = 28;
-    let movementSpeed = 42.0;
-    let bioUnitValue = 75;
-    let stunHitsRequired = 3;
-    let lairX = 310.0;
-    let lairY = -240.0;
+    const TITAN_TEMPLATES = {
+      MAGMA: { suffix: 'Magma Behemoth', lair: 'Molten Caldera Lair', color: '#f97316', hp: 350, dmg: 35, speed: 48.0, bio: 85, stun: 3, x: 350.0, y: 280.0 },
+      SPORE: { suffix: 'Spore Colossus', lair: 'Primordial Spore Hollow', color: '#10b981', hp: 300, dmg: 30, speed: 44.0, bio: 80, stun: 3, x: -280.0, y: 320.0 },
+      LEVIATHAN: { suffix: 'Galvanic Leviathan', lair: 'Sub-Surface Ion Trench', color: '#38bdf8', hp: 380, dmg: 38, speed: 52.0, bio: 95, stun: 4, x: 420.0, y: -180.0 },
+      CHITIN: { suffix: 'Ancient Chitin Colossus', lair: 'Obsidian Basalt Rift', color: '#f59e0b', hp: 280, dmg: 28, speed: 42.0, bio: 75, stun: 3, x: 310.0, y: -240.0 },
+    } as const;
 
-    if (planet.main_class === 'PYRO_TECTONIC' || (planet.hazard_thermal_level && planet.hazard_thermal_level >= 2)) {
-      speciesName = `${planet.name} Magma Behemoth`;
-      lairName = 'Molten Caldera Lair';
-      color = '#f97316';
-      baseHp = 350;
-      attackDamage = 35;
-      movementSpeed = 48.0;
-      bioUnitValue = 85;
-      stunHitsRequired = 3;
-      lairX = 350.0;
-      lairY = 280.0;
-    } else if (
-      planet.main_class === 'LIVING_BIOSPHERE' ||
-      planet.main_class === 'FUNGAL_MYCELIAL' ||
-      planet.main_class === 'HYDROSPHERE' ||
-      (planet.hazard_caustic_level && planet.hazard_caustic_level >= 2)
-    ) {
-      speciesName = `${planet.name} Spore Colossus`;
-      lairName = 'Primordial Spore Hollow';
-      color = '#10b981';
-      baseHp = 300;
-      attackDamage = 30;
-      movementSpeed = 44.0;
-      bioUnitValue = 80;
-      stunHitsRequired = 3;
-      lairX = -280.0;
-      lairY = 320.0;
-    } else if (
-      planet.main_class === 'GAS_ICE_GIANT' ||
-      planet.main_class === 'MAGNETOSPHERIC' ||
-      (planet.hazard_ion_level && planet.hazard_ion_level >= 2)
-    ) {
-      speciesName = `${planet.name} Galvanic Leviathan`;
-      lairName = 'Sub-Surface Ion Trench';
-      color = '#38bdf8';
-      baseHp = 380;
-      attackDamage = 38;
-      movementSpeed = 52.0;
-      bioUnitValue = 95;
-      stunHitsRequired = 4;
-      lairX = 420.0;
-      lairY = -180.0;
-    }
+    let theme = getPlanetClassProfile(planet.main_class).titanTheme;
+    if (planet.hazard_thermal_level >= 2) theme = 'MAGMA';
+    else if (planet.hazard_caustic_level >= 2) theme = 'SPORE';
+    else if (planet.hazard_ion_level >= 2) theme = 'LEVIATHAN';
+
+    const t = TITAN_TEMPLATES[theme];
+    const speciesName = `${planet.name} ${t.suffix}`;
+    const lairName = t.lair;
+    const color = t.color;
+    const baseHp = t.hp;
+    const attackDamage = t.dmg;
+    const movementSpeed = t.speed;
+    const bioUnitValue = t.bio;
+    const stunHitsRequired = t.stun;
+    const lairX = t.x;
+    const lairY = t.y;
 
     await db.query(
       `INSERT INTO planet_fauna (

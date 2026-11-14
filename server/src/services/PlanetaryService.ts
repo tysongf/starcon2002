@@ -1,7 +1,12 @@
 import { db } from '../db/Database';
 import { apService } from './ActionPointService';
 import { reputationService } from './ReputationService';
-import { getPlanetSubtypeDef, type PlanetMainClass, type PlanetPalette } from '../procgen/PlanetTaxonomyCatalog';
+import {
+  getPlanetSubtypeDef,
+  getPlanetClassProfile,
+  type PlanetMainClass,
+  type PlanetPalette,
+} from '../procgen/PlanetTaxonomyCatalog';
 import { generatePlanetEcosystem, type ProceduralLifeform } from '../procgen/XenobiologyEngine';
 
 export type ScanBand = 'MINERALS' | 'BIO' | 'ANOMALIES';
@@ -79,12 +84,9 @@ export class PlanetaryService {
    */
   public generateDeterministicHotspots(planetId: string, mainClass: PlanetMainClass, seed: number): PlanetHotspot[] {
     const spots: PlanetHotspot[] = [];
+    const { hotspotBands } = getPlanetClassProfile(mainClass);
 
-    const mineralRichClasses: readonly PlanetMainClass[] = [
-      'METALLIC_ORE', 'PYRO_TECTONIC', 'PRECURSOR_ANOMALOUS', 'CRYSTALLINE_GEM',
-      'SILICATE_DESERT', 'RARE_EARTH', 'CRYO_GLACIAL', 'SYNTHETIC_CYBERNETIC', 'RADIOLOGIC_ISOTOPIC',
-    ];
-    if (mineralRichClasses.includes(mainClass)) {
+    if (hotspotBands.minerals) {
       spots.push({
         id: `${planetId}_min_1`,
         name: mainClass === 'PYRO_TECTONIC' ? 'Heavy Basalt Pyrite Chimney' : 'High-Density Silicate Vein',
@@ -111,7 +113,7 @@ export class PlanetaryService {
       });
     }
 
-    if (mainClass === 'PYRO_TECTONIC' || mainClass === 'RADIOLOGIC_ISOTOPIC') {
+    if (hotspotBands.radioactive) {
       spots.push({
         id: `${planetId}_min_3`,
         name: 'Radioactive Magma Geode',
@@ -126,12 +128,7 @@ export class PlanetaryService {
       });
     }
 
-    if (
-      mainClass === 'LIVING_BIOSPHERE' ||
-      mainClass === 'FUNGAL_MYCELIAL' ||
-      mainClass === 'HYDROSPHERE' ||
-      mainClass === 'CAUSTIC_SOLVENT'
-    ) {
+    if (hotspotBands.bio) {
       spots.push({
         id: `${planetId}_bio_1`,
         name: 'Symbiotic Spore Canopy Biome',
@@ -156,7 +153,7 @@ export class PlanetaryService {
         rarity: 'RARE',
         color: '#a855f7',
       });
-    } else if (mainClass === 'GAS_ICE_GIANT' || mainClass === 'MAGNETOSPHERIC') {
+    } else if (hotspotBands.gas) {
       spots.push({
         id: `${planetId}_bio_1`,
         name: 'Supercooled Deuterium Vapour Current',
@@ -171,11 +168,7 @@ export class PlanetaryService {
       });
     }
 
-    const anomalyClasses: readonly PlanetMainClass[] = [
-      'PRECURSOR_ANOMALOUS', 'SYNTHETIC_CYBERNETIC', 'METALLIC_ORE',
-      'LIVING_BIOSPHERE', 'FUNGAL_MYCELIAL', 'CRYSTALLINE_GEM',
-    ];
-    if (anomalyClasses.includes(mainClass)) {
+    if (hotspotBands.anomalies) {
       spots.push({
         id: `${planetId}_ano_1`,
         name: 'Resonant Sub-Crustal Monolith',
@@ -320,13 +313,7 @@ export class PlanetaryService {
    */
   public async getPlanetLifeforms(planetId: string): Promise<{ planet: PlanetDetail; lifeforms: ProceduralLifeform[] }> {
     const planet = await this.getPlanetDetail(planetId);
-    const lifeforms = generatePlanetEcosystem({
-      id: planet.id,
-      name: planet.name,
-      subtype: planet.subtype,
-      mainClass: planet.mainClass,
-      textureSeed: planet.textureSeed,
-    });
+    const lifeforms = generatePlanetEcosystem(planet);
     return { planet, lifeforms };
   }
 
@@ -433,13 +420,7 @@ export class PlanetaryService {
 
     let lifeformsDiscovered: ProceduralLifeform[] | undefined;
     if (scanBand === 'BIO') {
-      lifeformsDiscovered = generatePlanetEcosystem({
-        id: planet.id,
-        name: planet.name,
-        subtype: planet.subtype,
-        mainClass: planet.mainClass,
-        textureSeed: planet.textureSeed,
-      });
+      lifeformsDiscovered = generatePlanetEcosystem(planet);
       for (const sp of lifeformsDiscovered) {
         await this.recordDiscoveredSpecies(accountId, sp);
       }
@@ -509,36 +490,11 @@ export class PlanetaryService {
     const finalDamage = shieldBoost ? Math.round(baseDamage * 0.35) : baseDamage;
     const probeIntegrity = Math.max(0, 100 - finalDamage);
 
-    // Determine primary commodity to sample
-    let commodityId = 'COMM_ORE';
-    let commodityName = 'Silicate Ore';
-    let maxQty = 8;
-
-    if (planet.mainClass === 'PYRO_TECTONIC' || planet.mainClass === 'RADIOLOGIC_ISOTOPIC') {
-      commodityId = 'COMM_ORE';
-      commodityName = 'Sulfur Pyrite Ore';
-      maxQty = 10;
-    } else if (
-      planet.mainClass === 'LIVING_BIOSPHERE' ||
-      planet.mainClass === 'FUNGAL_MYCELIAL' ||
-      planet.mainClass === 'HYDROSPHERE'
-    ) {
-      commodityId = 'COMM_RATIONS';
-      commodityName = 'Bio-Protein Organics';
-      maxQty = 10;
-    } else if (planet.mainClass === 'GAS_ICE_GIANT' || planet.mainClass === 'MAGNETOSPHERIC') {
-      commodityId = 'COMM_FUEL';
-      commodityName = 'Cryo-Deuterium Fuel';
-      maxQty = 14;
-    } else if (
-      planet.mainClass === 'PRECURSOR_ANOMALOUS' ||
-      planet.mainClass === 'SYNTHETIC_CYBERNETIC' ||
-      planet.mainClass === 'CRYSTALLINE_GEM'
-    ) {
-      commodityId = 'COMM_ALLOY';
-      commodityName = 'Precursor Alloy Relic';
-      maxQty = 6;
-    }
+    // Determine primary commodity to sample from planet class profile
+    const { primaryCommodity } = getPlanetClassProfile(planet.mainClass);
+    const commodityId = primaryCommodity.id;
+    const commodityName = primaryCommodity.name;
+    const maxQty = primaryCommodity.probeQty;
 
     // Yield scales with probe integrity: if probe integrity is high, yield is full. If degraded, partial.
     const sampleQty = Math.max(1, Math.round(maxQty * (probeIntegrity / 100)));
@@ -619,23 +575,8 @@ export class PlanetaryService {
     const factionId = portRes.rows[0]?.faction_id || 'FACTION_SOL';
 
     // Faction strategic value multiplier
-    let multiplier = 1.0;
-    if (
-      factionId === 'FACTION_KRYLL' &&
-      (planet.mainClass === 'PYRO_TECTONIC' || planet.mainClass === 'GAS_ICE_GIANT' || planet.mainClass === 'CAUSTIC_SOLVENT' || planet.mainClass === 'RADIOLOGIC_ISOTOPIC')
-    ) {
-      multiplier = 1.5; // Kryll pays premium for fuels and dense heavy metals
-    } else if (
-      factionId === 'FACTION_SOL' &&
-      (planet.mainClass === 'METALLIC_ORE' || planet.mainClass === 'LIVING_BIOSPHERE' || planet.mainClass === 'HYDROSPHERE' || planet.mainClass === 'FUNGAL_MYCELIAL' || planet.mainClass === 'SILICATE_DESERT')
-    ) {
-      multiplier = 1.4; // Sol Nexus pays premium for habitability and structural silicates
-    } else if (
-      factionId === 'FACTION_LITHOS' &&
-      (planet.mainClass === 'PRECURSOR_ANOMALOUS' || planet.mainClass === 'CRYSTALLINE_GEM' || planet.mainClass === 'RARE_EARTH' || planet.mainClass === 'SYNTHETIC_CYBERNETIC')
-    ) {
-      multiplier = 1.6; // Lithos Axiom values ancient precursor tech anomalies and rare crystals
-    }
+    const { preferredFaction } = getPlanetClassProfile(planet.mainClass);
+    const multiplier = preferredFaction && preferredFaction.factionId === factionId ? preferredFaction.multiplier : 1.0;
 
     // Base credits: 100% = 1,000 CR, 66% = 660 CR, 33% = 330 CR, scaled by faction multiplier
     const baseCredits = Math.round((planet.survey.surveyCompletion / 100) * 1000);

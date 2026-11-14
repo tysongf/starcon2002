@@ -65,7 +65,8 @@ CREATE TABLE IF NOT EXISTS equipment_blueprints (
   id VARCHAR(64) PRIMARY KEY,
   name VARCHAR(128) NOT NULL,
   slot_type VARCHAR(16) NOT NULL, -- 'HIGH', 'MID', 'LOW'
-  category VARCHAR(32) NOT NULL DEFAULT 'WEAPON',  -- 'WEAPON', 'MINING', 'PROPULSION', 'SHIELD', 'REACTOR', 'HULL', 'CARGO'
+  main_category VARCHAR(32) NOT NULL DEFAULT 'OFFENSE', -- 'OFFENSE', 'DEFENSE', 'TRAVEL', 'COMMERCE', 'UTILITY_DRONE'
+  subtype VARCHAR(48) NOT NULL DEFAULT 'Laser Turret',
   manufacturer VARCHAR(64) NOT NULL DEFAULT 'Sol Industrial',
   base_rarity VARCHAR(16) NOT NULL DEFAULT 'COMMON',
   power_grid_cost NUMERIC(8, 2) NOT NULL,
@@ -82,6 +83,10 @@ CREATE TABLE IF NOT EXISTS player_inventory (
   custom_name VARCHAR(128) NOT NULL DEFAULT 'Equipment Module',
   rarity VARCHAR(16) NOT NULL DEFAULT 'COMMON',
   affixes JSONB DEFAULT '[]'::jsonb,
+  main_category VARCHAR(32),
+  subtype VARCHAR(48),
+  tech_prefix VARCHAR(48),
+  tech_suffix VARCHAR(48),
   is_fitted BOOLEAN DEFAULT false,
   fit_slot VARCHAR(16) DEFAULT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -187,21 +192,31 @@ CREATE TABLE IF NOT EXISTS planets (
   id VARCHAR(64) PRIMARY KEY,
   sector_id INT NOT NULL,
   name VARCHAR(128) NOT NULL,
-  archetype VARCHAR(32) NOT NULL,
+  main_class VARCHAR(48) NOT NULL DEFAULT 'METALLIC_ORE',
+  subtype VARCHAR(64) NOT NULL DEFAULT 'Auric Lode',
   radius FLOAT NOT NULL DEFAULT 22.0,
   pos_x FLOAT NOT NULL,
   pos_y FLOAT NOT NULL DEFAULT 0.0,
   pos_z FLOAT NOT NULL,
   texture_seed INT NOT NULL,
+  orbit_index INT DEFAULT 1,
   atmosphere_color VARCHAR(16) NOT NULL,
   atmosphere_density FLOAT NOT NULL,
   surface_temp_k INT NOT NULL,
   hazard_class VARCHAR(32) NOT NULL,
   habitability_rating INT NOT NULL,
+  abundance_rating INT DEFAULT 5,
+  tectonics_rating INT DEFAULT 3,
+  atmosphere_rating INT DEFAULT 5,
+  density_rating INT DEFAULT 5,
   controlling_faction VARCHAR(32) NOT NULL,
+  planet_palette JSONB,
   description TEXT NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+CREATE INDEX IF NOT EXISTS idx_planets_sector_orbit ON planets(sector_id, orbit_index);
+CREATE INDEX IF NOT EXISTS idx_planets_subtype ON planets(subtype);
 
 CREATE TABLE IF NOT EXISTS planet_surveys (
   account_id VARCHAR(64) NOT NULL,

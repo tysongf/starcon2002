@@ -4,7 +4,6 @@ import {
   MODULE_SUBTYPE_CATALOG,
   TECH_PREFIXES,
   generateStationShopStock,
-  mapBlueprintToTaxonomy,
   type ProceduralDroppedModule,
 } from '../procgen/ProceduralModuleCatalog';
 
@@ -227,9 +226,8 @@ export class OutfittingService {
     // Generate rolled item
     const drop = LootGenerator.generateDrop([bp], bp.base_rarity);
 
-    const mapped = mapBlueprintToTaxonomy(bp.name || '', bp.slot_type || 'HIGH');
-    const mainCat = bp.main_category || mapped.mainCategory;
-    const sub = bp.subtype || mapped.subtype;
+    const mainCat = bp.main_category || drop.mainCategory;
+    const sub = bp.subtype || drop.subtype;
 
     const insertRes = await db.query(
       `INSERT INTO player_inventory (account_id, blueprint_id, custom_name, rarity, affixes, main_category, subtype, tech_prefix, tech_suffix, is_fitted, fit_slot)
@@ -247,7 +245,6 @@ export class OutfittingService {
   }
 
   public async addLootToPlayer(accountId: string, dropped: DroppedModule): Promise<any> {
-    const mapped = mapBlueprintToTaxonomy(dropped.name || '', dropped.slotType || 'HIGH');
     const res = await db.query(
       `INSERT INTO player_inventory (account_id, blueprint_id, custom_name, rarity, affixes, main_category, subtype, tech_prefix, tech_suffix, is_fitted, fit_slot)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, false, NULL)
@@ -258,8 +255,8 @@ export class OutfittingService {
         dropped.customName,
         dropped.rarity,
         JSON.stringify(dropped.affixes),
-        dropped.mainCategory || mapped.mainCategory,
-        dropped.subtype || mapped.subtype,
+        dropped.mainCategory || 'OFFENSE',
+        dropped.subtype || dropped.name,
         dropped.techPrefix || null,
         dropped.techSuffix || null,
       ]

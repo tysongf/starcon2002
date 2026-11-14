@@ -65,51 +65,52 @@ VALUES
 ON CONFLICT (id) DO NOTHING;
 
 -- 7. Equipment Blueprints Catalog
-INSERT INTO equipment_blueprints (id, name, slot_type, category, manufacturer, base_rarity, power_grid_cost, cpu_cost, base_price, base_stats, description)
+INSERT INTO equipment_blueprints (id, name, slot_type, main_category, subtype, manufacturer, base_rarity, power_grid_cost, cpu_cost, base_price, base_stats, description)
 VALUES
-  ('MOD_PULSE_01', 'Sol-Standard Pulse Cannon', 'HIGH', 'WEAPON', 'Sol Industrial', 'COMMON', 16.0, 30.0, 450, 
+  ('MOD_PULSE_01', 'Sol-Standard Pulse Cannon', 'HIGH', 'OFFENSE', 'Laser Turret', 'Sol Industrial', 'COMMON', 16.0, 30.0, 450, 
    '{"damage": 14, "fireCooldown": 0.16, "muzzleSpeed": 78, "energyCost": 8, "weaponType": "PULSE"}'::jsonb, 
    'Standard high-velocity kinetic pulse battery. Low capacitor draw with high cycle rate.'),
   
-  ('MOD_PLASMA_01', 'Vaelic Heavy Plasma Accelerator', 'HIGH', 'WEAPON', 'Vaelic Ironworks', 'RARE', 35.0, 55.0, 1200, 
+  ('MOD_PLASMA_01', 'Vaelic Heavy Plasma Accelerator', 'HIGH', 'OFFENSE', 'Railgun', 'Vaelic Ironworks', 'RARE', 35.0, 55.0, 1200, 
    '{"damage": 44, "fireCooldown": 0.45, "muzzleSpeed": 48, "energyCost": 22, "weaponType": "PLASMA"}'::jsonb, 
    'High-impact superheated plasma bolt. Deals devastating hull damage at the cost of high capacitor consumption.'),
   
-  ('MOD_FLAK_01', 'Phorid Scatter Flak Blaster', 'HIGH', 'WEAPON', 'Phorid Biotech', 'UNCOMMON', 22.0, 40.0, 750, 
+  ('MOD_FLAK_01', 'Phorid Scatter Flak Blaster', 'HIGH', 'OFFENSE', 'Ion Cannon', 'Phorid Biotech', 'UNCOMMON', 22.0, 40.0, 750, 
    '{"damage": 13, "fireCooldown": 0.35, "muzzleSpeed": 66, "energyCost": 18, "weaponType": "FLAK", "pellets": 3}'::jsonb, 
    'Tri-pellet scattershot cannon designed for close-quarters dogfighting and point defense.'),
   
-  ('MOD_MINING_01', 'Lithos Focused Mining Laser', 'HIGH', 'MINING', 'Lithos Axiom', 'COMMON', 18.0, 25.0, 500, 
+  ('MOD_MINING_01', 'Lithos Focused Mining Laser', 'HIGH', 'UTILITY_DRONE', 'Mining Drone', 'Lithos Axiom', 'COMMON', 18.0, 25.0, 500, 
    '{"miningPower": 15, "range": 45, "energyCost": 12, "weaponType": "MINING"}'::jsonb, 
    'Harmonic resonance beam tuned for dissecting planetary ore deposits and derelict spacecraft hulls.'),
   
-  ('MOD_AFTERBURNER_01', 'Overdrive Afterburner Core', 'MID', 'PROPULSION', 'Sol Industrial', 'UNCOMMON', 30.0, 20.0, 600, 
+  ('MOD_AFTERBURNER_01', 'Overdrive Afterburner Core', 'MID', 'TRAVEL', 'Plasma Drive', 'Sol Industrial', 'UNCOMMON', 30.0, 20.0, 600, 
    '{"thrustMultiplier": 2.2, "maxSpeed": 48, "energyDrain": 38}'::jsonb, 
    'Direct reactor injection manifold that delivers a 2.2x emergency combat thrust boost on Shift.'),
   
-  ('MOD_SHIELD_01', 'Vaelic Bulwark Shield Matrix', 'MID', 'SHIELD', 'Vaelic Ironworks', 'RARE', 28.0, 45.0, 950, 
+  ('MOD_SHIELD_01', 'Vaelic Bulwark Shield Matrix', 'MID', 'DEFENSE', 'Shield Generator', 'Vaelic Ironworks', 'RARE', 28.0, 45.0, 950, 
    '{"shieldCapacity": 40, "shieldRecharge": 6.0, "boostAmount": 35, "boostCooldown": 6.0}'::jsonb, 
    'Hexagonal electrostatic emitter matrix that reinforces maximum shield capacity and passive dissipation.'),
   
-  ('MOD_ECM_01', 'Lithos Resonant Sensor Jammer', 'MID', 'SHIELD', 'Lithos Axiom', 'EPIC', 22.0, 50.0, 1400, 
+  ('MOD_ECM_01', 'Lithos Resonant Sensor Jammer', 'MID', 'UTILITY_DRONE', 'Salvage Drone', 'Lithos Axiom', 'EPIC', 22.0, 50.0, 1400, 
    '{"lockBreakRadius": 60, "cooldown": 12.0}'::jsonb, 
    'Emits broad-spectrum electromagnetic interference that disrupts hostile radar lock-on acquisition.'),
   
-  ('MOD_REACTOR_01', 'Vaelic Compact Reactor Core', 'LOW', 'REACTOR', 'Vaelic Ironworks', 'UNCOMMON', 0.0, 15.0, 650, 
+  ('MOD_REACTOR_01', 'Vaelic Compact Reactor Core', 'LOW', 'DEFENSE', 'Power Core', 'Vaelic Ironworks', 'UNCOMMON', 0.0, 15.0, 650, 
    '{"energyRegenMultiplier": 1.15, "maxEnergyBonus": 20}'::jsonb, 
    'Auxiliary fusion reactor augment that increases ship capacitor capacity and regeneration rate by 15%.'),
   
-  ('MOD_ARMOR_01', 'Reinforced Plasteel Armor Plating', 'LOW', 'HULL', 'Sol Industrial', 'COMMON', 12.0, 0.0, 400, 
+  ('MOD_ARMOR_01', 'Reinforced Plasteel Armor Plating', 'LOW', 'DEFENSE', 'Hull Plating', 'Sol Industrial', 'COMMON', 12.0, 0.0, 400, 
    '{"maxHpBonus": 25}'::jsonb, 
    'Dense multilayer plasteel sheets welded to ship bulkheads, providing +25 maximum Hull Integrity.'),
   
-  ('MOD_CARGO_01', 'Expanded Hold Nanofiber Rig', 'LOW', 'CARGO', 'Phorid Biotech', 'COMMON', 8.0, 10.0, 350, 
+  ('MOD_CARGO_01', 'Expanded Hold Nanofiber Rig', 'LOW', 'COMMERCE', 'Cargo Bay', 'Phorid Biotech', 'COMMON', 8.0, 10.0, 350, 
    '{"cargoHoldBonus": 20}'::jsonb, 
    'Pressurized micro-lattice storage bays expanding hold volume by 20 cubic meters.')
 ON CONFLICT (id) DO UPDATE SET
   name = EXCLUDED.name,
   slot_type = EXCLUDED.slot_type,
-  category = EXCLUDED.category,
+  main_category = EXCLUDED.main_category,
+  subtype = EXCLUDED.subtype,
   manufacturer = EXCLUDED.manufacturer,
   base_rarity = EXCLUDED.base_rarity,
   power_grid_cost = EXCLUDED.power_grid_cost,
@@ -119,40 +120,41 @@ ON CONFLICT (id) DO UPDATE SET
   description = EXCLUDED.description;
 
 -- 8. Prototype Precursor Blueprints
-INSERT INTO equipment_blueprints (id, name, slot_type, category, manufacturer, base_rarity, power_grid_cost, cpu_cost, base_price, base_stats, description)
+INSERT INTO equipment_blueprints (id, name, slot_type, main_category, subtype, manufacturer, base_rarity, power_grid_cost, cpu_cost, base_price, base_stats, description)
 VALUES
-  ('BP_PRECURSOR_PHASE_LANCE', 'Precursor Phase Lance', 'HIGH', 'WEAPON', 'Precursor Builders', 'LEGENDARY', 18.0, 24.0, 5000,
+  ('BP_PRECURSOR_PHASE_LANCE', 'Precursor Phase Lance', 'HIGH', 'OFFENSE', 'Torpedo Bay', 'Precursor Builders', 'LEGENDARY', 18.0, 24.0, 5000,
    '{"damage": 145, "fireCooldown": 1.2, "energyCost": 28, "shieldPierce": 0.75, "range": 450}',
    'Ancient Precursor beam projector that discharges coherent harmonic phase energy, bypassing 75% of conventional deflector shielding.'),
-  ('BP_PRECURSOR_TACHYON_DRIVE', 'Tachyon Warp Accelerator', 'LOW', 'PROPULSION', 'Precursor Builders', 'LEGENDARY', 14.0, 18.0, 4500,
+  ('BP_PRECURSOR_TACHYON_DRIVE', 'Tachyon Warp Accelerator', 'LOW', 'TRAVEL', 'Hyperdrive Booster', 'Precursor Builders', 'LEGENDARY', 14.0, 18.0, 4500,
    '{"warpApDiscount": 3, "topSpeedBonus": 35, "fuelEfficiency": 0.5}',
    'Subspace tachyon folding engine that compresses jump lane transit, reducing sector warp AP expenditure by 3 AP and halving fuel burn.'),
-  ('BP_PRECURSOR_CRYSTAL_SHIELD', 'Crystalline Matrix Shield', 'MID', 'SHIELD', 'Precursor Builders', 'LEGENDARY', 16.0, 22.0, 4800,
+  ('BP_PRECURSOR_CRYSTAL_SHIELD', 'Crystalline Matrix Shield', 'MID', 'DEFENSE', 'Shield Generator', 'Precursor Builders', 'LEGENDARY', 16.0, 22.0, 4800,
    '{"maxShield": 350, "rechargeRate": 45, "harmonicDamping": 0.4}',
    'Resonant crystalline shield array that rapidly restores deflector integrity under sustained kinetic or thermal bombardment.'),
-  ('BP_PRECURSOR_BIOSPHERE_GEN', 'Living Biosphere Matrix', 'LOW', 'HULL', 'Precursor Builders', 'LEGENDARY', 10.0, 15.0, 4000,
+  ('BP_PRECURSOR_BIOSPHERE_GEN', 'Living Biosphere Matrix', 'LOW', 'DEFENSE', 'Engineering Bay', 'Precursor Builders', 'LEGENDARY', 10.0, 15.0, 4000,
    '{"colonyHabitationBonus": 25, "populationGrowthMultiplier": 1.5}',
    'Compact biome synthesis core that enhances planetary environmental stabilization, providing +25% colony habitability rating.')
 ON CONFLICT (id) DO UPDATE SET
   name = EXCLUDED.name,
   slot_type = EXCLUDED.slot_type,
-  category = EXCLUDED.category,
+  main_category = EXCLUDED.main_category,
+  subtype = EXCLUDED.subtype,
   manufacturer = EXCLUDED.manufacturer,
   base_rarity = EXCLUDED.base_rarity,
   base_stats = EXCLUDED.base_stats,
   description = EXCLUDED.description;
 
 -- 9. Initial Player Inventory (Fitted 2H/2M/2L + Locker items)
-INSERT INTO player_inventory (id, account_id, blueprint_id, custom_name, rarity, affixes, is_fitted, fit_slot)
+INSERT INTO player_inventory (id, account_id, blueprint_id, custom_name, rarity, affixes, main_category, subtype, is_fitted, fit_slot)
 VALUES
-  ('a1b2c3d4-e5f6-7890-abcd-111111111111', 'acc_sol_captain', 'MOD_PULSE_01', 'Sol-Standard Pulse Cannon', 'COMMON', '[]'::jsonb, true, 'H1'),
-  ('a1b2c3d4-e5f6-7890-abcd-222222222222', 'acc_sol_captain', 'MOD_PLASMA_01', 'Calibrated Vaelic Plasma Accelerator', 'RARE', '[{"stat": "damage", "multiplier": 1.15}]'::jsonb, true, 'H2'),
-  ('a1b2c3d4-e5f6-7890-abcd-333333333333', 'acc_sol_captain', 'MOD_AFTERBURNER_01', 'Overdrive Afterburner Core', 'UNCOMMON', '[{"stat": "maxSpeed", "multiplier": 1.08}]'::jsonb, true, 'M1'),
-  ('a1b2c3d4-e5f6-7890-abcd-444444444444', 'acc_sol_captain', 'MOD_FLAK_01', 'Scatter Flak Blaster of Ruin', 'EPIC', '[{"stat": "damage", "multiplier": 1.25}]'::jsonb, true, 'M2'),
-  ('a1b2c3d4-e5f6-7890-abcd-555555555555', 'acc_sol_captain', 'MOD_REACTOR_01', 'Vaelic Compact Reactor Core Mk II', 'UNCOMMON', '[]'::jsonb, true, 'L1'),
-  ('a1b2c3d4-e5f6-7890-abcd-666666666666', 'acc_sol_captain', 'MOD_ARMOR_01', 'Reinforced Plasteel Armor Plating', 'COMMON', '[]'::jsonb, true, 'L2'),
-  ('a1b2c3d4-e5f6-7890-abcd-777777777777', 'acc_sol_captain', 'MOD_MINING_01', 'Lithos Focused Mining Laser', 'COMMON', '[]'::jsonb, false, NULL),
-  ('a1b2c3d4-e5f6-7890-abcd-888888888888', 'acc_sol_captain', 'MOD_CARGO_01', 'Expanded Hold Nanofiber Rig', 'COMMON', '[]'::jsonb, false, NULL)
+  ('a1b2c3d4-e5f6-7890-abcd-111111111111', 'acc_sol_captain', 'MOD_PULSE_01', 'Sol-Standard Pulse Cannon', 'COMMON', '[]'::jsonb, 'OFFENSE', 'Laser Turret', true, 'H1'),
+  ('a1b2c3d4-e5f6-7890-abcd-222222222222', 'acc_sol_captain', 'MOD_PLASMA_01', 'Calibrated Vaelic Plasma Accelerator', 'RARE', '[{"stat": "damage", "multiplier": 1.15}]'::jsonb, 'OFFENSE', 'Railgun', true, 'H2'),
+  ('a1b2c3d4-e5f6-7890-abcd-333333333333', 'acc_sol_captain', 'MOD_AFTERBURNER_01', 'Overdrive Afterburner Core', 'UNCOMMON', '[{"stat": "maxSpeed", "multiplier": 1.08}]'::jsonb, 'TRAVEL', 'Plasma Drive', true, 'M1'),
+  ('a1b2c3d4-e5f6-7890-abcd-444444444444', 'acc_sol_captain', 'MOD_FLAK_01', 'Scatter Flak Blaster of Ruin', 'EPIC', '[{"stat": "damage", "multiplier": 1.25}]'::jsonb, 'OFFENSE', 'Ion Cannon', true, 'M2'),
+  ('a1b2c3d4-e5f6-7890-abcd-555555555555', 'acc_sol_captain', 'MOD_REACTOR_01', 'Vaelic Compact Reactor Core Mk II', 'UNCOMMON', '[]'::jsonb, 'DEFENSE', 'Power Core', true, 'L1'),
+  ('a1b2c3d4-e5f6-7890-abcd-666666666666', 'acc_sol_captain', 'MOD_ARMOR_01', 'Reinforced Plasteel Armor Plating', 'COMMON', '[]'::jsonb, 'DEFENSE', 'Hull Plating', true, 'L2'),
+  ('a1b2c3d4-e5f6-7890-abcd-777777777777', 'acc_sol_captain', 'MOD_MINING_01', 'Lithos Focused Mining Laser', 'COMMON', '[]'::jsonb, 'UTILITY_DRONE', 'Mining Drone', false, NULL),
+  ('a1b2c3d4-e5f6-7890-abcd-888888888888', 'acc_sol_captain', 'MOD_CARGO_01', 'Expanded Hold Nanofiber Rig', 'COMMON', '[]'::jsonb, 'COMMERCE', 'Cargo Bay', false, NULL)
 ON CONFLICT (id) DO NOTHING;
 
 -- 10. Initial Derelict Wrecks in Sector 2
@@ -176,16 +178,14 @@ VALUES
 ON CONFLICT (account_id, faction_id) DO NOTHING;
 
 -- 12. Celestial Planets
-INSERT INTO planets (id, sector_id, name, archetype, radius, pos_x, pos_y, pos_z, texture_seed, atmosphere_color, atmosphere_density, surface_temp_k, hazard_class, habitability_rating, controlling_faction, description)
+INSERT INTO planets (id, sector_id, name, main_class, subtype, radius, pos_x, pos_y, pos_z, texture_seed, orbit_index, atmosphere_color, atmosphere_density, surface_temp_k, hazard_class, habitability_rating, abundance_rating, tectonics_rating, atmosphere_rating, density_rating, controlling_faction, planet_palette, description)
 VALUES
-  ('planet_sec1_aegis', 1, 'Aegis Prime', 'BARREN', 24.0, -140.0, 0.0, 180.0, 101, '#38bdf8', 0.12, 215, 'LOW_RADIATION', 18, 'FACTION_SOL', 'Airless metallic moon rich in heavy silicate crust and structural plasteel strata.'),
-  ('planet_sec2_charybdis', 2, 'Charybdis Minor', 'VOLCANIC', 26.0, 160.0, 0.0, -170.0, 202, '#f97316', 0.85, 780, 'EXTREME_THERMAL', 5, 'FACTION_HEGEMONY', 'Tectonically unstable lava world venting superheated sulfur and high-grade mineral ore.'),
-  ('planet_sec3_ignis', 3, 'Ignis Tartarus', 'PRECURSOR_RUIN', 28.0, -180.0, 0.0, -150.0, 303, '#a855f7', 0.40, 110, 'IONIC_DISRUPTIONS', 24, 'FACTION_LITHOS', 'Glaciated tomb world crisscrossed with dormant Precursor conduits and energy monoliths.'),
-  ('planet_sec4_mycelia', 4, 'Mycelia IV', 'TERRESTRIAL', 25.0, 150.0, 0.0, 140.0, 404, '#10b981', 1.05, 292, 'BIOLOGICAL_SPORES', 84, 'FACTION_PHORID', 'Lush photosynthetic planetary biome covered in dense fungal canopies and bio-protein reserves.'),
-  ('planet_sec5_skrit', 5, 'Skrit-V', 'GAS_GIANT', 34.0, -220.0, 0.0, 190.0, 505, '#f59e0b', 4.50, 85, 'HIGH_PRESSURE_STORMS', 0, 'FACTION_KRYLL', 'Massive banded gas giant with cryo-hydrocarbon rings suitable for Deuterium fuel skimming.')
+  ('planet_sec1_aegis', 1, 'Aegis Prime', 'METALLIC_ORE', 'Auric Lode', 24.0, -140.0, 0.0, 180.0, 101, 1, '#38bdf8', 0.12, 215, 'LOW_RADIATION', 18, 10, 2, 1, 8, 'FACTION_SOL', '{"base":"#451a03","band1":"#d97706","band2":"#78350f","accent":"#fde047","glow":"#fbbf24","atmosphere":"#f59e0b","patternStyle":"CRATERED","hasRings":false,"hasClouds":false,"emissiveStrength":0.3}'::jsonb, 'Airless metallic moon rich in heavy silicate crust and structural plasteel strata.'),
+  ('planet_sec2_charybdis', 2, 'Charybdis Minor', 'PYRO_TECTONIC', 'Magmatic Crucible', 26.0, 160.0, 0.0, -170.0, 202, 1, '#f97316', 0.85, 780, 'EXTREME_THERMAL', 5, 8, 10, 6, 7, 'FACTION_HEGEMONY', '{"base":"#1c1917","band1":"#ea580c","band2":"#44403c","accent":"#facc15","glow":"#f97316","atmosphere":"#fb923c","patternStyle":"MAGMA_FISSURE","hasRings":false,"hasClouds":false,"emissiveStrength":0.85}'::jsonb, 'Tectonically unstable lava world venting superheated sulfur and high-grade mineral ore.'),
+  ('planet_sec3_ignis', 3, 'Ignis Tartarus', 'PRECURSOR_ANOMALOUS', 'Xenolithic Vault', 28.0, -180.0, 0.0, -150.0, 303, 1, '#a855f7', 0.40, 110, 'IONIC_DISRUPTIONS', 24, 8, 2, 3, 8, 'FACTION_LITHOS', '{"base":"#1e1b4b","band1":"#9333ea","band2":"#312e81","accent":"#f0abfc","glow":"#a855f7","atmosphere":"#a855f7","patternStyle":"PRECURSOR_GLYPH","hasRings":false,"hasClouds":false,"emissiveStrength":0.75}'::jsonb, 'Glaciated tomb world crisscrossed with dormant Precursor conduits and energy monoliths.'),
+  ('planet_sec4_mycelia', 4, 'Mycelia IV', 'FUNGAL_MYCELIAL', 'Mycelial Superorganism', 25.0, 150.0, 0.0, 140.0, 404, 1, '#10b981', 1.05, 292, 'BIOLOGICAL_SPORES', 84, 8, 2, 7, 4, 'FACTION_PHORID', '{"base":"#1e1b4b","band1":"#10b981","band2":"#6d28d9","accent":"#5eead4","glow":"#34d399","atmosphere":"#10b981","patternStyle":"MYCELIAL_WEB","hasRings":false,"hasClouds":true,"emissiveStrength":0.65}'::jsonb, 'Lush photosynthetic planetary biome covered in dense fungal canopies and bio-protein reserves.'),
+  ('planet_sec5_skrit', 5, 'Skrit-V', 'GAS_ICE_GIANT', 'Jovian Hydrogen', 34.0, -220.0, 0.0, 190.0, 505, 1, '#f59e0b', 4.50, 85, 'HIGH_PRESSURE_STORMS', 0, 7, 0, 10, 2, 'FACTION_KRYLL', '{"base":"#92400e","band1":"#f59e0b","band2":"#78350f","accent":"#fef3c7","glow":"#fbbf24","atmosphere":"#f59e0b","patternStyle":"BANDED","hasRings":true,"hasClouds":false,"emissiveStrength":0.12}'::jsonb, 'Massive banded gas giant with cryo-hydrocarbon rings suitable for Deuterium fuel skimming.')
 ON CONFLICT (id) DO NOTHING;
-
-UPDATE planets SET controlling_faction = 'FACTION_LITHOS' WHERE id = 'planet_sec3_ignis' AND controlling_faction <> 'FACTION_LITHOS';
 
 -- 13. Precursor Megastructure Sites
 INSERT INTO precursor_sites (id, planet_id, name, site_type, surface_lat, surface_lng, required_freq, required_phase, required_damping, codex_title, codex_text, relic_reward)

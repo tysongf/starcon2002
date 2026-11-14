@@ -29,27 +29,28 @@ CREATE INDEX IF NOT EXISTS idx_player_fleet_account ON player_fleet(account_id);
 CREATE INDEX IF NOT EXISTS idx_player_fleet_slot ON player_fleet(account_id, deployment_slot);
 
 -- 2. Command Bridge Modules in equipment_blueprints
-INSERT INTO equipment_blueprints (id, name, slot_type, category, manufacturer, base_rarity, power_grid_cost, cpu_cost, base_price, base_stats, description)
+INSERT INTO equipment_blueprints (id, name, slot_type, main_category, subtype, manufacturer, base_rarity, power_grid_cost, cpu_cost, base_price, base_stats, description)
 VALUES
-  ('MOD_BRIDGE_T1', 'Tactical Command Bridge Mk.I', 'MID', 'COMMAND', 'Sol Industrial', 'COMMON', 8.0, 20.0, 350,
+  ('MOD_BRIDGE_T1', 'Tactical Command Bridge Mk.I', 'MID', 'UTILITY_DRONE', 'Command Bridge', 'Sol Industrial', 'COMMON', 8.0, 20.0, 350,
    '{"maxWingmen": 1, "bridgeTier": 1}'::jsonb,
    'Standard single-channel fleet coordination bridge. Enables command over 1 active combat wingman.'),
 
-  ('MOD_BRIDGE_T2', 'Tactical Operations Bridge Mk.II', 'MID', 'COMMAND', 'Sol Industrial', 'UNCOMMON', 14.0, 35.0, 750,
+  ('MOD_BRIDGE_T2', 'Tactical Operations Bridge Mk.II', 'MID', 'UTILITY_DRONE', 'Command Bridge', 'Sol Industrial', 'UNCOMMON', 14.0, 35.0, 750,
    '{"maxWingmen": 2, "bridgeTier": 2}'::jsonb,
    'Dual-channel encrypted tactical routing bus. Coordinates 2 active combat wingmen in tight formation.'),
 
-  ('MOD_BRIDGE_T3', 'Fleet Operations Center Mk.III', 'MID', 'COMMAND', 'Vaelic Ironworks', 'RARE', 22.0, 50.0, 1500,
+  ('MOD_BRIDGE_T3', 'Fleet Operations Center Mk.III', 'MID', 'UTILITY_DRONE', 'Command Bridge', 'Vaelic Ironworks', 'RARE', 22.0, 50.0, 1500,
    '{"maxWingmen": 3, "bridgeTier": 3}'::jsonb,
    'Advanced multi-vector fleet telemetry center. Manages up to 3 active combat wingmen simultaneously.'),
 
-  ('MOD_BRIDGE_T4', 'Admiral''s Flag Bridge Mk.IV', 'MID', 'COMMAND', 'Sol Industrial', 'EPIC', 30.0, 65.0, 3200,
+  ('MOD_BRIDGE_T4', 'Admiral''s Flag Bridge Mk.IV', 'MID', 'UTILITY_DRONE', 'Command Bridge', 'Sol Industrial', 'EPIC', 30.0, 65.0, 3200,
    '{"maxWingmen": 4, "bridgeTier": 4}'::jsonb,
    'Supreme fleet command nexus with quantum datalink arrays. Commands a full 4-wingman battle flotilla.')
 ON CONFLICT (id) DO UPDATE SET
   name = EXCLUDED.name,
   slot_type = EXCLUDED.slot_type,
-  category = EXCLUDED.category,
+  main_category = EXCLUDED.main_category,
+  subtype = EXCLUDED.subtype,
   manufacturer = EXCLUDED.manufacturer,
   base_rarity = EXCLUDED.base_rarity,
   power_grid_cost = EXCLUDED.power_grid_cost,
