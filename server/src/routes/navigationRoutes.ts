@@ -25,8 +25,8 @@ export const navigationRoutes: FastifyPluginAsync = async (server) => {
     });
   });
 
-  // Hyperspace Jump
-  server.post('/api/navigate/jump', async (req, reply) => {
+  // Hyperspace Jump Handler
+  const handleJump = async (req: any, reply: any) => {
     const body = (req.body || {}) as {
       playerId?: string;
       targetSectorId: number;
@@ -50,5 +50,10 @@ export const navigationRoutes: FastifyPluginAsync = async (server) => {
     }
 
     reply.send(result);
-  });
+  };
+
+  // Hyperspace Jump
+  server.post('/api/navigate/jump', handleJump);
+  server.post('/api/player/warp', handleJump);
+  server.post('/api/sector/jump', handleJump);
 };

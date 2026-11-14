@@ -150,6 +150,7 @@ export const playerRoutes: FastifyPluginAsync = async (server) => {
       await db.query('DELETE FROM planet_surveys WHERE account_id = $1', [accountId]);
       await db.query('DELETE FROM planet_beacons WHERE account_id = $1', [accountId]);
       await db.query('DELETE FROM colonies WHERE account_id = $1', [accountId]);
+      await db.query('UPDATE player_fleet SET deployment_slot = NULL WHERE account_id = $1', [accountId]);
       await db.query('UPDATE precursor_sites SET is_deciphered = FALSE');
       await db.query('DELETE FROM precursor_research WHERE account_id = $1', [accountId]);
     }
@@ -183,6 +184,7 @@ export const playerRoutes: FastifyPluginAsync = async (server) => {
       await db.query('DELETE FROM planet_surveys WHERE account_id = $1', [accountId]);
       await db.query('DELETE FROM planet_beacons WHERE account_id = $1', [accountId]);
       await db.query('DELETE FROM colonies WHERE account_id = $1', [accountId]);
+      await db.query('UPDATE player_fleet SET deployment_slot = NULL WHERE account_id = $1', [accountId]);
       await db.query('UPDATE precursor_sites SET is_deciphered = FALSE');
       await db.query('DELETE FROM precursor_research WHERE account_id = $1', [accountId]);
       await db.query(`DELETE FROM player_inventory WHERE account_id = $1 AND (blueprint_id LIKE 'BP_PRECURSOR_%' OR id::text NOT LIKE 'a1b2c3d4-%')`, [accountId]);

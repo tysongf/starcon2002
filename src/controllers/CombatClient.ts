@@ -499,6 +499,8 @@ export class CombatClient {
             this.openKillmailModal(msg.killmail);
           } else if (msg.type === 'S_TACTICAL_ORDER_ACK') {
             this.activeSquadronOrder = msg.order;
+          } else if (msg.type === 'S_COMBAT_AAR') {
+            this.openTacticalAARModal(msg.data);
           }
         } catch (err) {
           console.error('[CombatClient] Parse error:', err);
@@ -2215,6 +2217,114 @@ export class CombatClient {
 
     if (this.elKmShareRow) this.elKmShareRow.classList.add('hidden');
     if (this.modalKillmail) this.modalKillmail.classList.remove('hidden');
+  }
+
+  /**
+   * Day 36: Tactical After-Action Report (AAR) Debrief Modal
+   */
+  public openTacticalAARModal(aar: any): void {
+    if (!aar) return;
+    this.audio.playAARStinger(aar.medal || 'A');
+
+    let modal = document.getElementById('modal-tactical-aar');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'modal-tactical-aar';
+      modal.className = 'modal-overlay hidden';
+      document.body.appendChild(modal);
+    }
+
+    const medalColors: Record<string, string> = {
+      S: '#fbbf24', // Gold
+      A: '#38bdf8', // Cyan
+      B: '#a78bfa', // Purple
+      C: '#94a3b8', // Silver
+    };
+
+    const medalColor = medalColors[aar.medal] || '#38bdf8';
+    const escortsHtml = (aar.escorts || []).map((esc: any) => `
+      <div class="aar-escort-row">
+        <div class="aar-escort-info">
+          <span class="aar-slot-badge">SLOT ${esc.slot}</span>
+          <strong class="aar-ship-name">${esc.name}</strong>
+          <span class="aar-ship-class">(${esc.hullClass})</span>
+          <span class="aar-status-pill aar-status-${(esc.status || 'OPERATIONAL').toLowerCase()}">${esc.status}</span>
+        </div>
+        <div class="aar-escort-stats">
+          <div class="aar-stat-col">
+            <span class="aar-stat-label">DMG DEALT</span>
+            <span class="aar-stat-val font-mono">${(esc.damageDealt || 0).toLocaleString()}</span>
+          </div>
+          <div class="aar-stat-col">
+            <span class="aar-stat-label">ABSORBED</span>
+            <span class="aar-stat-val font-mono">${(esc.damageAbsorbed || 0).toLocaleString()}</span>
+          </div>
+          <div class="aar-stat-col">
+            <span class="aar-stat-label">ABILITIES</span>
+            <span class="aar-stat-val font-mono text-cyan">${esc.abilitiesTriggered || 0}</span>
+          </div>
+          <div class="aar-stat-col">
+            <span class="aar-stat-label">KILLS</span>
+            <span class="aar-stat-val font-mono text-amber">${esc.kills || 0}</span>
+          </div>
+        </div>
+      </div>
+    `).join('');
+
+    modal.innerHTML = `
+      <div class="modal-card aar-card crt-panel">
+        <div class="aar-header">
+          <div class="aar-header-title">
+            <span class="aar-tag">TACTICAL AFTER-ACTION REPORT // SECTOR 0${aar.sectorId}</span>
+            <h2 class="aar-headline">SQUADRON ENGAGEMENT DEBRIEF</h2>
+          </div>
+          <div class="aar-medal-badge" style="border-color: ${medalColor}; color: ${medalColor};">
+            <span class="aar-medal-rank">${aar.medal}</span>
+            <span class="aar-medal-label">RATING</span>
+          </div>
+        </div>
+
+        <div class="aar-summary-grid">
+          <div class="aar-summary-metric">
+            <span class="metric-lbl">TOTAL DAMAGE DEALT</span>
+            <span class="metric-val text-amber font-mono">${(aar.totalDamageDealt || 0).toLocaleString()} HP</span>
+          </div>
+          <div class="aar-summary-metric">
+            <span class="metric-lbl">DAMAGE ABSORBED</span>
+            <span class="metric-val text-cyan font-mono">${(aar.totalDamageAbsorbed || 0).toLocaleString()} HP</span>
+          </div>
+          <div class="aar-summary-metric">
+            <span class="metric-lbl">SALVAGE SECURED</span>
+            <span class="metric-val text-green font-mono">${aar.salvageCollected || 0} PODS</span>
+          </div>
+          <div class="aar-summary-metric">
+            <span class="metric-lbl">FLAGSHIP KILLS</span>
+            <span class="metric-val text-amber font-mono">${aar.flagship?.kills || 0}</span>
+          </div>
+        </div>
+
+        <div class="aar-squadron-section">
+          <h3 class="aar-section-title">TASK FORCE ESCORT TELEMETRY</h3>
+          <div class="aar-escort-list">
+            ${escortsHtml || '<div class="aar-empty">No combat escorts deployed in this engagement.</div>'}
+          </div>
+        </div>
+
+        <div class="aar-footer">
+          <button id="btn-close-aar" class="btn-primary aar-btn-confirm">ACKNOWLEDGE DEBRIEF</button>
+        </div>
+      </div>
+    `;
+
+    modal.classList.remove('hidden');
+
+    const btnClose = modal.querySelector('#btn-close-aar');
+    if (btnClose) {
+      btnClose.addEventListener('click', () => {
+        modal?.classList.add('hidden');
+        this.audio.playUiBlip();
+      });
+    }
   }
 
   public async postRevengeBounty(): Promise<void> {

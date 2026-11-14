@@ -8028,6 +8028,246 @@ kbd {
   padding: 0.4rem 0;
 }
 
+/* Day 36: Tactical After-Action Report (AAR) Styles */
+.aar-card {
+  max-width: 660px;
+  width: 92%;
+  background: rgba(11, 15, 25, 0.95);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  box-shadow: 0 0 35px rgba(0, 0, 0, 0.8), 0 0 15px rgba(56, 189, 248, 0.2);
+  border-radius: 8px;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  animation: modal-pop 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.aar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 1rem;
+}
+
+.aar-header-title {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.aar-tag {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #38bdf8;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.aar-headline {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #f8fafc;
+  letter-spacing: 0.02em;
+}
+
+.aar-medal-badge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: 3px solid #38bdf8;
+  background: rgba(15, 23, 42, 0.8);
+  box-shadow: 0 0 15px currentColor;
+}
+
+.aar-medal-rank {
+  font-family: var(--font-mono);
+  font-size: 1.8rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.aar-medal-label {
+  font-family: var(--font-mono);
+  font-size: 0.5rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  opacity: 0.8;
+}
+
+.aar-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.75rem;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+  padding: 0.75rem;
+}
+
+.aar-summary-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.aar-summary-metric .metric-lbl {
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  color: #94a3b8;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.aar-summary-metric .metric-val {
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+.aar-squadron-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.aar-section-title {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #94a3b8;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.aar-escort-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.aar-escort-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(30, 41, 59, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  padding: 0.6rem 0.8rem;
+}
+
+.aar-escort-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.aar-slot-badge {
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  font-weight: 800;
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  padding: 1px 4px;
+  border-radius: 2px;
+}
+
+.aar-ship-name {
+  font-size: 0.85rem;
+  color: #f1f5f9;
+}
+
+.aar-ship-class {
+  font-size: 0.7rem;
+  color: #64748b;
+  font-family: var(--font-mono);
+}
+
+.aar-status-pill {
+  font-family: var(--font-mono);
+  font-size: 0.55rem;
+  font-weight: 800;
+  padding: 1px 5px;
+  border-radius: 3px;
+  text-transform: uppercase;
+}
+
+.aar-status-operational {
+  color: #34d399;
+  background: rgba(52, 211, 153, 0.12);
+  border: 1px solid rgba(52, 211, 153, 0.3);
+}
+
+.aar-status-critical {
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.aar-status-destroyed {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.aar-escort-stats {
+  display: flex;
+  gap: 1.25rem;
+}
+
+.aar-stat-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.1rem;
+}
+
+.aar-stat-label {
+  font-family: var(--font-mono);
+  font-size: 0.5rem;
+  color: #64748b;
+  font-weight: 700;
+}
+
+.aar-stat-val {
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.aar-empty {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: #64748b;
+  padding: 1rem;
+  text-align: center;
+}
+
+.aar-footer {
+  display: flex;
+  justify-content: flex-end;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 1rem;
+}
+
+.aar-btn-confirm {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 800;
+  padding: 0.55rem 1.4rem;
+  letter-spacing: 0.04em;
+  border-radius: 4px;
+}
+
 
 
 

@@ -36,6 +36,14 @@ async function runMilestone02Test() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ accountId: PLAYER_ID }),
   });
+  // Milestone 0.2 explores solo trading flight - recall any active wingmen to reserve
+  try {
+    await fetch(`${BASE_URL}/api/fleet/assign-slot`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accountId: PLAYER_ID, fleetShipId: 'fleet_escort_sol_01', slot: null }),
+    });
+  } catch {}
   await fetch(`${BASE_URL}/api/player/ap/debug-set`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

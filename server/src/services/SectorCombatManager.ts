@@ -50,6 +50,35 @@ export interface SectorLootContainer {
   createdAt: number;
 }
 
+export interface EscortAARStats {
+  shipId: string;
+  name: string;
+  hullClass: string;
+  slot: number;
+  damageDealt: number;
+  damageAbsorbed: number;
+  abilitiesTriggered: number;
+  kills: number;
+  status: 'OPERATIONAL' | 'CRITICAL' | 'DESTROYED';
+}
+
+export interface CombatAAR {
+  sessionId: string;
+  sectorId: number;
+  timestamp: string;
+  flagship: {
+    accountId: string;
+    damageDealt: number;
+    damageAbsorbed: number;
+    kills: number;
+  };
+  escorts: EscortAARStats[];
+  salvageCollected: number;
+  totalDamageDealt: number;
+  totalDamageAbsorbed: number;
+  medal: 'S' | 'A' | 'B' | 'C';
+}
+
 export interface SectorEntity {
   id: string;
   type: 'PLAYER' | 'DRONE' | 'WRECK' | 'CARGO_CRATE' | 'SCAVENGER' | 'HAULER' | 'WINGMAN';
@@ -293,6 +322,7 @@ export class SectorRoom {
   public containers: SectorLootContainer[] = [];
   public sporeClouds: SporeCloud[] = [];
   public pendingEvents: CombatEvent[] = [];
+  public sessionAAR: Map<string, CombatAAR> = new Map();
 
   private tickInterval: NodeJS.Timeout | null = null;
   private lastTickTimestamp: number = Date.now();
@@ -1080,6 +1110,26 @@ export class SectorRoom {
       });
     }
 
+    // Day 36: Initialize Session AAR Tracker for this player
+    if (!this.sessionAAR.has(playerId)) {
+      this.sessionAAR.set(playerId, {
+        sessionId: `aar_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        sectorId: this.sectorId,
+        timestamp: new Date().toISOString(),
+        flagship: {
+          accountId: playerId,
+          damageDealt: 0,
+          damageAbsorbed: 0,
+          kills: 0,
+        },
+        escorts: [],
+        salvageCollected: 0,
+        totalDamageDealt: 0,
+        totalDamageAbsorbed: 0,
+        medal: 'S',
+      });
+    }
+
     // Day 34: Auto-spawn active wingmen for this player
     this.spawnWingmenForPlayer(playerId, shipData?.activeWingmen).catch((err) => {
       console.warn(`[SectorRoom ${this.sectorId}] Failed to spawn wingmen for player ${playerId}:`, err);
@@ -1195,6 +1245,22 @@ export class SectorRoom {
 
       this.entities.set(wingmanId, entity);
       spawned.push(entity);
+
+      // Day 36: Register Escort in Session AAR
+      const aar = this.sessionAAR.get(playerId);
+      if (aar && !aar.escorts.some((e) => e.slot === slot)) {
+        aar.escorts.push({
+          shipId: row.id || wingmanId,
+          name: shipName,
+          hullClass,
+          slot,
+          damageDealt: 0,
+          damageAbsorbed: 0,
+          abilitiesTriggered: 0,
+          kills: 0,
+          status: 'OPERATIONAL',
+        });
+      }
     }
 
     return spawned;
@@ -1318,6 +1384,9 @@ export class SectorRoom {
     let ability = wingman.specialAbility || 'POINT_DEFENSE';
     if (ability === 'PLASMA_BARRAGE') ability = 'PLASMA_LANCE';
     if (ability === 'SHOCKWAVE') ability = 'HARMONIC_SHIELD';
+
+    // Record ability activation for session AAR
+    this.recordAbility(wingman);
 
     switch (ability) {
       case 'POINT_DEFENSE': {
@@ -1611,7 +1680,134 @@ export class SectorRoom {
     }
   }
 
+  // Day 36: AAR Telemetry Helpers
+  public recordDamage(attackerId: string | undefined, target: SectorEntity, damage: number): void {
+    const dmg = Math.round(damage);
+    if (dmg <= 0) return;
+
+    // 1. Attacker dealt damage
+    if (attackerId) {
+      if (attackerId.startsWith('player_')) {
+        const pid = attackerId.replace('player_', '');
+        const aar = this.sessionAAR.get(pid);
+        if (aar) {
+          aar.flagship.damageDealt += dmg;
+          aar.totalDamageDealt += dmg;
+        }
+      } else if (attackerId.startsWith('wingman_')) {
+        const wm = this.entities.get(attackerId);
+        if (wm && wm.ownerPlayerId) {
+          const aar = this.sessionAAR.get(wm.ownerPlayerId);
+          if (aar) {
+            const esc = aar.escorts.find((e) => e.slot === wm.wingmanSlot);
+            if (esc) esc.damageDealt += dmg;
+            aar.totalDamageDealt += dmg;
+          }
+        }
+      }
+    }
+
+    // 2. Target absorbed damage
+    if (target.type === 'PLAYER') {
+      const pid = target.id.replace('player_', '');
+      const aar = this.sessionAAR.get(pid);
+      if (aar) {
+        aar.flagship.damageAbsorbed += dmg;
+        aar.totalDamageAbsorbed += dmg;
+      }
+    } else if (target.type === 'WINGMAN' && target.ownerPlayerId) {
+      const aar = this.sessionAAR.get(target.ownerPlayerId);
+      if (aar) {
+        const esc = aar.escorts.find((e) => e.slot === target.wingmanSlot);
+        if (esc) {
+          esc.damageAbsorbed += dmg;
+          if (target.hp <= target.maxHp * 0.25) esc.status = 'CRITICAL';
+        }
+        aar.totalDamageAbsorbed += dmg;
+      }
+    }
+  }
+
+  public recordKill(killerId: string | undefined, target: SectorEntity): void {
+    if (!killerId) return;
+    if (killerId.startsWith('player_')) {
+      const pid = killerId.replace('player_', '');
+      const aar = this.sessionAAR.get(pid);
+      if (aar) aar.flagship.kills += 1;
+    } else if (killerId.startsWith('wingman_')) {
+      const wm = this.entities.get(killerId);
+      if (wm && wm.ownerPlayerId) {
+        const aar = this.sessionAAR.get(wm.ownerPlayerId);
+        if (aar) {
+          const esc = aar.escorts.find((e) => e.slot === wm.wingmanSlot);
+          if (esc) esc.kills += 1;
+        }
+      }
+    }
+  }
+
+  public recordAbility(wingman: SectorEntity): void {
+    if (wingman.ownerPlayerId) {
+      const aar = this.sessionAAR.get(wingman.ownerPlayerId);
+      if (aar) {
+        const esc = aar.escorts.find((e) => e.slot === wingman.wingmanSlot);
+        if (esc) esc.abilitiesTriggered += 1;
+      }
+    }
+  }
+
+  public finalizeAAR(playerId: string): CombatAAR {
+    let aar = this.sessionAAR.get(playerId);
+    if (!aar) {
+      aar = {
+        sessionId: `aar_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        sectorId: this.sectorId,
+        timestamp: new Date().toISOString(),
+        flagship: { accountId: playerId, damageDealt: 0, damageAbsorbed: 0, kills: 0 },
+        escorts: [],
+        salvageCollected: 0,
+        totalDamageDealt: 0,
+        totalDamageAbsorbed: 0,
+        medal: 'A',
+      };
+    }
+
+    // Refresh escort statuses from live entities if still present
+    for (const esc of aar.escorts) {
+      const entity = Array.from(this.entities.values()).find(
+        (e) => e.type === 'WINGMAN' && e.ownerPlayerId === playerId && e.wingmanSlot === esc.slot
+      );
+      if (entity) {
+        if (entity.state === 'DESTROYED' || entity.hp <= 0) {
+          esc.status = 'DESTROYED';
+        } else if (entity.hp <= entity.maxHp * 0.25) {
+          esc.status = 'CRITICAL';
+        } else {
+          esc.status = 'OPERATIONAL';
+        }
+      }
+    }
+
+    // Calculate medal rating
+    const lostCount = aar.escorts.filter((e) => e.status === 'DESTROYED').length;
+    if (lostCount === 0 && aar.totalDamageDealt >= 300) {
+      aar.medal = 'S';
+    } else if (lostCount === 0) {
+      aar.medal = 'A';
+    } else if (lostCount === 1) {
+      aar.medal = 'B';
+    } else {
+      aar.medal = 'C';
+    }
+
+    SectorCombatManager.setLatestAAR(playerId, aar);
+    return aar;
+  }
+
   public removePlayer(playerId: string): void {
+    // Day 36: Finalize AAR telemetry before despawning entities
+    this.finalizeAAR(playerId);
+
     this.clients.delete(playerId);
     this.entities.delete(`player_${playerId}`);
 
@@ -2960,6 +3156,9 @@ export class SectorRoom {
     target.lastHitTime = Date.now();
     let damageRemaining = proj.damage;
 
+    // Day 36: Record combat damage in session AAR
+    this.recordDamage(proj.ownerId, target, proj.damage);
+
     // Day 35: Lithos Harmonic Resonant Shield (50% absorption, 25% reflection)
     if (target.harmonicShieldActive) {
       const absorbed = damageRemaining * 0.50;
@@ -3110,6 +3309,9 @@ export class SectorRoom {
     target.state = 'DESTROYED';
     const wreckId = `wreck_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
 
+    // Day 36: Record kill in session AAR
+    this.recordKill(killerId, target);
+
     this.pendingEvents.push({
       type: 'DESTROYED',
       targetId: target.id,
@@ -3120,6 +3322,14 @@ export class SectorRoom {
 
     // Day 34 & Day 35: Wingman Destruction & High-Value Salvage
     if (target.type === 'WINGMAN') {
+      if (target.ownerPlayerId) {
+        const aar = this.sessionAAR.get(target.ownerPlayerId);
+        if (aar) {
+          const esc = aar.escorts.find((e) => e.slot === target.wingmanSlot);
+          if (esc) esc.status = 'DESTROYED';
+        }
+      }
+
       this.pendingEvents.push({
         type: 'WINGMAN_DESTROYED',
         sourceId: killerId,
@@ -3457,6 +3667,11 @@ export class SectorRoom {
     }
 
     this.containers.splice(cIdx, 1);
+
+    // Day 36: Record salvage collection in session AAR
+    const aar = this.sessionAAR.get(playerId);
+    if (aar) aar.salvageCollected += 1;
+
     this.pendingEvents.push({
       type: 'LOOT_COLLECTED',
       targetId: pEntity.id,
@@ -3795,6 +4010,17 @@ export class SectorCombatManager {
           } catch {
             // Socket might be closed
           }
+        } else if (msg.type === 'C_DISENGAGE' || msg.type === 'C_REQUEST_AAR') {
+          const aar = room.finalizeAAR(playerId);
+          try {
+            socket.send(
+              JSON.stringify({
+                type: 'S_COMBAT_AAR',
+                success: true,
+                data: aar,
+              })
+            );
+          } catch {}
         }
       } catch (err) {
         // Ignore malformed client frames
@@ -3802,8 +4028,20 @@ export class SectorCombatManager {
     });
 
     socket.on('close', () => {
+      room.finalizeAAR(playerId);
       room.removePlayer(playerId);
     });
+  }
+
+  // Day 36: Static AAR Storage & Access
+  public static latestAARByAccount: Map<string, CombatAAR> = new Map();
+
+  public static getLatestAAR(accountId: string): CombatAAR | null {
+    return SectorCombatManager.latestAARByAccount.get(accountId) || null;
+  }
+
+  public static setLatestAAR(accountId: string, aar: CombatAAR): void {
+    SectorCombatManager.latestAARByAccount.set(accountId, aar);
   }
 }
 

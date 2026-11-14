@@ -17,6 +17,7 @@ export interface FleetShip {
   specialAbility: string;
   fittedModules: any[];
   deploymentSlot: number | null; // 1..4 = Active Wingman; null = Hangar Reserve
+  currentSectorId?: number;
   status: 'READY' | 'DEPLOYED' | 'DESTROYED';
   createdAt: string;
   updatedAt: string;
@@ -346,6 +347,7 @@ export class FleetService {
    */
   public async debugReset(accountId: string = 'acc_sol_captain'): Promise<void> {
     await db.query(`DELETE FROM player_fleet WHERE account_id = $1`, [accountId]);
+    await db.query(`DELETE FROM player_inventory WHERE account_id = $1 AND blueprint_id LIKE 'MOD_BRIDGE_%'`, [accountId]);
     await db.query(
       `INSERT INTO player_fleet (
          id, account_id, name, blueprint_id, hull_class, faction_id,
@@ -384,6 +386,7 @@ export class FleetService {
       specialAbility: r.special_ability,
       fittedModules: typeof r.fitted_modules === 'string' ? JSON.parse(r.fitted_modules) : (r.fitted_modules || []),
       deploymentSlot: r.deployment_slot !== null && r.deployment_slot !== undefined ? Number(r.deployment_slot) : null,
+      currentSectorId: r.current_sector_id !== null && r.current_sector_id !== undefined ? Number(r.current_sector_id) : 1,
       status: r.status,
       createdAt: r.created_at,
       updatedAt: r.updated_at,

@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { db } from '../db/Database';
 import { colonyService } from '../services/ColonyService';
+import { shipyardService } from '../services/ShipyardService';
 
 export const colonyRoutes: FastifyPluginAsync = async (server) => {
   // Found Colony Outpost
@@ -112,4 +113,19 @@ export const colonyRoutes: FastifyPluginAsync = async (server) => {
 
   server.post('/api/colony/debug-fast-forward', handleFastForward);
   server.post('/api/colonies/debug-fast-forward', handleFastForward);
+
+  // Resupply Fleet at Colony Orbital Shipyard (Day 36)
+  const handleFleetResupply = async (req: any, reply: any) => {
+    const { id } = req.params as { id: string };
+    const body = (req.body || {}) as { accountId?: string };
+    const accountId = body.accountId || 'acc_sol_captain';
+    const result = await shipyardService.resupplyFleetAtColony(accountId, id);
+    if (!result.success) {
+      return reply.status(400).send(result);
+    }
+    reply.send(result);
+  };
+
+  server.post('/api/colonies/:id/shipyard/resupply-fleet', handleFleetResupply);
+  server.post('/api/colony/:id/shipyard/resupply-fleet', handleFleetResupply);
 };

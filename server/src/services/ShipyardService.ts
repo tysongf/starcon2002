@@ -624,6 +624,168 @@ export class ShipyardService {
       remainingAP: updatedAp,
     };
   }
+
+  /**
+   * Day 36: Resupplies and repairs active combat escorts at a colony orbital shipyard,
+   * drawing materials directly from colony silos and flagship cargo.
+   */
+  public async resupplyFleetAtColony(
+    accountId: string = 'acc_sol_captain',
+    colonyId: string
+  ): Promise<{
+    success: boolean;
+    colonyId?: string;
+    shipsRepaired?: number;
+    materialsConsumed?: {
+      COMM_ALLOY: number;
+      COMM_ORE: number;
+      COMM_FUEL: number;
+    };
+    fleetStatus?: string;
+    error?: string;
+  }> {
+    const colony = await colonyService.getColonyDetail(colonyId, accountId);
+    if (!colony) {
+      return { success: false, error: `Colony "${colonyId}" not found or unauthorized.` };
+    }
+
+    if ((colony.shipyardTier || 0) < 1) {
+      return {
+        success: false,
+        error: `Colony "${colony.name}" requires an Orbital Shipyard (Tier 1+) to perform fleet resupply.`,
+      };
+    }
+
+    // Fetch active escorts
+    const { rows: ships } = await db.query<any>(
+      `SELECT * FROM player_fleet 
+       WHERE account_id = $1 AND deployment_slot IS NOT NULL AND status != 'DESTROYED'`,
+      [accountId]
+    );
+
+    if (ships.length === 0) {
+      return {
+        success: true,
+        colonyId,
+        shipsRepaired: 0,
+        materialsConsumed: { COMM_ALLOY: 0, COMM_ORE: 0, COMM_FUEL: 0 },
+        fleetStatus: 'NO_ACTIVE_ESCORTS',
+      };
+    }
+
+    // Find damaged escorts
+    const damaged = ships.filter(s => Number(s.hull) < Number(s.max_hull) || Number(s.shield) < Number(s.max_shield));
+    
+    let reqAlloy = 0;
+    let reqOre = 0;
+    let reqFuel = ships.length * 1; // 1 fuel per active escort for munitions and reactor priming
+
+    for (const ship of damaged) {
+      const missingHull = Math.max(0, Number(ship.max_hull) - Number(ship.hull));
+      if (missingHull > 0) {
+        reqAlloy += Math.max(1, Math.ceil(missingHull / 25));
+        reqOre += Math.max(1, Math.ceil(missingHull / 30));
+      }
+    }
+
+    // If no damage and fuel already topped up
+    if (damaged.length === 0 && reqFuel === 0) {
+      return {
+        success: true,
+        colonyId,
+        shipsRepaired: 0,
+        materialsConsumed: { COMM_ALLOY: 0, COMM_ORE: 0, COMM_FUEL: 0 },
+        fleetStatus: 'FULLY_OPERATIONAL',
+      };
+    }
+
+    // Check available materials in colony silo and player cargo
+    let availAlloy = 0;
+    let availOre = 0;
+    let availFuel = 0;
+
+    if (colony.commodityId === 'COMM_ALLOY') availAlloy += colony.stockpiledAmount;
+    if (colony.commodityId === 'COMM_ORE') availOre += colony.stockpiledAmount;
+    if (colony.commodityId === 'COMM_FUEL') availFuel += colony.stockpiledAmount;
+
+    // Check flagship cargo
+    const { rows: sRows } = await db.query<any>(`SELECT id FROM ships WHERE account_id = $1 LIMIT 1`, [accountId]);
+    const shipId = sRows[0]?.id;
+
+    if (shipId) {
+      const { rows: cargoRows } = await db.query<{ commodity_id: string; quantity: number }>(
+        `SELECT commodity_id, quantity FROM ship_cargo WHERE ship_id = $1`,
+        [shipId]
+      );
+      for (const c of cargoRows) {
+        if (c.commodity_id === 'COMM_ALLOY') availAlloy += c.quantity;
+        if (c.commodity_id === 'COMM_ORE') availOre += c.quantity;
+        if (c.commodity_id === 'COMM_FUEL') availFuel += c.quantity;
+      }
+    }
+
+    const missingMaterials: string[] = [];
+    if (availAlloy < reqAlloy) missingMaterials.push(`${reqAlloy - availAlloy}x COMM_ALLOY`);
+    if (availOre < reqOre) missingMaterials.push(`${reqOre - availOre}x COMM_ORE`);
+    if (availFuel < reqFuel) missingMaterials.push(`${reqFuel - availFuel}x COMM_FUEL`);
+
+    if (missingMaterials.length > 0) {
+      return {
+        success: false,
+        error: `INSUFFICIENT_MATERIALS: Fleet resupply requires additional materials: ${missingMaterials.join(', ')}`,
+      };
+    }
+
+    // Deduct from colony silo first, then ship cargo
+    const deductMaterial = async (commId: string, amount: number) => {
+      let remaining = amount;
+      if (colony.commodityId === commId && colony.stockpiledAmount > 0) {
+        const fromColony = Math.min(colony.stockpiledAmount, remaining);
+        colony.stockpiledAmount -= fromColony;
+        remaining -= fromColony;
+        await db.query(
+          `UPDATE colonies SET stockpiled_amount = GREATEST(0, stockpiled_amount - $1) WHERE id = $2`,
+          [fromColony, colony.id]
+        );
+      }
+      if (remaining > 0 && shipId) {
+        await db.query(
+          `UPDATE ship_cargo SET quantity = GREATEST(0, quantity - $1) WHERE ship_id = $2 AND commodity_id = $3`,
+          [remaining, shipId, commId]
+        );
+        await db.query(
+          `DELETE FROM ship_cargo WHERE ship_id = $1 AND commodity_id = $2 AND quantity <= 0`,
+          [shipId, commId]
+        );
+      }
+    };
+
+    if (reqAlloy > 0) await deductMaterial('COMM_ALLOY', reqAlloy);
+    if (reqOre > 0) await deductMaterial('COMM_ORE', reqOre);
+    if (reqFuel > 0) await deductMaterial('COMM_FUEL', reqFuel);
+
+    // Restore active escorts
+    for (const ship of ships) {
+      await db.query(
+        `UPDATE player_fleet 
+         SET hull = max_hull, shield = max_shield, status = 'READY', updated_at = NOW() 
+         WHERE id = $1`,
+        [ship.id]
+      );
+    }
+
+    return {
+      success: true,
+      colonyId,
+      shipsRepaired: damaged.length > 0 ? damaged.length : ships.length,
+      materialsConsumed: {
+        COMM_ALLOY: reqAlloy,
+        COMM_ORE: reqOre,
+        COMM_FUEL: reqFuel,
+      },
+      fleetStatus: 'FULLY_OPERATIONAL',
+    };
+  }
 }
 
 export const shipyardService = new ShipyardService();

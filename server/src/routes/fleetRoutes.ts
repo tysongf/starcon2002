@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { fleetService } from '../services/FleetService';
-import { combatManager } from '../services/SectorCombatManager';
+import { combatManager, SectorCombatManager } from '../services/SectorCombatManager';
 import { shipyardService } from '../services/ShipyardService';
 
 export const fleetRoutes: FastifyPluginAsync = async (server) => {
@@ -152,6 +152,27 @@ export const fleetRoutes: FastifyPluginAsync = async (server) => {
     const slot = Number(body.slot || 1);
     const result = combatManager.triggerWingmanAbility(sectorId, accountId, slot, body.targetEntityId);
     reply.send(result);
+  });
+
+  // 12. Day 36: Get Latest Tactical Combat After-Action Report (AAR)
+  server.get('/aar/last', async (req, reply) => {
+    const query = (req.query || {}) as { accountId?: string };
+    const accountId = query.accountId || 'acc_sol_captain';
+    let aar = SectorCombatManager.getLatestAAR(accountId);
+    if (!aar) {
+      aar = {
+        sessionId: `aar_baseline_${Date.now()}`,
+        sectorId: 1,
+        timestamp: new Date().toISOString(),
+        flagship: { accountId, damageDealt: 0, damageAbsorbed: 0, kills: 0 },
+        escorts: [],
+        salvageCollected: 0,
+        totalDamageDealt: 0,
+        totalDamageAbsorbed: 0,
+        medal: 'A',
+      };
+    }
+    reply.send({ success: true, aar });
   });
 };
 

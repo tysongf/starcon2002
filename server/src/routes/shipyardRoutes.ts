@@ -137,5 +137,30 @@ export const shipyardRoutes: FastifyPluginAsync = async (server) => {
     }
     reply.send(result);
   });
+
+  // 9. Resupply Fleet at Colony (Day 36)
+  server.post('/colonies/:id/resupply-fleet', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = (req.body || {}) as { accountId?: string };
+    const accountId = body.accountId || 'acc_sol_captain';
+    const result = await shipyardService.resupplyFleetAtColony(accountId, id);
+    if (!result.success) {
+      return reply.status(400).send(result);
+    }
+    reply.send(result);
+  });
+
+  server.post('/fleet/resupply', async (req, reply) => {
+    const body = (req.body || {}) as { accountId?: string; colonyId: string };
+    const accountId = body.accountId || 'acc_sol_captain';
+    if (!body.colonyId) {
+      return reply.status(400).send({ success: false, error: 'colonyId is required.' });
+    }
+    const result = await shipyardService.resupplyFleetAtColony(accountId, body.colonyId);
+    if (!result.success) {
+      return reply.status(400).send(result);
+    }
+    reply.send(result);
+  });
 };
 

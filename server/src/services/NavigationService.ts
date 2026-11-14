@@ -41,6 +41,9 @@ export interface JumpResult {
   ship?: PlayerShip;
   currentAP?: number;
   remainingFuel?: number;
+  activeEscortsJumping?: number;
+  escortFuelCost?: number;
+  totalFuelCost?: number;
   error?: string;
 }
 
@@ -142,12 +145,38 @@ export class NavigationService {
       };
     }
 
-    // 4. Fuel Verification
-    if (ship.fuel < NavigationService.WARP_FUEL_COST) {
-      return {
-        success: false,
-        error: `INSUFFICIENT_FUEL: Requires ${NavigationService.WARP_FUEL_COST} unit Deuterium fuel, currently have ${ship.fuel}.`,
-      };
+    // 4. Calculate Fleet Escort Fuel Overhead
+    let activeEscortsCount = 0;
+    try {
+      const activeEscortsRes = await db.query<any>(
+        `SELECT id FROM player_fleet 
+         WHERE account_id = $1 AND deployment_slot IS NOT NULL AND status = 'READY'`,
+        [playerId]
+      );
+      activeEscortsCount = activeEscortsRes.rows.length;
+    } catch {
+      // Table might not exist in early tests or isolation
+      activeEscortsCount = 0;
+    }
+
+    const baseFuelCost = NavigationService.WARP_FUEL_COST;
+    const escortFuelCost = activeEscortsCount * 1;
+    const totalFuelCost = baseFuelCost + escortFuelCost;
+
+    if (activeEscortsCount > 0) {
+      if (ship.fuel < totalFuelCost) {
+        return {
+          success: false,
+          error: `INSUFFICIENT_FUEL: Warp requires ${totalFuelCost} fuel (${baseFuelCost} base + ${escortFuelCost} fleet escorts), but vessel only has ${ship.fuel}.`,
+        };
+      }
+    } else {
+      if (ship.fuel < baseFuelCost) {
+        return {
+          success: false,
+          error: `INSUFFICIENT_FUEL: Requires ${baseFuelCost} unit Deuterium fuel, currently have ${ship.fuel}.`,
+        };
+      }
     }
 
     // 5. AP Atomic Verification & Spend
@@ -159,14 +188,26 @@ export class NavigationService {
       };
     }
 
-    // 6. Deduct Fuel & Update Ship Sector in Database
+    // 6. Deduct Total Fuel & Update Ship Sector in Database
     const updateRes = await db.query<PlayerShip>(
       `UPDATE ships 
        SET current_sector_id = $1, fuel = fuel - $2, updated_at = NOW() 
        WHERE account_id = $3 
        RETURNING *`,
-      [targetSectorId, NavigationService.WARP_FUEL_COST, playerId]
+      [targetSectorId, totalFuelCost, playerId]
     );
+
+    // 6b. Synchronize Active Escorts to New Sector
+    if (activeEscortsCount > 0) {
+      try {
+        await db.query(
+          `UPDATE player_fleet 
+           SET current_sector_id = $1, updated_at = NOW() 
+           WHERE account_id = $2 AND deployment_slot IS NOT NULL AND status = 'READY'`,
+          [targetSectorId, playerId]
+        );
+      } catch {}
+    }
 
     const updatedShip = updateRes.rows[0];
 
@@ -185,6 +226,9 @@ export class NavigationService {
       ship: updatedShip,
       currentAP: apResult.currentAP,
       remainingFuel: updatedShip.fuel,
+      activeEscortsJumping: activeEscortsCount,
+      escortFuelCost,
+      totalFuelCost,
     };
   }
 

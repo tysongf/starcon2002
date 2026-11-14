@@ -1887,6 +1887,39 @@ export class AudioEngine {
     osc.start(now);
     osc.stop(now + 0.38);
   }
+
+  /**
+   * Day 36: Tactical After-Action Report (AAR) Debrief Stinger
+   */
+  public playAARStinger(medal: 'S' | 'A' | 'B' | 'C' = 'A'): void {
+    this.initContext();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+
+    const isVictory = medal === 'S' || medal === 'A';
+    const notes = isVictory
+      ? [261.63, 329.63, 392.00, 523.25] // C4, E4, G4, C5 (Grand Fanfare)
+      : [220.00, 261.63, 329.63, 246.94]; // A3, C4, E4, B3 (Tactical Debrief)
+
+    notes.forEach((freq, idx) => {
+      if (!this.ctx) return;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = isVictory ? 'triangle' : 'sawtooth';
+      osc.frequency.setValueAtTime(freq, now + idx * 0.12);
+
+      gain.gain.setValueAtTime(0.01, now + idx * 0.12);
+      gain.gain.linearRampToValueAtTime(isVictory ? 0.28 : 0.2, now + idx * 0.12 + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.12 + 0.6);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      osc.start(now + idx * 0.12);
+      osc.stop(now + idx * 0.12 + 0.65);
+    });
+  }
 }
 
 

@@ -43,6 +43,23 @@ async function runSectorGraphTest() {
 
   // Step 2: Ensure ship starts in Sector 1 with full fuel and AP
   console.log('[2/6] Resetting pilot ship to Sector 1 and full reserves...');
+  await fetch(`${BASE_URL}/api/player/debug-baseline`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ accountId: PLAYER_ID }),
+  });
+  // Recall escorts to hangar reserve for solo navigation tests
+  try {
+    const rosterRes = await fetch(`${BASE_URL}/api/fleet/roster?accountId=${PLAYER_ID}`);
+    const roster = await rosterRes.json();
+    for (const w of roster.activeWingmen || []) {
+      await fetch(`${BASE_URL}/api/fleet/assign-slot`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId: PLAYER_ID, fleetShipId: w.id, slot: null }),
+      });
+    }
+  } catch {}
   await fetch(`${BASE_URL}/api/player/ship/debug-set`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
