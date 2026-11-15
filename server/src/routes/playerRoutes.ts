@@ -3,9 +3,11 @@ import { db } from '../db/Database';
 import { tradeService } from '../services/TradeService';
 import { apService, AP_COSTS, type ActionType } from '../services/ActionPointService';
 import { navigationService } from '../services/NavigationService';
-import { reputationService, type FactionId } from '../services/ReputationService';
+import { reputationService } from '../services/ReputationService';
+import { FACTION_REGISTRY } from '../../../shared/FactionRegistry';
 import { fleetService } from '../services/FleetService';
 import { starmapService } from '../services/StarmapService';
+import { getHullDef } from '../procgen/HullClassCatalog';
 
 export const playerRoutes: FastifyPluginAsync = async (server) => {
   // Hold telemetry
@@ -70,8 +72,22 @@ export const playerRoutes: FastifyPluginAsync = async (server) => {
     }
     const currentSector = await navigationService.getSector(ship.current_sector_id);
     const adjacentSectors = await navigationService.getAdjacentSectors(ship.current_sector_id);
+    const hullDef = getHullDef(ship.hull_class);
     reply.send({
-      ship,
+      ship: {
+        ...ship,
+        main_hull_class: (ship as any).main_hull_class || hullDef.mainClass,
+        hull_subtype: (ship as any).hull_subtype || hullDef.displayName,
+        faction_id: (ship as any).faction_id || hullDef.factionId,
+        power_grid_max: Number((ship as any).power_grid_max ?? hullDef.powerGridMax),
+        cpu_max: Number((ship as any).cpu_max ?? hullDef.cpuMax),
+        base_speed: Number((ship as any).base_speed ?? hullDef.baseSpeed),
+        base_turn_rate: Number((ship as any).base_turn_rate ?? hullDef.baseTurnRate),
+        high_slots: Number((ship as any).high_slots ?? hullDef.highSlots),
+        mid_slots: Number((ship as any).mid_slots ?? hullDef.midSlots),
+        low_slots: Number((ship as any).low_slots ?? hullDef.lowSlots),
+        geometryProfile: hullDef.geometryProfile,
+      },
       currentSector,
       adjacentSectors,
     });
@@ -163,25 +179,52 @@ export const playerRoutes: FastifyPluginAsync = async (server) => {
     const body = (req.body || {}) as { accountId?: string };
     const accountId = body.accountId || 'acc_sol_captain';
     try {
-      await db.query('UPDATE accounts SET credits = 2500 WHERE id = $1', [accountId]);
+      await db.query('UPDATE accounts SET credits = 2500, tech_components = 25 WHERE id = $1', [accountId]);
       await db.query(
-        'UPDATE ships SET current_sector_id = 1, fuel = 100, cargo_capacity = 40, armor = 100, max_armor = 100, shield = 100, max_shield = 100, nav_target_sector_id = NULL, is_in_hyperspace = FALSE, hyperspace_x = 500.0, hyperspace_y = 500.0, is_in_quasispace = FALSE, quasispace_x = 150.0, quasispace_y = 150.0, decoys_remaining = 3, hyperspace_immunity_until = NULL, updated_at = NOW() WHERE account_id = $1',
+        `UPDATE ships SET
+           current_sector_id = 1,
+           hull_class = 'CORVETTE',
+           main_hull_class = 'CORVETTE',
+           hull_subtype = 'Sol Endeavour Corvette',
+           flagship_name = 'UNS Endeavour',
+           faction_id = 'FACTION_SOL',
+           hull_seed = 12345,
+           fuel = 100,
+           max_fuel = 100,
+           cargo_capacity = 40,
+           armor = 100,
+           max_armor = 100,
+           shield = 100,
+           max_shield = 100,
+           power_grid_max = 120.0,
+           cpu_max = 180.0,
+           base_speed = 60.0,
+           base_turn_rate = 2.4,
+           high_slots = 2,
+           mid_slots = 2,
+           low_slots = 2,
+           nav_target_sector_id = NULL,
+           is_in_hyperspace = FALSE,
+           hyperspace_x = 500.0,
+           hyperspace_y = 500.0,
+           is_in_quasispace = FALSE,
+           quasispace_x = 150.0,
+           quasispace_y = 150.0,
+           decoys_remaining = 3,
+           hyperspace_immunity_until = NULL,
+           updated_at = NOW()
+         WHERE account_id = $1`,
         [accountId]
       );
       await db.query('DELETE FROM ship_cargo WHERE ship_id IN (SELECT id FROM ships WHERE account_id = $1)', [accountId]);
       await apService.debugSetAP(accountId, 600);
-      const seedStandings: Array<[FactionId, number]> = [
-        ['FACTION_SOL', 35],
-        ['FACTION_HEGEMONY', -25],
-        ['FACTION_PHORID', 15],
-        ['FACTION_KRYLL', 5],
-        ['FACTION_LITHOS', 0],
-      ];
-      for (const [fid, score] of seedStandings) {
-        await reputationService.debugSetStanding(accountId, fid, score);
+      for (const entry of Object.values(FACTION_REGISTRY)) {
+        await reputationService.debugSetStanding(accountId, entry.id, entry.startingStanding);
       }
       await db.query('DELETE FROM diplomatic_truces WHERE account_id = $1', [accountId]);
       await db.query('DELETE FROM player_dialog_state WHERE account_id = $1', [accountId]);
+      await db.query('DELETE FROM frontier_captain_encounters WHERE account_id = $1', [accountId]);
+      await db.query('DELETE FROM galactic_missions WHERE account_id = $1', [accountId]);
       await db.query('DELETE FROM planet_surveys WHERE account_id = $1', [accountId]);
       await db.query('DELETE FROM planet_beacons WHERE account_id = $1', [accountId]);
       await db.query('DELETE FROM colonies WHERE account_id = $1', [accountId]);

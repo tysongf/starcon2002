@@ -1,4 +1,5 @@
 import { db } from '../db/Database';
+import { frontierCaptainService } from './FrontierCaptainService';
 
 export interface StarSystem {
   id: number;
@@ -109,6 +110,8 @@ export interface InterceptionHandshake {
     action: 'BRIBE_CREDITS' | 'BRIBE_FUEL' | 'BLUFF' | 'ATTACK' | 'PEACEFUL_PASS';
     description: string;
   }>;
+  captainKey?: string;
+  captainDialog?: any;
 }
 
 export interface CommsResolutionResult {
@@ -1290,6 +1293,19 @@ export class StarmapService {
           },
         ],
       };
+    }
+
+    try {
+      const registered = await frontierCaptainService.registerInterceptionCaptain({
+        accountId,
+        blipId: targetBlip.id,
+        factionId: targetBlip.factionId,
+        sectorName: targetBlip.factionName,
+      });
+      handshake.captainKey = registered.captain.captainKey;
+      handshake.captainDialog = registered.dialog;
+    } catch (err) {
+      console.warn('[Starmap] Procedural interception captain fallback skipped:', err);
     }
 
     const exp = this.getOrCreateExpedition(accountId);

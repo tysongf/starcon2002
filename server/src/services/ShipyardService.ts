@@ -1,8 +1,15 @@
 import { db } from '../db/Database';
 import { reputationService, type FactionId } from './ReputationService';
+import { ALL_FACTION_IDS, FACTION_REGISTRY, normalizeFactionId } from '../../../shared/FactionRegistry';
 import { apService } from './ActionPointService';
 import { fleetService, type FleetShip } from './FleetService';
 import { colonyService, type ColonyDetail } from './ColonyService';
+import {
+  HULL_CLASS_CATALOG,
+  MAIN_HULL_CLASS_META,
+  findExactHullDef,
+  type HullSubtypeDef,
+} from '../procgen/HullClassCatalog';
 
 export interface ShipyardBlueprint {
   id: string;
@@ -53,8 +60,7 @@ export interface FabricationResult {
 
 export class ShipyardService {
   private normalizeFaction(fid: string): FactionId {
-    if (fid === 'FACTION_VAELIC') return 'FACTION_HEGEMONY';
-    return fid as FactionId;
+    return normalizeFactionId(fid);
   }
 
   /**
@@ -784,6 +790,303 @@ export class ShipyardService {
         COMM_FUEL: reqFuel,
       },
       fleetStatus: 'FULLY_OPERATIONAL',
+    };
+  }
+
+  private async fetchPilotBuildContext(accountId: string, colonyId?: string) {
+    let colony: ColonyDetail | null = null;
+    let isColonyShipyard = false;
+    let discountMultiplier = 1.0;
+
+    if (colonyId) {
+      try {
+        colony = await colonyService.getColonyDetail(colonyId, accountId);
+        isColonyShipyard = true;
+        discountMultiplier = 0.75;
+      } catch {
+        // Proceed at station rates when colonyId cannot be resolved
+      }
+    }
+
+    const [accRes, apState, sRes, standings] = await Promise.all([
+      db.query<any>(`SELECT credits FROM accounts WHERE id = $1`, [accountId]),
+      apService.getAP(accountId),
+      db.query<any>(`SELECT id FROM ships WHERE account_id = $1 LIMIT 1`, [accountId]),
+      reputationService.getStandings(accountId),
+    ]);
+
+    const credits = Number(accRes.rows[0]?.credits || 0);
+    const ap = Number(apState.currentAP || 0);
+    const shipId = sRes.rows[0]?.id as string | undefined;
+
+    const cargoMap: Record<string, number> = { COMM_ALLOY: 0, COMM_ORE: 0, COMM_FUEL: 0 };
+    if (shipId) {
+      const { rows: cRows } = await db.query<any>(
+        `SELECT commodity_id, quantity FROM ship_cargo WHERE ship_id = $1`,
+        [shipId]
+      );
+      for (const c of cRows) {
+        cargoMap[c.commodity_id] = Number(c.quantity || 0);
+      }
+    }
+    if (colony) {
+      cargoMap[colony.commodityId] = (cargoMap[colony.commodityId] || 0) + Number(colony.stockpiledAmount || 0);
+    }
+
+    const standingMap: Record<string, number> = {};
+    for (const s of standings) {
+      standingMap[s.factionId] = s.standing;
+      if (s.factionId === 'FACTION_HEGEMONY') {
+        standingMap['FACTION_VAELIC'] = s.standing;
+      }
+    }
+
+    return { colony, isColonyShipyard, discountMultiplier, credits, ap, shipId, cargoMap, standingMap };
+  }
+
+  /**
+   * Returns all 8 Main Ship Classes x 8 Factions = 64 Playable Hulls annotated with standing & build costs.
+   */
+  public async getHullCatalog(
+    accountId: string = 'acc_sol_captain',
+    colonyId?: string,
+    mainClassFilter?: string,
+    factionFilter?: string
+  ) {
+    const ctx = await this.fetchPilotBuildContext(accountId, colonyId);
+    const normFactionFilter =
+      factionFilter && factionFilter !== 'ALL' ? normalizeFactionId(factionFilter) : undefined;
+
+    const matchingCatalog = HULL_CLASS_CATALOG.filter((h) => {
+      if (mainClassFilter && mainClassFilter !== 'ALL' && h.mainClass !== mainClassFilter.toUpperCase()) {
+        return false;
+      }
+      if (normFactionFilter && h.factionId !== normFactionFilter) {
+        return false;
+      }
+      return true;
+    });
+
+    const hulls = matchingCatalog.map((h: HullSubtypeDef) => {
+      const effCredit = Math.round(h.creditCost * ctx.discountMultiplier);
+      const effAP = Math.max(1, Math.round(h.apCost * ctx.discountMultiplier));
+      const effAlloy = Math.round(h.alloyCost * ctx.discountMultiplier);
+      const effOre = Math.round(h.oreCost * ctx.discountMultiplier);
+      const effFuel = Math.round(h.fuelCost * ctx.discountMultiplier);
+
+      const playerStanding = ctx.standingMap[this.normalizeFaction(h.factionId)] ?? 0;
+      const hasReputation = playerStanding >= h.requiredReputation;
+      const missing: string[] = [];
+
+      if (!hasReputation) {
+        missing.push(`Requires +${h.requiredReputation} Standing with ${h.factionId} (Current: ${playerStanding})`);
+      }
+      if (ctx.credits < effCredit) {
+        missing.push(`Requires ${effCredit} Cr (Available: ${ctx.credits} Cr)`);
+      }
+      if (ctx.ap < effAP) {
+        missing.push(`Requires ${effAP} AP (Available: ${ctx.ap} AP)`);
+      }
+      if ((ctx.cargoMap.COMM_ALLOY || 0) < effAlloy) {
+        missing.push(`Requires ${effAlloy} Plasteel Alloys (Available: ${ctx.cargoMap.COMM_ALLOY || 0})`);
+      }
+      if ((ctx.cargoMap.COMM_ORE || 0) < effOre) {
+        missing.push(`Requires ${effOre} Silicate Ore (Available: ${ctx.cargoMap.COMM_ORE || 0})`);
+      }
+      if ((ctx.cargoMap.COMM_FUEL || 0) < effFuel) {
+        missing.push(`Requires ${effFuel} Deuterium Fuel (Available: ${ctx.cargoMap.COMM_FUEL || 0})`);
+      }
+      if (ctx.colony && (ctx.colony.shipyardTier || 0) < h.tier) {
+        missing.push(`Requires Colony Shipyard Tier ${h.tier} (Current: Tier ${ctx.colony.shipyardTier || 0})`);
+      }
+
+      return {
+        ...h,
+        slotLayout: { high: h.highSlots, mid: h.midSlots, low: h.lowSlots },
+        effectiveCreditCost: effCredit,
+        effectiveApCost: effAP,
+        effectiveAlloyCost: effAlloy,
+        effectiveOreCost: effOre,
+        effectiveFuelCost: effFuel,
+        hasReputation,
+        canAfford: missing.length === 0,
+        missingRequirements: missing,
+      };
+    });
+
+    return {
+      success: true,
+      mainClasses: MAIN_HULL_CLASS_META,
+      factions: ALL_FACTION_IDS.map((fid) => ({
+        id: fid,
+        name: FACTION_REGISTRY[fid].name,
+        shortName: FACTION_REGISTRY[fid].shortName,
+        crestIcon: FACTION_REGISTRY[fid].crestIcon,
+        primaryColor: FACTION_REGISTRY[fid].primaryColor,
+      })),
+      hulls,
+      count: hulls.length,
+      colonyId,
+      isColonyShipyard: ctx.isColonyShipyard,
+      discountMultiplier: ctx.discountMultiplier,
+    };
+  }
+
+  /**
+   * Commissions any of the 24 HullClassCatalog vessels into player_fleet,
+   * optionally promoting it to Active Flagship immediately.
+   */
+  public async commissionHull(
+    accountId: string = 'acc_sol_captain',
+    hullClass: string,
+    customName?: string,
+    colonyId?: string,
+    promoteImmediately: boolean = false
+  ) {
+    const hullDef = findExactHullDef(hullClass);
+    if (!hullDef) {
+      return {
+        success: false,
+        error: `UNKNOWN_HULL_CLASS: "${hullClass}" is not registered in the 24-hull Naval Foundry.`,
+      };
+    }
+
+    if (colonyId) {
+      try {
+        const colony = await colonyService.getColonyDetail(colonyId, accountId);
+        const colTier = colony.shipyardTier || 0;
+        if (colTier < hullDef.tier) {
+          return {
+            success: false,
+            error: `INSUFFICIENT_SHIPYARD_TIER: Colony shipyard is Tier ${colTier}. Requisitioning ${hullDef.displayName} requires Tier ${hullDef.tier}.`,
+          };
+        }
+      } catch (err: any) {
+        return { success: false, error: `COLONY_NOT_FOUND: ${err.message}` };
+      }
+    }
+
+    const ctx = await this.fetchPilotBuildContext(accountId, colonyId);
+    const playerStanding = ctx.standingMap[this.normalizeFaction(hullDef.factionId)] ?? 0;
+    if (playerStanding < hullDef.requiredReputation) {
+      return {
+        success: false,
+        error: `INSUFFICIENT_FACTION_STANDING: Requires +${hullDef.requiredReputation} with ${hullDef.factionId} (Current: ${playerStanding}).`,
+      };
+    }
+
+    const reqCredits = Math.round(hullDef.creditCost * ctx.discountMultiplier);
+    const reqAP = Math.max(1, Math.round(hullDef.apCost * ctx.discountMultiplier));
+    const reqAlloy = Math.round(hullDef.alloyCost * ctx.discountMultiplier);
+    const reqOre = Math.round(hullDef.oreCost * ctx.discountMultiplier);
+    const reqFuel = Math.round(hullDef.fuelCost * ctx.discountMultiplier);
+
+    if (ctx.credits < reqCredits) {
+      return {
+        success: false,
+        error: `INSUFFICIENT_CREDITS: Commission requires ${reqCredits} Credits (Current: ${ctx.credits} CR).`,
+      };
+    }
+    if (ctx.ap < reqAP) {
+      return {
+        success: false,
+        error: `INSUFFICIENT_AP: Commission requires ${reqAP} AP (Available: ${ctx.ap} AP).`,
+      };
+    }
+    if (!ctx.shipId) {
+      return { success: false, error: 'SHIP_NOT_FOUND' };
+    }
+    if (
+      (ctx.cargoMap.COMM_ALLOY || 0) < reqAlloy ||
+      (ctx.cargoMap.COMM_ORE || 0) < reqOre ||
+      (ctx.cargoMap.COMM_FUEL || 0) < reqFuel
+    ) {
+      return {
+        success: false,
+        error: `INSUFFICIENT_MATERIALS: Requires ${reqAlloy} Alloys, ${reqOre} Ore, ${reqFuel} Fuel.`,
+      };
+    }
+
+    let colonySiloDeducted = 0;
+    const deductMaterial = async (commodityId: string, needed: number) => {
+      let remaining = needed;
+      if (ctx.colony && ctx.colony.commodityId === commodityId && ctx.colony.stockpiledAmount > 0) {
+        const fromSilo = Math.min(ctx.colony.stockpiledAmount, remaining);
+        ctx.colony.stockpiledAmount -= fromSilo;
+        remaining -= fromSilo;
+        colonySiloDeducted += fromSilo;
+        await db.query(
+          `UPDATE colonies SET stockpiled_amount = stockpiled_amount - $1 WHERE id = $2`,
+          [fromSilo, ctx.colony.id]
+        );
+      }
+      if (remaining > 0) {
+        await db.query(
+          `UPDATE ship_cargo SET quantity = quantity - $1 WHERE ship_id = $2 AND commodity_id = $3`,
+          [remaining, ctx.shipId, commodityId]
+        );
+      }
+    };
+
+    await deductMaterial('COMM_ALLOY', reqAlloy);
+    await deductMaterial('COMM_ORE', reqOre);
+    await deductMaterial('COMM_FUEL', reqFuel);
+    await db.query(`DELETE FROM ship_cargo WHERE ship_id = $1 AND quantity <= 0`, [ctx.shipId]);
+
+    const newCredits = ctx.credits - reqCredits;
+    await db.query(`UPDATE accounts SET credits = $1 WHERE id = $2`, [newCredits, accountId]);
+    await apService.deductAP(accountId, reqAP, `Commission ${hullDef.displayName}`);
+
+    const finalName = (customName || '').trim() || hullDef.displayName;
+    const newShip = await fleetService.commissionShip(accountId, {
+      name: finalName,
+      blueprintId: `HULL_${hullDef.hullClass}`,
+      hullClass: hullDef.hullClass,
+      mainHullClass: hullDef.mainClass,
+      hullSubtype: hullDef.displayName,
+      factionId: hullDef.factionId,
+      hull: hullDef.baseArmor,
+      shield: hullDef.baseShield,
+      speed: hullDef.baseSpeed,
+      turnRate: hullDef.baseTurnRate,
+      firepower: hullDef.baseFirepower,
+      specialAbility: hullDef.mainClass,
+      hullSeed: hullDef.hullSeedDefault,
+    });
+
+    let promotedFlagship: any = null;
+    if (promoteImmediately) {
+      const promoteRes = await fleetService.promoteFlagship(accountId, newShip.id);
+      if (!promoteRes.success) {
+        return {
+          success: true,
+          ship: newShip,
+          hullDef,
+          promoted: false,
+          promotionWarning: promoteRes.error,
+          remainingCredits: newCredits,
+          remainingAP: (await apService.getAP(accountId)).currentAP,
+        };
+      }
+      promotedFlagship = promoteRes;
+    }
+
+    return {
+      success: true,
+      ship: newShip,
+      hullDef,
+      promoted: Boolean(promotedFlagship),
+      promotionResult: promotedFlagship,
+      materialsDeducted: {
+        credits: reqCredits,
+        ap: reqAP,
+        alloy: reqAlloy,
+        ore: reqOre,
+        fuel: reqFuel,
+        source: colonySiloDeducted > 0 ? 'COLONY_SILO' : 'SHIP_HOLD',
+      },
+      remainingCredits: newCredits,
+      remainingAP: (await apService.getAP(accountId)).currentAP,
     };
   }
 }

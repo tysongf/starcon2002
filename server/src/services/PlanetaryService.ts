@@ -8,6 +8,7 @@ import {
   type PlanetPalette,
 } from '../procgen/PlanetTaxonomyCatalog';
 import { generatePlanetEcosystem, type ProceduralLifeform } from '../procgen/XenobiologyEngine';
+import { galacticMissionService } from './GalacticMissionService';
 
 export type ScanBand = 'MINERALS' | 'BIO' | 'ANOMALIES';
 export type HotspotCategory =
@@ -430,6 +431,10 @@ export class PlanetaryService {
     const lifeNote = lifeformsDiscovered ? ` Indexed ${lifeformsDiscovered.length} endemic species in Xenodex.` : '';
     const message = `${bandName} sweep complete. Detected ${bandHotspots.length} orbital signatures.${lifeNote} Survey completion: ${survey.surveyCompletion}%.`;
 
+    await galacticMissionService.syncProgress(accountId).catch((err) => {
+      console.warn('[Missions] Post-sweep sync skipped:', err);
+    });
+
     return {
       success: true,
       scanBand,
@@ -522,6 +527,10 @@ export class PlanetaryService {
        VALUES ($1, $2, $3, 'SENSOR_PROBE', $4, $5, $6)`,
       [beaconId, accountId, planetId, lat, lng, yieldSummary]
     );
+
+    await galacticMissionService.syncProgress(accountId).catch((err) => {
+      console.warn('[Missions] Post-beacon sync skipped:', err);
+    });
 
     const atmosphericAnalysis = {
       pressure: `${planet.atmosphereDensity.toFixed(2)} Bar (${planet.atmosphereDensity > 1.5 ? 'Dense / Supercritical' : planet.atmosphereDensity < 0.2 ? 'Trace / Vacuum' : 'Standard Normative'})`,

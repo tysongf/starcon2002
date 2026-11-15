@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { ProceduralHullGenerator, type HullGenerationResult } from './procgen/ProceduralHullGenerator';
 import { type FactionStyle, FACTION_STYLES } from './procgen/FactionStyles';
+import { getFactionEntry } from '../shared/FactionRegistry';
 import { ShipFlightController, type FlightTelemetry } from './physics/ShipFlightController';
 import { ThrusterParticleSystem } from './vfx/ThrusterParticleSystem';
 import { SpaceStation } from './entities/SpaceStation';
@@ -21,6 +22,7 @@ import { FleetController } from './controllers/FleetController';
 import { TacticalCommandWheel } from './controllers/TacticalCommandWheel';
 import { StarmapController } from './controllers/StarmapController';
 import { HyperspaceFlightController } from './controllers/HyperspaceFlightController';
+import { MissionBoardController } from './controllers/MissionBoardController';
 
 class GameEngine {
   private canvas: HTMLCanvasElement;
@@ -50,6 +52,7 @@ class GameEngine {
   public tacticalCommandWheel!: TacticalCommandWheel;
   public starmapController!: StarmapController;
   public hyperspaceFlightController!: HyperspaceFlightController;
+  public missionBoardController!: MissionBoardController;
 
   // Navigation & Sector Jump System (Day 8)
   private currentSectorId: number = 1;
@@ -164,10 +167,12 @@ class GameEngine {
 
   // Day 12 Weapon Profiles & Combat VFX
   private activeWeaponIndex: number = 0;
-  private readonly weaponProfiles: Array<{ id: 'PULSE' | 'PLASMA' | 'FLAK'; name: string; color: string }> = [
+  private readonly weaponProfiles: Array<{ id: 'PULSE' | 'PLASMA' | 'FLAK' | 'RAIL' | 'TORPEDO'; name: string; color: string }> = [
     { id: 'PULSE', name: 'LIGHT PULSE CANNON', color: '#00f0ff' },
     { id: 'PLASMA', name: 'HEAVY PLASMA ACCELERATOR', color: '#10b981' },
     { id: 'FLAK', name: 'SCATTER FLAK BLASTER', color: '#fbbf24' },
+    { id: 'RAIL', name: 'HEAVY RAIL-LANCE (H3)', color: '#c084fc' },
+    { id: 'TORPEDO', name: 'SIEGE TORPEDO BAY', color: '#f97316' },
   ];
   private combatVfx!: CombatVfxSystem;
   private playerShieldBubble!: ShieldBubble;
@@ -178,8 +183,13 @@ class GameEngine {
   // MMORPG Ability Hotbar Cooldown Elements
   private elSlotHigh1: HTMLElement | null = null;
   private elSlotHigh2: HTMLElement | null = null;
+  private elSlotHigh3: HTMLElement | null = null;
   private elSlotMid1: HTMLElement | null = null;
   private elSlotMid2: HTMLElement | null = null;
+  private elSlotMid3: HTMLElement | null = null;
+  private elSlotLow1: HTMLElement | null = null;
+  private elSlotLow2: HTMLElement | null = null;
+  private elSlotLow3: HTMLElement | null = null;
   private elCdHigh1: HTMLElement | null = null;
   private elCdHigh2: HTMLElement | null = null;
   private elCdMid1: HTMLElement | null = null;
@@ -189,8 +199,20 @@ class GameEngine {
     PULSE: 0,
     PLASMA: 0,
     FLAK: 0,
+    RAIL: 0,
+    TORPEDO: 0,
     BOOST: 0,
   };
+
+  private currentGeometryProfile = {
+    lengthMult: 1.0,
+    widthMult: 1.0,
+    heightMult: 1.0,
+    wingSpread: 1.0,
+    weaponHardpoints: 2,
+  };
+  private workbenchSelectedItemId: string | null = null;
+  private workbenchLockedAffixIndex: number | null = null;
 
   // Action Point (AP) System (Day 7)
   private playerAP = {
@@ -225,7 +247,7 @@ class GameEngine {
   private viewTabExchange: HTMLElement | null = null;
   private viewTabOutfitting: HTMLElement | null = null;
   private viewTabArmory: HTMLElement | null = null;
-  private activeStationTab: 'exchange' | 'outfitting' | 'armory' | 'contracts' = 'exchange';
+  private activeStationTab: 'exchange' | 'outfitting' | 'armory' | 'contracts' | 'missions' | 'salvage' | 'diplomacy' | 'fleet' = 'exchange';
 
   private valFittingPg: HTMLElement | null = null;
   private valFittingCpu: HTMLElement | null = null;
@@ -246,6 +268,8 @@ class GameEngine {
   // Station Tabs
   private tabBtnContracts: HTMLElement | null = null;
   private viewTabContracts: HTMLElement | null = null;
+  private tabBtnMissions: HTMLElement | null = null;
+  private viewTabMissions: HTMLElement | null = null;
   private elContractsActiveList: HTMLElement | null = null;
   private elContractsActiveCount: HTMLElement | null = null;
   private elKillmailsArchiveList: HTMLElement | null = null;
@@ -410,9 +434,15 @@ class GameEngine {
       this.shipMesh = null;
     }
 
+    const p = this.currentGeometryProfile;
     const result: HullGenerationResult = ProceduralHullGenerator.generate({
       seed: this.currentSeed,
       faction: this.currentFaction,
+      length: Math.round(8000 * p.lengthMult),
+      width: Math.round(2800 * p.widthMult),
+      height: Math.round(1600 * p.heightMult),
+      wingSpread: Math.round(1400 * p.wingSpread),
+      weaponHardpoints: p.weaponHardpoints > 0,
     });
 
     this.shipMesh = new THREE.Mesh(result.geometry, this.shipMaterial);
@@ -518,6 +548,8 @@ class GameEngine {
       this.loadArmoryData();
     } else if (this.activeStationTab === 'contracts') {
       this.loadContractsData();
+    } else if (this.activeStationTab === 'missions') {
+      this.missionBoardController?.loadBoard();
     } else {
       this.loadPortInventory();
     }
@@ -701,6 +733,19 @@ class GameEngine {
       this.selectWeaponPreset(2);
       this.fireWeaponDirectly('FLAK');
     });
+    this.elSlotHigh3 = document.getElementById('slot-high-3');
+    this.elSlotMid3 = document.getElementById('slot-mid-3');
+    this.elSlotLow1 = document.getElementById('slot-low-1');
+    this.elSlotLow2 = document.getElementById('slot-low-2');
+    this.elSlotLow3 = document.getElementById('slot-low-3');
+    this.elSlotHigh3?.addEventListener('click', () => {
+      this.selectWeaponPreset(3);
+      this.fireWeaponDirectly('RAIL');
+    });
+    this.elSlotMid3?.addEventListener('click', () => {
+      this.combatInputs.fireTactical = true;
+      this.sendCombatInputs();
+    });
 
     // Day 13 Station Service Tabs & Outfitting Bay DOM Lookups
     this.tabBtnExchange = document.getElementById('tab-btn-exchange');
@@ -740,6 +785,10 @@ class GameEngine {
     this.elKillmailsCount = document.getElementById('killmails-count');
     this.elContractsPlayerCredits = document.getElementById('contracts-player-credits');
     this.tabBtnContracts?.addEventListener('click', () => this.switchStationTab('contracts'));
+
+    this.tabBtnMissions = document.getElementById('tab-btn-missions');
+    this.viewTabMissions = document.getElementById('view-tab-missions');
+    this.tabBtnMissions?.addEventListener('click', () => this.switchStationTab('missions'));
 
     // Day 15 & 16: Station Salvage Bay & Diplomacy Station Tabs
     this.tabBtnSalvage = document.getElementById('tab-btn-salvage');
@@ -1290,6 +1339,18 @@ class GameEngine {
         this.currentSectorName = data.currentSector.name;
         this.adjacentSectors = data.adjacentSectors;
 
+        if (data.ship.geometryProfile) {
+          this.currentGeometryProfile = data.ship.geometryProfile;
+        }
+        const shipSeed = Number(data.ship.hull_seed || this.currentSeed);
+        const resolvedEntry = getFactionEntry(data.ship.faction_id);
+        const resolvedStyle = FACTION_STYLES[resolvedEntry.id] || FACTION_STYLES.FACTION_SOL;
+        if (shipSeed !== this.currentSeed || resolvedStyle.id !== this.currentFaction.id || !this.shipMesh) {
+          this.generateShip(shipSeed, resolvedStyle);
+        } else if (data.ship.geometryProfile) {
+          this.generateShip(shipSeed, resolvedStyle);
+        }
+
         if (this.hudSector) {
           this.hudSector.textContent = `SEC-0${this.currentSectorId} // ${this.currentSectorName.toUpperCase()}`;
         }
@@ -1306,6 +1367,9 @@ class GameEngine {
         }
 
         await this.refreshPlayerHold();
+        await this.loadOutfittingData();
+        this.missionBoardController?.loadBoard();
+        this.commsController?.loadSectorCaptainsPill();
       }
     } catch (err) {
       console.warn('[NAV] Failed to load ship and sector:', err);
@@ -1725,6 +1789,9 @@ class GameEngine {
       refreshPlayerHold: () => this.refreshPlayerHold(),
       getTarget: () => this.combatClient?.primaryDroneTarget || null,
       getPlayerPosition: () => this.flightController?.position || null,
+      onMissionAccepted: () => {
+        this.missionBoardController?.loadBoard();
+      },
     });
 
     this.precursorTerminalController = new PrecursorTerminalController({
@@ -1815,10 +1882,32 @@ class GameEngine {
       getAccountId: () => 'acc_sol_captain',
       showNotification: (msg, isErr) => this.showApNotification(msg, isErr ?? false),
       playUiBlip: () => this.audio.playUiBlip(),
-      onFleetUpdated: () => this.refreshPlayerHold(),
+      onFleetUpdated: async () => {
+        await this.loadShipAndSector();
+      },
     });
 
     this.tacticalCommandWheel = new TacticalCommandWheel(this.combatClient, this.audio);
+
+    this.missionBoardController = new MissionBoardController({
+      showNotification: (msg: string, isErr?: boolean) => this.showApNotification(msg, !!isErr),
+      playUiBlip: () => this.audio.playUiBlip(),
+      getCurrentSectorId: () => this.currentSectorId,
+      getPlayerCredits: () => this.playerCredits,
+      setPlayerCredits: (credits: number) => {
+        this.playerCredits = credits;
+        if (this.modalMarketPlayerCredits) this.modalMarketPlayerCredits.textContent = `${credits.toLocaleString()} Cr`;
+        if (this.elTelemetryCredits) this.elTelemetryCredits.textContent = `${credits.toLocaleString()} Cr`;
+        if (this.elContractsPlayerCredits) this.elContractsPlayerCredits.textContent = `${credits.toLocaleString()} Cr`;
+      },
+      onPlotCourse: async (sectorId: number) => {
+        await this.starmapController.lockCourse(sectorId);
+      },
+      onBoardMutated: () => {
+        this.refreshFactionStandings();
+        this.commsController?.loadSectorCaptainsPill();
+      },
+    });
 
     this.starmapController = new StarmapController({
       getAccountId: () => 'acc_sol_captain',
@@ -1826,6 +1915,7 @@ class GameEngine {
       playUiBlip: () => this.audio.playUiBlip(),
       playNavPlotTone: () => this.audio.playNavPlotTone(),
       playStarmapOpen: () => this.audio.playStarmapOpen(),
+      getMissionTargetSectorIds: () => this.missionBoardController?.getActiveMissionSectorIds() || [],
     });
 
     this.hyperspaceFlightController = new HyperspaceFlightController(
@@ -2371,6 +2461,18 @@ class GameEngine {
             this.fireWeaponDirectly('FLAK');
           }
           break;
+        case 'Digit5':
+          if (!this.elSlotHigh3?.classList.contains('hidden')) {
+            this.selectWeaponPreset(3);
+            this.fireWeaponDirectly('RAIL');
+          }
+          break;
+        case 'Digit6':
+          if (!this.elSlotMid3?.classList.contains('hidden')) {
+            this.combatInputs.fireTactical = true;
+            this.sendCombatInputs();
+          }
+          break;
         case 'Tab':
           e.preventDefault();
           if (!this.tacticalCommandWheel.isOpen) {
@@ -2433,12 +2535,14 @@ class GameEngine {
         case 'Digit1':
         case 'Digit2':
         case 'Digit4':
+        case 'Digit5':
           this.combatInputs.firePrimary = false;
           this.sendCombatInputs();
           break;
         case 'ShiftLeft':
         case 'ShiftRight':
         case 'Digit3':
+        case 'Digit6':
           this.combatInputs.fireTactical = false;
           this.sendCombatInputs();
           break;
@@ -2504,7 +2608,7 @@ class GameEngine {
     }
 
     // Update active preset visual on hotbar
-    const slotEls = [this.elSlotHigh1, this.elSlotHigh2, this.elSlotMid2];
+    const slotEls = [this.elSlotHigh1, this.elSlotHigh2, this.elSlotMid2, this.elSlotHigh3];
     slotEls.forEach((slot, i) => {
       if (slot) {
         if (i === index) slot.classList.add('active-preset');
@@ -2521,13 +2625,13 @@ class GameEngine {
     this.showApNotification(`WEAPON CYCLED: ${this.weaponProfiles[nextIdx].name}`, false);
   }
 
-  private fireWeaponDirectly(weaponId: 'PULSE' | 'PLASMA' | 'FLAK'): void {
+  private fireWeaponDirectly(weaponId: 'PULSE' | 'PLASMA' | 'FLAK' | 'RAIL' | 'TORPEDO'): void {
     this.combatInputs.activeWeaponId = weaponId;
     this.combatInputs.firePrimary = true;
     this.sendCombatInputs();
     this.lastFireTimes[weaponId] = Date.now();
 
-    if (weaponId === 'PLASMA') {
+    if (weaponId === 'PLASMA' || weaponId === 'RAIL' || weaponId === 'TORPEDO') {
       this.audio.playPlasmaFire();
     } else if (weaponId === 'FLAK') {
       this.audio.playFlakFire();
@@ -2813,7 +2917,7 @@ class GameEngine {
   /**
    * Day 13, 14, 15, 16 & 32: Station Dock Tab Switcher (Exchange / Outfitting / Armory / Contracts / Salvage / Diplomacy / Fleet)
    */
-  public switchStationTab(tab: 'exchange' | 'outfitting' | 'armory' | 'contracts' | 'salvage' | 'diplomacy' | 'fleet'): void {
+  public switchStationTab(tab: 'exchange' | 'outfitting' | 'armory' | 'contracts' | 'missions' | 'salvage' | 'diplomacy' | 'fleet'): void {
     this.activeStationTab = tab as any;
     this.audio.playUiBlip();
 
@@ -2821,6 +2925,7 @@ class GameEngine {
     this.tabBtnOutfitting?.classList.toggle('active', tab === 'outfitting');
     this.tabBtnArmory?.classList.toggle('active', tab === 'armory');
     this.tabBtnContracts?.classList.toggle('active', tab === 'contracts');
+    this.tabBtnMissions?.classList.toggle('active', tab === 'missions');
     this.tabBtnSalvage?.classList.toggle('active', tab === 'salvage');
     this.tabBtnDiplomacy?.classList.toggle('active', tab === 'diplomacy');
     this.tabBtnFleet?.classList.toggle('active', tab === 'fleet');
@@ -2829,6 +2934,7 @@ class GameEngine {
     this.viewTabOutfitting?.classList.toggle('hidden', tab !== 'outfitting');
     this.viewTabArmory?.classList.toggle('hidden', tab !== 'armory');
     this.viewTabContracts?.classList.toggle('hidden', tab !== 'contracts');
+    this.viewTabMissions?.classList.toggle('hidden', tab !== 'missions');
     this.viewTabSalvage?.classList.toggle('hidden', tab !== 'salvage');
     this.viewTabDiplomacy?.classList.toggle('hidden', tab !== 'diplomacy');
     this.viewTabFleet?.classList.toggle('hidden', tab !== 'fleet');
@@ -2839,6 +2945,8 @@ class GameEngine {
       this.loadArmoryData();
     } else if (tab === 'contracts') {
       this.loadContractsData();
+    } else if (tab === 'missions') {
+      this.missionBoardController?.loadBoard();
     } else if (tab === 'salvage') {
       this.loadSalvageData();
     } else if (tab === 'diplomacy') {
@@ -2852,7 +2960,7 @@ class GameEngine {
   }
 
   /**
-   * Day 13: Fetches player loadout, locker storage, and validates engineering budgets
+   * Day 13 + Milestone 1.2: Fetches player loadout, variable slot layout, locker storage, and workbench UI
    */
   public async loadOutfittingData(): Promise<void> {
     try {
@@ -2864,6 +2972,37 @@ class GameEngine {
       const { fitted, locker, powerGridMax, powerGridUsed, cpuMax, cpuUsed } = data;
       const loadout = fitted || {};
       const lockerList = locker || [];
+      const layout = data.slotLayout || { high: 2, mid: 2, low: 2 };
+      const techComponents = Number(data.techComponents ?? 25);
+
+      // Update Outfitting Chassis Strip & Tech Components Currency
+      const elHullBadge = document.getElementById('outfitting-hull-badge');
+      const elHullName = document.getElementById('outfitting-hull-name');
+      const elTechComp = document.getElementById('outfitting-tech-components');
+      const elOutfitCredits = document.getElementById('outfitting-player-credits');
+      if (elHullBadge) {
+        elHullBadge.textContent = `${data.mainHullClass || data.shipClass} // ${layout.high}H • ${layout.mid}M • ${layout.low}L`;
+      }
+      if (elHullName) {
+        elHullName.textContent = `${data.flagshipName || 'UNS Endeavour'} — ${data.hullSubtype || data.shipClass}`;
+      }
+      if (elTechComp) {
+        elTechComp.textContent = `${techComponents} Comp`;
+      }
+      if (elOutfitCredits) {
+        elOutfitCredits.textContent = `${this.playerCredits.toLocaleString()} Cr`;
+      }
+
+      // Sync HUD Hotbar Slot Visibility with Active Flagship Slot Layout
+      this.elSlotHigh1?.classList.toggle('hidden', layout.high < 1);
+      this.elSlotHigh2?.classList.toggle('hidden', layout.high < 2);
+      this.elSlotHigh3?.classList.toggle('hidden', layout.high < 3);
+      this.elSlotMid1?.classList.toggle('hidden', layout.mid < 1);
+      this.elSlotMid2?.classList.toggle('hidden', layout.mid < 2);
+      this.elSlotMid3?.classList.toggle('hidden', layout.mid < 3);
+      this.elSlotLow1?.classList.toggle('hidden', layout.low < 1);
+      this.elSlotLow2?.classList.toggle('hidden', layout.low < 2);
+      this.elSlotLow3?.classList.toggle('hidden', layout.low < 3);
 
       const pgMax = powerGridMax || 120;
       const cpuMaxVal = cpuMax || 180;
@@ -2899,17 +3038,13 @@ class GameEngine {
         else this.fittingOverbudgetAlert.classList.add('hidden');
       }
 
-      // Render Paperdoll Hardpoints
+      // Render Dynamic Paperdoll Hardpoints (H1..H3, M1..M3, L1..L3)
       if (this.paperdollSlotsList) {
         this.paperdollSlotsList.innerHTML = '';
-        const slots: Array<{ slot: string; cat: 'HIGH' | 'MID' | 'LOW'; title: string }> = [
-          { slot: 'H1', cat: 'HIGH', title: 'HIGH SLOT 1 (PRIMARY WEAPON)' },
-          { slot: 'H2', cat: 'HIGH', title: 'HIGH SLOT 2 (SECONDARY WEAPON)' },
-          { slot: 'M1', cat: 'MID', title: 'MID SLOT 1 (PROPULSION / AFTERBURNER)' },
-          { slot: 'M2', cat: 'MID', title: 'MID SLOT 2 (TACTICAL / POINT DEFENSE)' },
-          { slot: 'L1', cat: 'LOW', title: 'LOW SLOT 1 (REACTOR CORE PASSIVE)' },
-          { slot: 'L2', cat: 'LOW', title: 'LOW SLOT 2 (ARMOR / NANITE PASSIVE)' },
-        ];
+        const slots: Array<{ slot: string; cat: 'HIGH' | 'MID' | 'LOW' }> = [];
+        for (let i = 1; i <= layout.high; i++) slots.push({ slot: `H${i}`, cat: 'HIGH' });
+        for (let i = 1; i <= layout.mid; i++) slots.push({ slot: `M${i}`, cat: 'MID' });
+        for (let i = 1; i <= layout.low; i++) slots.push({ slot: `L${i}`, cat: 'LOW' });
 
         for (const s of slots) {
           const item = loadout[s.slot];
@@ -2956,7 +3091,7 @@ class GameEngine {
         }
       }
 
-      // Render Locker Storage
+      // Render Locker Storage with dynamic hull slot fit buttons + Workbench action
       if (this.lockerModulesList) {
         this.lockerModulesList.innerHTML = '';
         if (this.lockerItemCount) {
@@ -2964,7 +3099,7 @@ class GameEngine {
         }
 
         if (lockerList.length === 0) {
-          this.lockerModulesList.innerHTML = '<div class="slot-empty-notice" style="padding: 1.5rem; text-align: center;">Station locker empty. Acquire blueprints from Armory or recover orbital loot containers.</div>';
+          this.lockerModulesList.innerHTML = '<div class="slot-empty-notice" style="padding: 1.5rem; text-align: center;">Station locker empty. Acquire modules from Armory or recover orbital loot containers.</div>';
         } else {
           for (const mod of lockerList) {
             const card = document.createElement('div');
@@ -2982,23 +3117,14 @@ class GameEngine {
             const pgCost = mod.powerGridCost ?? mod.power_grid_cost ?? 0;
             const cpuCost = mod.cpuCost ?? mod.cpu_cost ?? 0;
 
+            const prefix = cat === 'HIGH' ? 'H' : cat === 'MID' ? 'M' : 'L';
+            const slotCount = cat === 'HIGH' ? layout.high : cat === 'MID' ? layout.mid : layout.low;
             let fitButtonsHtml = '';
-            if (cat === 'HIGH') {
-              fitButtonsHtml = `
-                <button class="fit-btn-small" data-id="${mod.id}" data-slot="H1">FIT [H1]</button>
-                <button class="fit-btn-small" data-id="${mod.id}" data-slot="H2">FIT [H2]</button>
-              `;
-            } else if (cat === 'MID') {
-              fitButtonsHtml = `
-                <button class="fit-btn-small" data-id="${mod.id}" data-slot="M1">FIT [M1]</button>
-                <button class="fit-btn-small" data-id="${mod.id}" data-slot="M2">FIT [M2]</button>
-              `;
-            } else {
-              fitButtonsHtml = `
-                <button class="fit-btn-small" data-id="${mod.id}" data-slot="L1">FIT [L1]</button>
-                <button class="fit-btn-small" data-id="${mod.id}" data-slot="L2">FIT [L2]</button>
-              `;
+            for (let i = 1; i <= slotCount; i++) {
+              const sId = `${prefix}${i}`;
+              fitButtonsHtml += `<button class="fit-btn-small" data-id="${mod.id}" data-slot="${sId}">FIT [${sId}]</button>`;
             }
+            fitButtonsHtml += `<button class="fit-btn-small workbench-select-btn" data-id="${mod.id}" style="border-color: #fbbf24; color: #fbbf24;">🔧 WORKBENCH</button>`;
 
             card.innerHTML = `
               <div class="locker-card-header">
@@ -3020,7 +3146,7 @@ class GameEngine {
               </div>
             `;
 
-            card.querySelectorAll('.fit-btn-small').forEach((btn) => {
+            card.querySelectorAll('.fit-btn-small:not(.workbench-select-btn)').forEach((btn) => {
               btn.addEventListener('click', (ev) => {
                 const target = ev.currentTarget as HTMLElement;
                 const slot = target.dataset.slot!;
@@ -3029,12 +3155,176 @@ class GameEngine {
               });
             });
 
+            card.querySelector('.workbench-select-btn')?.addEventListener('click', () => {
+              this.workbenchSelectedItemId = mod.id;
+              this.workbenchLockedAffixIndex = null;
+              this.renderWorkbenchPanel(lockerList, techComponents);
+            });
+
             this.lockerModulesList.appendChild(card);
           }
         }
       }
+
+      await this.renderWorkbenchPanel(lockerList, techComponents);
     } catch (err) {
       console.error('[OUTFITTING] Failed to load loadout:', err);
+    }
+  }
+
+  private async renderWorkbenchPanel(lockerList: any[], techComponents: number): Promise<void> {
+    const bodyEl = document.getElementById('workbench-body');
+    if (!bodyEl) return;
+
+    const selected =
+      lockerList.find((m) => m.id === this.workbenchSelectedItemId) || lockerList[0] || null;
+    if (!selected) {
+      this.workbenchSelectedItemId = null;
+      this.workbenchLockedAffixIndex = null;
+      bodyEl.innerHTML =
+        '<div class="slot-empty-notice">Locker empty — acquire or unfit a module to use Salvage, Reforge, or Rarity Upgrade.</div>';
+      return;
+    }
+
+    this.workbenchSelectedItemId = selected.id;
+    const rarity = (selected.rarity || 'COMMON').toUpperCase();
+    const affixes: any[] = Array.isArray(selected.affixes) ? selected.affixes : [];
+
+    // Fetch cost table once from authoritative API
+    if (!(this as any).workbenchCostCache) {
+      try {
+        const cRes = await fetch('/api/outfitting/workbench/costs');
+        if (cRes.ok) {
+          const cData = await cRes.json();
+          (this as any).workbenchCostCache = cData.costs;
+        }
+      } catch {}
+    }
+
+    const costTable = (this as any).workbenchCostCache || {};
+    const entry = costTable[rarity] || {
+      salvageComp: 4,
+      reforge: { credits: 120, components: 4 },
+      lockedReforge: null,
+      upgrade: { nextRarity: 'UNCOMMON', credits: 350, components: 12 },
+    };
+
+    const hasValidLock =
+      rarity !== 'COMMON' &&
+      this.workbenchLockedAffixIndex !== null &&
+      this.workbenchLockedAffixIndex >= 0 &&
+      this.workbenchLockedAffixIndex < affixes.length;
+    if (!hasValidLock) this.workbenchLockedAffixIndex = null;
+
+    const activeReforgeCost = hasValidLock && entry.lockedReforge ? entry.lockedReforge : entry.reforge;
+    const salvageCredits = Math.round(Number(selected.basePrice || 400) * 0.2);
+
+    const affixesHtml = affixes.length
+      ? affixes
+          .map((a, idx) => {
+            const isLocked = this.workbenchLockedAffixIndex === idx;
+            const canLock = rarity !== 'COMMON';
+            return `<button class="hud-btn small-btn workbench-affix-pill ${isLocked ? 'primary' : ''}" data-idx="${idx}" ${!canLock ? 'disabled title="Locking unlocks at UNCOMMON+"' : 'title="Click to lock/unlock this affix during Reforge"'}>${isLocked ? '🔒' : canLock ? '🔓' : '•'} ${a.label || `${a.stat}: x${a.multiplier}`}</button>`;
+          })
+          .join('')
+      : '<span class="slot-empty-notice">No rolled affixes (COMMON chassis)</span>';
+
+    bodyEl.innerHTML = `
+      <div class="workbench-selected-card">
+        <div class="workbench-item-summary">
+          <div>
+            <span class="rarity-pill rarity-${rarity.toLowerCase()}">${rarity}</span>
+            <strong style="margin-left: 0.4rem;">${selected.customName || selected.name}</strong>
+            <span class="col-subtext" style="margin-left: 0.5rem;">[${selected.slotType} • ${selected.subtype || ''}]</span>
+          </div>
+          <span style="font-family: monospace; color: #38bdf8;">Available: ${techComponents} Tech Comp • ${this.playerCredits.toLocaleString()} Cr</span>
+        </div>
+        <div class="workbench-affixes-row">
+          ${affixesHtml}
+        </div>
+        <div class="workbench-actions-row">
+          <button id="wb-btn-salvage" class="hud-btn small-btn danger">
+            ♻️ SALVAGE (+${entry.salvageComp} Comp, +${salvageCredits} Cr)
+          </button>
+          <button id="wb-btn-reforge" class="hud-btn small-btn">
+            🎲 REFORGE ${hasValidLock ? '(1 LOCKED)' : ''} (-${activeReforgeCost.credits} Cr, -${activeReforgeCost.components} Comp)
+          </button>
+          ${
+            entry.upgrade
+              ? `<button id="wb-btn-upgrade" class="hud-btn small-btn primary">⬆️ UPGRADE → ${entry.upgrade.nextRarity} (-${entry.upgrade.credits} Cr, -${entry.upgrade.components} Comp)</button>`
+              : `<span class="mfg-badge" style="border-color:#f59e0b;color:#fbbf24;">★ MAX LEGENDARY TIER</span>`
+          }
+        </div>
+      </div>
+    `;
+
+    bodyEl.querySelectorAll('.workbench-affix-pill').forEach((btn) => {
+      btn.addEventListener('click', (ev) => {
+        const idx = parseInt((ev.currentTarget as HTMLElement).dataset.idx || '-1', 10);
+        this.workbenchLockedAffixIndex = this.workbenchLockedAffixIndex === idx ? null : idx;
+        this.renderWorkbenchPanel(lockerList, techComponents);
+      });
+    });
+
+    document.getElementById('wb-btn-salvage')?.addEventListener('click', async () => {
+      await this.executeWorkbenchAction('/api/outfitting/workbench/salvage', {
+        playerId: 'acc_sol_captain',
+        itemId: selected.id,
+      });
+    });
+
+    document.getElementById('wb-btn-reforge')?.addEventListener('click', async () => {
+      await this.executeWorkbenchAction('/api/outfitting/workbench/reforge', {
+        playerId: 'acc_sol_captain',
+        itemId: selected.id,
+        lockedAffixIndex: this.workbenchLockedAffixIndex,
+      });
+    });
+
+    document.getElementById('wb-btn-upgrade')?.addEventListener('click', async () => {
+      await this.executeWorkbenchAction('/api/outfitting/workbench/upgrade', {
+        playerId: 'acc_sol_captain',
+        itemId: selected.id,
+      });
+    });
+  }
+
+  private async executeWorkbenchAction(endpoint: string, payload: Record<string, any>): Promise<void> {
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        this.audio.playApWarningSound();
+        this.showApNotification(`⚠️ WORKBENCH ERROR: ${data.error || 'Action failed'}`, true);
+        return;
+      }
+      this.audio.playUiBlip();
+      if (typeof data.credits === 'number') {
+        this.playerCredits = data.credits;
+        if (this.elTelemetryCredits) this.elTelemetryCredits.textContent = `${data.credits.toLocaleString()} Cr`;
+      }
+      if (endpoint.endsWith('/salvage')) {
+        this.showApNotification(
+          `♻️ Salvaged "${data.salvagedName}": +${data.componentsGained} Comp, +${data.creditsGained} Cr`,
+          false
+        );
+        this.workbenchSelectedItemId = null;
+      } else if (endpoint.endsWith('/reforge')) {
+        this.showApNotification(`🎲 Reforged → "${data.item?.custom_name}"`, false);
+      } else if (endpoint.endsWith('/upgrade')) {
+        this.showApNotification(
+          `⬆️ Upgraded ${data.previousRarity} → ${data.newRarity}: "${data.item?.custom_name}"`,
+          false
+        );
+      }
+      await this.loadOutfittingData();
+      await this.refreshPlayerHold();
+    } catch (err) {
+      console.error('[WORKBENCH] Action error:', err);
     }
   }
 

@@ -213,6 +213,8 @@ export class WreckService {
       }
 
       await db.query('DELETE FROM wrecks WHERE id = $1', [wreckId]);
+      const { galacticMissionService } = await import('./GalacticMissionService');
+      await galacticMissionService.recordWreckSalvaged(accountId, wreckId, wreck.sectorId).catch(() => {});
       return {
         destroyed: true,
         scrapRemaining: 0,
@@ -357,6 +359,8 @@ export class WreckService {
 
     // Remove wreck from database
     await db.query('DELETE FROM wrecks WHERE id = $1', [wreckId]);
+    const { galacticMissionService } = await import('./GalacticMissionService');
+    await galacticMissionService.recordWreckSalvaged(accountId, wreckId, wreck.sectorId).catch(() => {});
 
     return {
       success: true,

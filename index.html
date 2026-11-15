@@ -234,10 +234,14 @@
             <div class="control-row">
               <label for="select-faction">FACTION DESIGN STYLE</label>
               <select id="select-faction" class="hud-select">
-                <option value="FACTION_SOL">Sol-Perimeter League (Terran Industrial)</option>
-                <option value="FACTION_PHORID">The Phorid Exchange (Segmented Chitin)</option>
+                <option value="FACTION_SOL">Sol-Perimeter Alliance (Terran Industrial)</option>
+                <option value="FACTION_PHORID">Phorid Sporeborn (Segmented Chitin)</option>
                 <option value="FACTION_LITHOS">The Lithos Axiom (Crystalline Facet)</option>
-                <option value="FACTION_VAELIC">The Vaelic Hegemony (Obsidian Brutalist)</option>
+                <option value="FACTION_HEGEMONY">Vaelic Hegemony (Obsidian Brutalist)</option>
+                <option value="FACTION_KRYLL">Kryll Free Cartel (Scrap Scavenger)</option>
+                <option value="FACTION_WARDENS">Remnant Precursor Wardens (Relic Guard)</option>
+                <option value="FACTION_MINERS_GUILD">Deep-Core Miners Guild (Heavy Industrial)</option>
+                <option value="FACTION_FREEBOOTERS">Freebooter Armada (Scrap Corsair)</option>
               </select>
             </div>
 
@@ -306,6 +310,17 @@
           </ul>
         </aside>
       </div>
+
+      <!-- Milestone 1.1: Galactic Mission Tracker & Frontier Patrol Hail Pill -->
+      <div id="hud-mission-tracker" class="hud-mission-tracker">
+        <div class="tracker-header">
+          <span>📜 GALACTIC MISSIONS (<span id="hud-mission-tracker-count">0/5</span>)</span>
+          <button id="btn-tracker-toggle" class="hud-btn-mini" title="Collapse/Expand Tracker">▾</button>
+        </div>
+        <div id="hud-mission-tracker-body" class="tracker-body"></div>
+      </div>
+
+      <div id="hud-frontier-hail-pill" class="hud-frontier-hail-pill hidden"></div>
 
       <!-- Top-Center Target Telemetry Box (MMO Style) -->
       <div id="target-telemetry-hud" class="target-telemetry-hud hidden">
@@ -478,6 +493,15 @@
             <div class="slot-cost">24⚡</div>
           </div>
 
+          <!-- High Slot 3: Heavy Battery (Unlocked on 3H Hulls) -->
+          <div class="hotbar-slot active-slot rarity-epic hidden" id="slot-high-3" title="High Slot 3 Heavy Hardpoint (Destroyer / Cruiser)">
+            <div class="slot-keybind">[5]</div>
+            <div class="slot-cooldown-overlay" id="cd-high-3"></div>
+            <div class="slot-icon">🟣</div>
+            <span class="slot-short-title">RAIL/H3</span>
+            <div class="slot-cost">20⚡</div>
+          </div>
+
           <!-- Mid Slot 1: Afterburner Overdrive -->
           <div class="hotbar-slot active-slot rarity-uncommon" id="slot-mid-1" title="Afterburner Overdrive: 2.2x Thrust & Speed">
             <div class="slot-keybind">[SHIFT / 3]</div>
@@ -496,11 +520,28 @@
             <div class="slot-cost">18⚡</div>
           </div>
 
+          <!-- Mid Slot 3: Auxiliary Tactical Bay (Unlocked on 3M Hulls) -->
+          <div class="hotbar-slot active-slot rarity-uncommon hidden" id="slot-mid-3" title="Mid Slot 3 Tactical System">
+            <div class="slot-keybind">[6]</div>
+            <div class="slot-cooldown-overlay" id="cd-mid-3"></div>
+            <div class="slot-icon">🛰️</div>
+            <span class="slot-short-title">MID 3</span>
+            <div class="slot-cost">TACT</div>
+          </div>
+
           <!-- Low Slot 2: Passive Armor -->
           <div class="hotbar-slot passive-slot rarity-common" id="slot-low-2" title="Reinforced Plasteel Armor: +20 Max Hull">
             <div class="slot-badge">LOW 2</div>
             <div class="slot-icon">🛡️</div>
             <span class="slot-short-title">ARMOR</span>
+            <span class="slot-passive-tag">PASSIVE</span>
+          </div>
+
+          <!-- Low Slot 3: Auxiliary Passive Bay (Unlocked on 3L Hulls) -->
+          <div class="hotbar-slot passive-slot rarity-uncommon hidden" id="slot-low-3" title="Low Slot 3 Passive Optimization Bay">
+            <div class="slot-badge">LOW 3</div>
+            <div class="slot-icon">⚙️</div>
+            <span class="slot-short-title">AUX L3</span>
             <span class="slot-passive-tag">PASSIVE</span>
           </div>
         </div>
@@ -676,6 +717,9 @@
           <button id="tab-btn-contracts" class="station-tab-btn" data-tab="contracts">
             💀 REVENGE & BOUNTIES
           </button>
+          <button id="tab-btn-missions" class="station-tab-btn" data-tab="missions">
+            📜 GALACTIC MISSIONS
+          </button>
           <button id="tab-btn-salvage" class="station-tab-btn" data-tab="salvage">
             🔧 SALVAGE BAY
           </button>
@@ -742,8 +786,26 @@
           </div>
         </div>
 
-        <!-- Tab View 2: Outfitting Bay & Fittings (Day 13) -->
+        <!-- Tab View 2: Outfitting Bay & Fittings (Day 13 + Milestone 1.2) -->
         <div id="view-tab-outfitting" class="station-tab-content hidden">
+          <!-- Flagship Chassis & Workbench Currency Strip -->
+          <div class="outfitting-chassis-strip" id="outfitting-chassis-strip">
+            <div class="chassis-strip-info">
+              <span class="bridge-badge" id="outfitting-hull-badge">CORVETTE // 2H • 2M • 2L</span>
+              <strong id="outfitting-hull-name">UNS Endeavour — Sol Endeavour Corvette</strong>
+            </div>
+            <div class="chassis-strip-currencies">
+              <div class="stat-pill">
+                <span class="pill-label">🔧 TECH COMPONENTS:</span>
+                <span class="pill-value" id="outfitting-tech-components">25 Comp</span>
+              </div>
+              <div class="stat-pill credits-pill">
+                <span class="pill-label">CREDITS:</span>
+                <span class="pill-value" id="outfitting-player-credits">-- Cr</span>
+              </div>
+            </div>
+          </div>
+
           <!-- Real-Time Engineering Capacity Gauges -->
           <div class="outfitting-engineering-panel">
             <div class="gauge-block">
@@ -792,6 +854,17 @@
               <div class="locker-modules-list" id="locker-modules-list">
                 <!-- Dynamically populated locker inventory -->
               </div>
+            </div>
+          </div>
+
+          <!-- Engineering Reforging & Upgrade Workbench (Milestone 1.2) -->
+          <div class="outfitting-workbench-panel" id="outfitting-workbench-panel">
+            <div class="col-header">
+              <h4>🔧 ENGINEERING REFORGING & UPGRADE WORKBENCH</h4>
+              <span class="col-subtext">SALVAGE EXCESS HARDWARE • REFORGE AFFIXES (OPTIONAL 1-AFFIX LOCK) • UPGRADE RARITY TIER</span>
+            </div>
+            <div id="workbench-body" class="workbench-body">
+              <div class="slot-empty-notice">Select any Locker module below via [WORKBENCH] to salvage, reforge, or upgrade its rarity tier.</div>
             </div>
           </div>
         </div>
@@ -857,6 +930,53 @@
                 <!-- Dynamically populated killmails -->
               </div>
             </div>
+        </div>
+        </div>
+
+        <!-- Milestone 1.1: Galactic Mission Board & Multi-Step Operations -->
+        <div id="view-tab-missions" class="station-tab-content hidden">
+          <div class="armory-header">
+            <div class="armory-titles">
+              <h4>GALACTIC MISSION BOARD & FRONTIER OPERATIONS</h4>
+              <span class="col-subtext">PROCEDURAL XENODEX SURVEYS, PLANET RECON, DERELICT RECOVERY & MULTI-STAGE CHAINS</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:0.75rem;">
+              <button id="btn-missions-sync" class="hud-btn">🔄 SYNC PROGRESS</button>
+              <button id="btn-missions-refresh" class="hud-btn primary">📡 REFRESH BOARD (50 Cr)</button>
+              <div class="stat-pill credits-pill">
+                <span class="pill-label">CREDITS:</span>
+                <span class="pill-value" id="missions-player-credits">2,500 Cr</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="missions-filter-bar">
+            <button class="mission-filter-pill active" data-filter="ALL">ALL OFFERS</button>
+            <button class="mission-filter-pill" data-filter="STORY">STORY CHAINS</button>
+            <button class="mission-filter-pill" data-filter="URGENT">URGENT DISPATCHES</button>
+            <button class="mission-filter-pill" data-filter="RUMORS">CAPTAIN RUMORS</button>
+          </div>
+
+          <div id="missions-reward-banner" class="missions-reward-banner hidden"></div>
+          <div id="missions-branch-overlay" class="missions-branch-overlay hidden"></div>
+
+          <div class="contracts-columns-grid">
+            <div class="contracts-panel">
+              <div class="contracts-panel-header">
+                <h5>📡 AVAILABLE CONTRACTS & RUMORS</h5>
+                <span class="contracts-count" id="missions-offers-count">0 AVAILABLE</span>
+              </div>
+              <div class="contracts-list" id="missions-offers-list"></div>
+            </div>
+
+            <div class="contracts-panel">
+              <div class="contracts-panel-header">
+                <h5>🧭 ACTIVE OPERATIONS LOG</h5>
+                <span class="contracts-count" id="missions-active-count">0 / 5 ACTIVE</span>
+              </div>
+              <div class="contracts-list" id="missions-active-list"></div>
+            </div>
+          </div>
         </div>
 
         <!-- Tab View 5: Salvage Bay & Wreck Breakdown (Day 15) -->
@@ -983,6 +1103,20 @@
 
           <!-- Subview 1: Fleet Roster -->
           <div id="fleet-subview-roster">
+            <div class="salvage-header fleet-header-panel" id="fleet-flagship-banner" style="margin-bottom: 0.75rem;">
+              <div class="fleet-bridge-telemetry">
+                <span class="bridge-badge" id="flagship-banner-class">ACTIVE FLAGSHIP // CORVETTE</span>
+                <h4 id="flagship-banner-title">UNS Endeavour — Sol Endeavour Corvette</h4>
+                <span class="col-subtext" id="flagship-banner-stats">SLOTS: 2H / 2M / 2L • 120 MW / 180 tf • ARMOR 100 • SHIELD 100 • CARGO 40 m³ • FUEL 100</span>
+              </div>
+              <div class="fleet-header-right">
+                <div class="stat-pill">
+                  <span class="pill-label">HULL COMMAND:</span>
+                  <span class="pill-value" style="color: #38bdf8;">IN COMMISSION</span>
+                </div>
+              </div>
+            </div>
+
             <div class="salvage-header fleet-header-panel">
               <div class="fleet-bridge-telemetry">
                 <span class="bridge-badge" id="fleet-bridge-badge">COMMAND BRIDGE // TIER 1</span>
@@ -1032,8 +1166,31 @@
               </div>
             </div>
 
+            <div class="hull-class-filter-bar" id="shipyard-class-filters">
+              <button class="hud-btn small-btn primary hull-filter-btn active" data-class="ALL">ALL HULLS (64)</button>
+              <button class="hud-btn small-btn hull-filter-btn" data-class="INTERCEPTOR">INTERCEPTOR (8)</button>
+              <button class="hud-btn small-btn hull-filter-btn" data-class="CORVETTE">CORVETTE (8)</button>
+              <button class="hud-btn small-btn hull-filter-btn" data-class="FRIGATE">FRIGATE (8)</button>
+              <button class="hud-btn small-btn hull-filter-btn" data-class="HAULER">HAULER (8)</button>
+              <button class="hud-btn small-btn hull-filter-btn" data-class="INDUSTRIAL_EXTRACTOR">EXTRACTOR (8)</button>
+              <button class="hud-btn small-btn hull-filter-btn" data-class="DESTROYER">DESTROYER (8)</button>
+              <button class="hud-btn small-btn hull-filter-btn" data-class="CRUISER">CRUISER (8)</button>
+              <button class="hud-btn small-btn hull-filter-btn" data-class="DREADNOUGHT">DREADNOUGHT (8)</button>
+              <select id="shipyard-faction-filter" class="colony-select" style="margin-left: auto; min-width: 190px;">
+                <option value="ALL">ALL 8 FACTIONS</option>
+                <option value="FACTION_SOL">🚀 Sol-Perimeter Alliance</option>
+                <option value="FACTION_HEGEMONY">🦅 Vaelic Hegemony</option>
+                <option value="FACTION_PHORID">🍄 Phorid Sporeborn</option>
+                <option value="FACTION_KRYLL">🐀 Kryll Free Cartel</option>
+                <option value="FACTION_LITHOS">💠 The Lithos Axiom</option>
+                <option value="FACTION_WARDENS">🔱 Precursor Wardens</option>
+                <option value="FACTION_MINERS_GUILD">⛏️ Deep-Core Miners Guild</option>
+                <option value="FACTION_FREEBOOTERS">🏴‍☠️ Freebooter Armada</option>
+              </select>
+            </div>
+
             <div class="shipyard-blueprints-grid" id="shipyard-blueprints-grid">
-              <!-- Dynamically populated 5 faction blueprints -->
+              <!-- Dynamically populated 64 hull foundry catalog (8 classes x 8 factions) -->
             </div>
           </div>
         </div>
@@ -1454,6 +1611,10 @@
                       <option value="FACTION_HEGEMONY">Vaelic Hegemony (🦅)</option>
                       <option value="FACTION_PHORID">Phorid Sporeborn (🍄)</option>
                       <option value="FACTION_KRYLL">Kryll Free Cartel (🐀)</option>
+                      <option value="FACTION_LITHOS">The Lithos Axiom (💠)</option>
+                      <option value="FACTION_WARDENS">Remnant Precursor Wardens (🔱)</option>
+                      <option value="FACTION_MINERS_GUILD">Deep-Core Miners Guild (⛏️)</option>
+                      <option value="FACTION_FREEBOOTERS">Freebooter Armada (🏴‍☠️)</option>
                     </select>
                     <button id="btn-remit-relic" class="colony-action-btn primary">
                       PRESENT RELIC CORE (+600 CR // +50 GOODWILL) 💎
@@ -1919,10 +2080,13 @@
               <select id="starmap-faction-filter">
                 <option value="ALL">ALL SPHERES</option>
                 <option value="FACTION_SOL">SOL ALLIANCE</option>
-                <option value="FACTION_VAELIC">VAELIC HEGEMONY</option>
+                <option value="FACTION_HEGEMONY">VAELIC HEGEMONY</option>
                 <option value="FACTION_KRYLL">KRYLL CARTEL</option>
                 <option value="FACTION_LITHOS">LITHOS AXIOM</option>
-                <option value="FACTION_PHORID">PHORID SWARM</option>
+                <option value="FACTION_PHORID">PHORID SPOREBORN</option>
+                <option value="FACTION_WARDENS">PRECURSOR WARDENS</option>
+                <option value="FACTION_MINERS_GUILD">MINERS GUILD</option>
+                <option value="FACTION_FREEBOOTERS">FREEBOOTER ARMADA</option>
               </select>
             </div>
 

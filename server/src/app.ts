@@ -22,6 +22,9 @@ import { shipyardRoutes } from './routes/shipyardRoutes';
 import { xenobiologyRoutes } from './routes/xenobiologyRoutes';
 import { fleetRoutes } from './routes/fleetRoutes';
 import { starmapRoutes } from './routes/starmapRoutes';
+import { missionRoutes } from './routes/missionRoutes';
+import { captainRoutes } from './routes/captainRoutes';
+import { galacticMissionService } from './services/GalacticMissionService';
 
 export async function buildApp(options: FastifyServerOptions = {}): Promise<FastifyInstance> {
   const startTime = Date.now();
@@ -91,6 +94,10 @@ export async function buildApp(options: FastifyServerOptions = {}): Promise<Fast
     combatManager.notifyTruce(sectorId, accountId, factionId, durationMs);
   });
 
+  galacticMissionService.onBountyMissionActivated((sectorId, missionId, callsign, factionId, hullClass) => {
+    combatManager.spawnBountyTarget(sectorId, missionId, callsign, factionId, hullClass);
+  });
+
   // 6. Register 10 Service-Aligned Domain Route Plugins
   await server.register(playerRoutes, { prefix: '/api/player' });
   await server.register(navigationRoutes);
@@ -108,6 +115,8 @@ export async function buildApp(options: FastifyServerOptions = {}): Promise<Fast
   await server.register(xenobiologyRoutes, { prefix: '/api/xenobiology' });
   await server.register(fleetRoutes, { prefix: '/api/fleet' });
   await server.register(starmapRoutes, { prefix: '/api/starmap' });
+  await server.register(missionRoutes, { prefix: '/api/missions' });
+  await server.register(captainRoutes, { prefix: '/api/captains' });
 
   return server;
 }

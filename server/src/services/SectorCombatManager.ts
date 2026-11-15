@@ -37,7 +37,7 @@ export interface CombatInputs {
   brake: boolean;
   firePrimary: boolean;
   fireTactical: boolean;
-  activeWeaponId?: 'PULSE' | 'PLASMA' | 'FLAK';
+  activeWeaponId?: 'PULSE' | 'PLASMA' | 'FLAK' | 'RAIL' | 'TORPEDO';
 }
 
 export interface SectorLootContainer {
@@ -356,6 +356,57 @@ export class SectorRoom {
         message: `Allegiance declared for ${factionId}. Inter-faction combat IFF online.`,
       },
     });
+  }
+
+  public spawnBountyTarget(
+    missionId: string,
+    callsign: string,
+    factionId: string,
+    hullClass: string = 'HEGEMONY_INTERCEPTOR'
+  ): string {
+    const bountyId = `bounty_${missionId}`;
+    if (this.entities.has(bountyId)) {
+      return bountyId;
+    }
+
+    this.entities.set(bountyId, {
+      id: bountyId,
+      type: 'DRONE',
+      factionId,
+      name: callsign,
+      hullClass,
+      hullSeed: 44100 + Math.floor(Math.random() * 5000),
+      x: 55.0,
+      z: -45.0,
+      vx: 0,
+      vz: 0,
+      yaw: -Math.PI / 3,
+      angularVelocity: 0,
+      hp: 165,
+      maxHp: 165,
+      shields: 110,
+      maxShields: 110,
+      energy: 100,
+      maxEnergy: 100,
+      powerGridMax: 110,
+      powerGridUsed: 75,
+      cpuMax: 150,
+      cpuUsed: 95,
+      state: 'PATROL',
+      inputs: {
+        forward: false,
+        reverse: false,
+        turnLeft: false,
+        turnRight: false,
+        brake: false,
+        firePrimary: false,
+        fireTactical: false,
+      },
+      lastHitTime: 0,
+      fireCooldown: 0,
+    });
+
+    return bountyId;
   }
 
   public spawnAmbushWing(convoyId: string, riskLevel: 'LOW' | 'MODERATE' | 'HIGH' | 'EXTREME' = 'MODERATE'): string[] {
@@ -1072,30 +1123,42 @@ export class SectorRoom {
     this.clients.set(playerId, socket);
 
     const entityId = `player_${playerId}`;
+    const loadout = shipData?.loadout;
+    const fittedMods = loadout?.fitted ? Object.values(loadout.fitted).filter(Boolean) as any[] : [];
+    const bonusHp = fittedMods.reduce((sum, m) => sum + Number(m?.baseStats?.maxHpBonus || 0), 0);
+    const bonusShield = fittedMods.reduce((sum, m) => sum + Number(m?.baseStats?.maxShieldBonus || 0), 0);
+    const bonusEnergy = fittedMods.reduce((sum, m) => sum + Number(m?.baseStats?.maxEnergyBonus || 0), 0);
+
+    const baseMaxHp = Number(shipData?.max_armor ?? 100) + bonusHp;
+    const baseHp = Math.min(baseMaxHp, Number(shipData?.armor ?? 100) + bonusHp);
+    const baseMaxShield = Number(shipData?.max_shield ?? 100) + bonusShield;
+    const baseShield = Math.min(baseMaxShield, Number(shipData?.shield ?? 100) + bonusShield);
+    const baseMaxEnergy = 100 + bonusEnergy;
+
     if (!this.entities.has(entityId)) {
       this.entities.set(entityId, {
         id: entityId,
         type: 'PLAYER',
-        factionId: 'FACTION_SOL',
-        name: 'Cmdr. Vance',
+        factionId: shipData?.faction_id || 'FACTION_SOL',
+        name: shipData?.flagship_name || 'Cmdr. Vance',
         hullClass: shipData?.hull_class || 'CORVETTE',
-        hullSeed: shipData?.hull_seed || 12345,
+        hullSeed: Number(shipData?.hull_seed || 12345),
         x: 0,
         z: 0,
         vx: 0,
         vz: 0,
         yaw: 0,
         angularVelocity: 0,
-        hp: shipData?.armor || 100,
-        maxHp: shipData?.max_armor || 100,
-        shields: shipData?.shield || 100,
-        maxShields: shipData?.max_shield || 100,
-        energy: 100,
-        maxEnergy: 100,
-        powerGridMax: 120,
-        powerGridUsed: 75,
-        cpuMax: 180,
-        cpuUsed: 110,
+        hp: baseHp,
+        maxHp: baseMaxHp,
+        shields: baseShield,
+        maxShields: baseMaxShield,
+        energy: baseMaxEnergy,
+        maxEnergy: baseMaxEnergy,
+        powerGridMax: Number(loadout?.powerGridMax ?? shipData?.power_grid_max ?? 120),
+        powerGridUsed: Number(loadout?.powerGridUsed ?? 75),
+        cpuMax: Number(loadout?.cpuMax ?? shipData?.cpu_max ?? 180),
+        cpuUsed: Number(loadout?.cpuUsed ?? 110),
         state: 'IDLE',
         inputs: {
           forward: false,
@@ -3048,11 +3111,45 @@ export class SectorRoom {
       return;
     }
 
-    const weaponId = (entity.inputs.activeWeaponId as 'PULSE' | 'PLASMA' | 'FLAK') || 'PULSE';
+    const weaponId = (entity.inputs.activeWeaponId as 'PULSE' | 'PLASMA' | 'FLAK' | 'RAIL' | 'TORPEDO') || 'PULSE';
     const forwardX = Math.sin(entity.yaw);
     const forwardZ = Math.cos(entity.yaw);
 
-    if (weaponId === 'PLASMA') {
+    if (weaponId === 'RAIL') {
+      if (entity.energy < 20) return;
+      entity.energy -= 20;
+      entity.fireCooldown = 0.55;
+      const muzzleSpeed = 120.0;
+      this.projectiles.push({
+        id: `proj_${++this.projectileSeq}_${Date.now()}`,
+        ownerId: entity.id,
+        x: entity.x + forwardX * 4.2,
+        z: entity.z + forwardZ * 4.2,
+        vx: entity.vx * 0.25 + forwardX * muzzleSpeed,
+        vz: entity.vz * 0.25 + forwardZ * muzzleSpeed,
+        damage: 56,
+        ttl: 2.0,
+        color: '#c084fc',
+        projType: 'PLASMA',
+      });
+    } else if (weaponId === 'TORPEDO') {
+      if (entity.energy < 30) return;
+      entity.energy -= 30;
+      entity.fireCooldown = 0.75;
+      const muzzleSpeed = 42.0;
+      this.projectiles.push({
+        id: `proj_${++this.projectileSeq}_${Date.now()}`,
+        ownerId: entity.id,
+        x: entity.x + forwardX * 4.4,
+        z: entity.z + forwardZ * 4.4,
+        vx: entity.vx * 0.2 + forwardX * muzzleSpeed,
+        vz: entity.vz * 0.2 + forwardZ * muzzleSpeed,
+        damage: 78,
+        ttl: 3.0,
+        color: '#f97316',
+        projType: 'PLASMA',
+      });
+    } else if (weaponId === 'PLASMA') {
       if (entity.energy < 22) return;
       entity.energy -= 22;
       entity.fireCooldown = 0.45;
@@ -3374,6 +3471,20 @@ export class SectorRoom {
     // Day 17: Faction standing penalty for destroying Hegemony patrol drone
     if (killerId && (target.factionId === 'FACTION_VAELIC' || target.factionId === 'FACTION_HEGEMONY')) {
       reputationService.modifyStanding(killerId, 'FACTION_HEGEMONY', -15, `Destroyed ${target.name}`).catch(() => {});
+    }
+
+    // Milestone 1.1: Notify Galactic Mission Board on hostile bounty elimination
+    if (target.type !== 'PLAYER') {
+      const killerAccountId = killerId
+        ? killerId.startsWith('player_')
+          ? killerId.replace('player_', '')
+          : killerId
+        : 'acc_sol_captain';
+      import('./GalacticMissionService')
+        .then(({ galacticMissionService }) =>
+          galacticMissionService.recordBountyKill(killerAccountId, this.sectorId, target.name, target.id)
+        )
+        .catch(() => {});
     }
 
     // Day 25: Convoy Hauler Destruction (Escort contract failure & economic shortage)
@@ -3844,16 +3955,18 @@ export class SectorRoom {
     const entity = this.entities.get(`player_${playerId}`);
     if (entity) {
       entity.hullClass = shipData?.hull_class || 'CORVETTE';
-      entity.hp = shipData?.armor || 100;
-      entity.maxHp = shipData?.max_armor || 100;
-      entity.shields = shipData?.shield || 100;
-      entity.maxShields = shipData?.max_shield || 100;
+      entity.factionId = shipData?.faction_id || entity.factionId;
+      entity.hullSeed = Number(shipData?.hull_seed ?? entity.hullSeed);
+      entity.hp = Number(shipData?.armor ?? 100);
+      entity.maxHp = Number(shipData?.max_armor ?? 100);
+      entity.shields = Number(shipData?.shield ?? 100);
+      entity.maxShields = Number(shipData?.max_shield ?? 100);
       entity.energy = 100;
       entity.maxEnergy = 100;
-      entity.powerGridMax = 120;
-      entity.powerGridUsed = 75;
-      entity.cpuMax = 180;
-      entity.cpuUsed = 110;
+      entity.powerGridMax = Number(shipData?.power_grid_max ?? 120);
+      entity.powerGridUsed = Number(shipData?.power_grid_used ?? 75);
+      entity.cpuMax = Number(shipData?.cpu_max ?? 180);
+      entity.cpuUsed = Number(shipData?.cpu_used ?? 110);
       entity.state = 'IDLE';
       entity.isEscapePod = false;
       entity.weaponsDisabled = false;
@@ -3935,6 +4048,17 @@ export class SectorCombatManager {
       return room.destroyEntity(entityId, killerId);
     }
     return false;
+  }
+
+  public spawnBountyTarget(
+    sectorId: number,
+    missionId: string,
+    callsign: string,
+    factionId: string,
+    hullClass?: string
+  ): string {
+    const room = this.getOrCreateRoom(sectorId);
+    return room.spawnBountyTarget(missionId, callsign, factionId, hullClass);
   }
 
   public setTacticalOrder(

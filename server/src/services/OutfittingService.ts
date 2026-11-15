@@ -6,6 +6,17 @@ import {
   generateStationShopStock,
   type ProceduralDroppedModule,
 } from '../procgen/ProceduralModuleCatalog';
+import { getHullDef, type HullGeometryProfile } from '../procgen/HullClassCatalog';
+
+export type FitSlotId = 'H1' | 'H2' | 'H3' | 'M1' | 'M2' | 'M3' | 'L1' | 'L2' | 'L3';
+
+export function buildActiveSlotKeys(highSlots: number, midSlots: number, lowSlots: number): FitSlotId[] {
+  const keys: FitSlotId[] = [];
+  for (let i = 1; i <= Math.min(3, Math.max(1, highSlots)); i++) keys.push(`H${i}` as FitSlotId);
+  for (let i = 1; i <= Math.min(3, Math.max(1, midSlots)); i++) keys.push(`M${i}` as FitSlotId);
+  for (let i = 1; i <= Math.min(3, Math.max(1, lowSlots)); i++) keys.push(`L${i}` as FitSlotId);
+  return keys;
+}
 
 export interface FittedModule {
   id: string;
@@ -32,11 +43,29 @@ export interface FittedModule {
 export interface PlayerLoadout {
   accountId: string;
   shipClass: string;
+  mainHullClass: string;
+  hullSubtype: string;
+  flagshipName: string;
+  factionId: string;
+  hullSeed: number;
+  slotLayout: { high: number; mid: number; low: number };
+  techComponents: number;
+  hullStats: {
+    armor: number;
+    maxArmor: number;
+    shield: number;
+    maxShield: number;
+    maxFuel: number;
+    cargoCapacity: number;
+    baseSpeed: number;
+    baseTurnRate: number;
+    geometryProfile: HullGeometryProfile;
+  };
   powerGridMax: number;
   powerGridUsed: number;
   cpuMax: number;
   cpuUsed: number;
-  fitted: Record<'H1' | 'H2' | 'M1' | 'M2' | 'L1' | 'L2', FittedModule | null>;
+  fitted: Record<string, FittedModule | null>;
   locker: FittedModule[];
 }
 
@@ -49,13 +78,19 @@ export class OutfittingService {
   }
 
   public async getPlayerLoadout(accountId: string = 'acc_sol_captain'): Promise<PlayerLoadout> {
-    const shipRes = await db.query(
-      'SELECT * FROM ships WHERE account_id = $1 LIMIT 1',
-      [accountId]
-    );
+    const [shipRes, accRes] = await Promise.all([
+      db.query('SELECT * FROM ships WHERE account_id = $1 LIMIT 1', [accountId]),
+      db.query('SELECT tech_components FROM accounts WHERE id = $1 LIMIT 1', [accountId]),
+    ]);
     const ship = shipRes.rows[0] as any;
-    const powerGridMax = ship?.power_grid_max || 120.0;
-    const cpuMax = ship?.cpu_max || 180.0;
+    const hullDef = getHullDef(ship?.hull_class);
+
+    const highSlots = Number(ship?.high_slots ?? hullDef.highSlots);
+    const midSlots = Number(ship?.mid_slots ?? hullDef.midSlots);
+    const lowSlots = Number(ship?.low_slots ?? hullDef.lowSlots);
+    const powerGridMax = Number(ship?.power_grid_max ?? hullDef.powerGridMax);
+    const cpuMax = Number(ship?.cpu_max ?? hullDef.cpuMax);
+    const techComponents = Number((accRes.rows[0] as any)?.tech_components ?? 25);
 
     const query = `
       SELECT 
@@ -86,14 +121,11 @@ export class OutfittingService {
 
     const { rows } = await db.query(query, [accountId]);
 
-    const fitted: Record<'H1' | 'H2' | 'M1' | 'M2' | 'L1' | 'L2', FittedModule | null> = {
-      H1: null,
-      H2: null,
-      M1: null,
-      M2: null,
-      L1: null,
-      L2: null,
-    };
+    const activeKeys = buildActiveSlotKeys(highSlots, midSlots, lowSlots);
+    const fitted: Record<string, FittedModule | null> = {};
+    for (const key of activeKeys) {
+      fitted[key] = null;
+    }
     const locker: FittedModule[] = [];
     let powerGridUsed = 0;
     let cpuUsed = 0;
@@ -109,7 +141,7 @@ export class OutfittingService {
       };
 
       if (mod.isFitted && mod.fitSlot && (mod.fitSlot in fitted)) {
-        fitted[mod.fitSlot as keyof typeof fitted] = mod;
+        fitted[mod.fitSlot] = mod;
         powerGridUsed += mod.powerGridCost;
         cpuUsed += mod.cpuCost;
       } else {
@@ -119,7 +151,25 @@ export class OutfittingService {
 
     return {
       accountId,
-      shipClass: ship?.hull_class || 'CORVETTE',
+      shipClass: ship?.hull_class || hullDef.hullClass,
+      mainHullClass: ship?.main_hull_class || hullDef.mainClass,
+      hullSubtype: ship?.hull_subtype || hullDef.displayName,
+      flagshipName: ship?.flagship_name || 'UNS Endeavour',
+      factionId: ship?.faction_id || hullDef.factionId,
+      hullSeed: Number(ship?.hull_seed ?? hullDef.hullSeedDefault),
+      slotLayout: { high: highSlots, mid: midSlots, low: lowSlots },
+      techComponents,
+      hullStats: {
+        armor: Number(ship?.armor ?? hullDef.baseArmor),
+        maxArmor: Number(ship?.max_armor ?? hullDef.baseArmor),
+        shield: Number(ship?.shield ?? hullDef.baseShield),
+        maxShield: Number(ship?.max_shield ?? hullDef.baseShield),
+        maxFuel: Number(ship?.max_fuel ?? hullDef.maxFuel),
+        cargoCapacity: Number(ship?.cargo_capacity ?? hullDef.cargoCapacity),
+        baseSpeed: Number(ship?.base_speed ?? hullDef.baseSpeed),
+        baseTurnRate: Number(ship?.base_turn_rate ?? hullDef.baseTurnRate),
+        geometryProfile: hullDef.geometryProfile,
+      },
       powerGridMax,
       powerGridUsed: Math.round(powerGridUsed * 10) / 10,
       cpuMax,
@@ -132,9 +182,15 @@ export class OutfittingService {
   public async fitModule(
     accountId: string,
     itemId: string,
-    targetSlot: 'H1' | 'H2' | 'M1' | 'M2' | 'L1' | 'L2'
+    targetSlot: string
   ): Promise<PlayerLoadout> {
     const current = await this.getPlayerLoadout(accountId);
+
+    if (!(targetSlot in current.fitted)) {
+      throw new Error(
+        `SLOT_UNAVAILABLE_ON_HULL: Slot ${targetSlot} is not available on your active ${current.hullSubtype} (${current.slotLayout.high}H/${current.slotLayout.mid}M/${current.slotLayout.low}L).`
+      );
+    }
 
     // Verify item exists in inventory
     const allItems = [...Object.values(current.fitted).filter(Boolean), ...current.locker] as FittedModule[];
@@ -184,6 +240,101 @@ export class OutfittingService {
     );
 
     return this.getPlayerLoadout(accountId);
+  }
+
+  /**
+   * Reconciles all currently fitted modules after a Flagship swap so invalid slots
+   * or over-budget PG/CPU modules are cleanly returned to the Station Locker.
+   */
+  public async reconcileLoadoutToHull(
+    accountId: string,
+    opts: {
+      highSlots: number;
+      midSlots: number;
+      lowSlots: number;
+      powerGridMax: number;
+      cpuMax: number;
+    }
+  ): Promise<{ unfittedModules: FittedModule[]; loadout: PlayerLoadout }> {
+    const { rows } = await db.query<any>(
+      `SELECT
+        pi.id,
+        pi.blueprint_id as "blueprintId",
+        eb.name,
+        pi.custom_name as "customName",
+        eb.slot_type as "slotType",
+        COALESCE(pi.main_category, eb.main_category, 'OFFENSE') as "mainCategory",
+        COALESCE(pi.subtype, eb.subtype, eb.name) as "subtype",
+        pi.tech_prefix as "techPrefix",
+        pi.tech_suffix as "techSuffix",
+        eb.manufacturer,
+        pi.rarity,
+        eb.power_grid_cost as "powerGridCost",
+        eb.cpu_cost as "cpuCost",
+        eb.base_price as "basePrice",
+        eb.base_stats as "baseStats",
+        pi.affixes,
+        pi.is_fitted as "isFitted",
+        pi.fit_slot as "fitSlot",
+        eb.description
+       FROM player_inventory pi
+       JOIN equipment_blueprints eb ON pi.blueprint_id = eb.id
+       WHERE pi.account_id = $1 AND pi.is_fitted = true`,
+      [accountId]
+    );
+
+    const activeSlotSet = new Set<string>(
+      buildActiveSlotKeys(opts.highSlots, opts.midSlots, opts.lowSlots)
+    );
+
+    const fittedMods: FittedModule[] = rows.map((raw: any) => ({
+      ...raw,
+      powerGridCost: Number(raw.powerGridCost),
+      cpuCost: Number(raw.cpuCost),
+      basePrice: Number(raw.basePrice),
+      baseStats: typeof raw.baseStats === 'string' ? JSON.parse(raw.baseStats) : raw.baseStats,
+      affixes: typeof raw.affixes === 'string' ? JSON.parse(raw.affixes) : raw.affixes,
+    }));
+
+    const unfittedModules: FittedModule[] = [];
+    const surviving: FittedModule[] = [];
+
+    for (const mod of fittedMods) {
+      if (!mod.fitSlot || !activeSlotSet.has(mod.fitSlot)) {
+        unfittedModules.push(mod);
+      } else {
+        surviving.push(mod);
+      }
+    }
+
+    // If remaining modules exceed the new hull's PG/CPU ceiling, shed highest-drain HIGH/MID modules first
+    const slotPriority = (slot: string | null): number => {
+      if (!slot) return 0;
+      const tierRank = slot.startsWith('H') ? 30 : slot.startsWith('M') ? 20 : 10;
+      const idx = parseInt(slot.slice(1), 10) || 1;
+      return tierRank + idx;
+    };
+    surviving.sort((a, b) => slotPriority(b.fitSlot) - slotPriority(a.fitSlot));
+
+    let pgUsed = surviving.reduce((sum, m) => sum + m.powerGridCost, 0);
+    let cpuUsed = surviving.reduce((sum, m) => sum + m.cpuCost, 0);
+
+    for (const mod of surviving) {
+      if (pgUsed <= opts.powerGridMax && cpuUsed <= opts.cpuMax) break;
+      unfittedModules.push(mod);
+      pgUsed -= mod.powerGridCost;
+      cpuUsed -= mod.cpuCost;
+    }
+
+    for (const mod of unfittedModules) {
+      await db.query(
+        'UPDATE player_inventory SET is_fitted = false, fit_slot = NULL WHERE id = $1 AND account_id = $2',
+        [mod.id, accountId]
+      );
+    }
+
+    const loadout = await this.getPlayerLoadout(accountId);
+    return { unfittedModules, loadout };
   }
 
   public async unfitModule(accountId: string, itemId?: string, slot?: string): Promise<PlayerLoadout> {

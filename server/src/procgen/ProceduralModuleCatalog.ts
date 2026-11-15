@@ -6,6 +6,14 @@
 
 import type { DroppedModule, LootAffix } from '../services/LootGenerator';
 import { createMulberry32, rngPick } from './DeterministicPRNG';
+import {
+  ALL_FACTION_IDS,
+  FACTION_REGISTRY,
+  normalizeFactionId,
+  type PrefixFamily,
+} from '../../../shared/FactionRegistry';
+
+export type { PrefixFamily };
 
 export type ModuleMainCategory =
   | 'OFFENSE'
@@ -30,15 +38,6 @@ export type ModuleSubtype =
   | 'Crew Pod'
   | 'Mining Drone'
   | 'Salvage Drone';
-
-export type PrefixFamily =
-  | 'VELOCITY_TEMPORAL'
-  | 'ANNIHILATION_ENERGY'
-  | 'ELECTROMAGNETIC_FLUX'
-  | 'GRAVITIC_SPATIAL'
-  | 'QUANTUM_PRECISION'
-  | 'NANO_BIOMORPHIC'
-  | 'PSIONIC_EXOTIC';
 
 export interface TechPrefixDef {
   prefix: string;
@@ -343,14 +342,13 @@ const RARITY_MULT_TABLE: Record<string, { weight: number; statScale: number; pri
   LEGENDARY: { weight: 2, statScale: 2.25, priceMult: 7.5 },
 };
 
-const FACTION_PREFIX_FAMILIES: Record<string, PrefixFamily[]> = {
-  FACTION_SOL: ['VELOCITY_TEMPORAL', 'QUANTUM_PRECISION'],
-  FACTION_HEGEMONY: ['ANNIHILATION_ENERGY', 'GRAVITIC_SPATIAL'],
-  FACTION_VAELIC: ['ANNIHILATION_ENERGY', 'VELOCITY_TEMPORAL'],
-  FACTION_LITHOS: ['QUANTUM_PRECISION', 'ELECTROMAGNETIC_FLUX'],
-  FACTION_PHORID: ['NANO_BIOMORPHIC', 'PSIONIC_EXOTIC'],
-  FACTION_KRYLL: ['ELECTROMAGNETIC_FLUX', 'GRAVITIC_SPATIAL'],
-};
+const FACTION_PREFIX_FAMILIES: Record<string, readonly PrefixFamily[]> = ALL_FACTION_IDS.reduce(
+  (acc, fid) => {
+    acc[fid] = FACTION_REGISTRY[fid].preferredPrefixFamilies;
+    return acc;
+  },
+  {} as Record<string, readonly PrefixFamily[]>
+);
 
 function pickRarityDeterministic(rng: () => number): 'COMMON' | 'UNCOMMON' | 'RARE' | 'EPIC' | 'LEGENDARY' {
   const roll = rng() * 100;
@@ -402,7 +400,9 @@ export function rollModulePrefixAndAffixes(params: {
   const rIdx = rarityOrder.indexOf(rarity);
   const allowedPrefixes = TECH_PREFIXES.filter((p) => (p.minRarity ? rarityOrder.indexOf(p.minRarity) <= rIdx : true));
 
-  const factionFamilies = params.factionAffinity ? FACTION_PREFIX_FAMILIES[params.factionAffinity] : undefined;
+  const factionFamilies = params.factionAffinity
+    ? FACTION_PREFIX_FAMILIES[normalizeFactionId(params.factionAffinity)]
+    : undefined;
   let prefixDef: TechPrefixDef;
   if (factionFamilies && rng() < 0.65) {
     const facMatches = allowedPrefixes.filter((p) => factionFamilies.includes(p.family));

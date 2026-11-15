@@ -1,3 +1,5 @@
+import { normalizeFactionId } from '../../shared/FactionRegistry';
+
 export interface StarSystem {
   id: number;
   name: string;
@@ -49,6 +51,7 @@ export interface StarmapContext {
   playUiBlip?: () => void;
   playNavPlotTone?: () => void;
   playStarmapOpen?: () => void;
+  getMissionTargetSectorIds?: () => number[];
 }
 
 export class StarmapController {
@@ -542,13 +545,18 @@ export class StarmapController {
       ctx.restore();
     }
 
+    const missionSectorIds = new Set(this.ctx.getMissionTargetSectorIds?.() || []);
+
     // 6. Draw Star Systems
     for (const sys of this.systems) {
       // Filter check
       if (this.searchTerm && !sys.name.toLowerCase().includes(this.searchTerm.toLowerCase())) {
         continue;
       }
-      if (this.factionFilter !== 'ALL' && sys.controllingFaction !== this.factionFilter) {
+      if (
+        this.factionFilter !== 'ALL' &&
+        normalizeFactionId(sys.controllingFaction) !== normalizeFactionId(this.factionFilter)
+      ) {
         continue;
       }
 
@@ -602,6 +610,22 @@ export class StarmapController {
         ctx.fillStyle = '#22c55e';
         ctx.font = 'bold 10px monospace';
         ctx.fillText('[YOU ARE HERE]', sx + radius * 3.8 + 4, sy + 3);
+        ctx.restore();
+      }
+
+      // Active Mission Target Reticle
+      if (missionSectorIds.has(sys.id)) {
+        ctx.save();
+        ctx.strokeStyle = '#fbbf24';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(sx, sy, radius * 3.3, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.fillStyle = '#fbbf24';
+        ctx.font = 'bold 9px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('🎯 MISSION TARGET', sx, sy - radius * 3.3 - 5);
         ctx.restore();
       }
 

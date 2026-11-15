@@ -53,7 +53,7 @@ export class CombatClient {
     firePrimary: false,
     fireTactical: false,
     afterburner: false,
-    activeWeaponId: 'PULSE' as 'PULSE' | 'PLASMA' | 'FLAK',
+    activeWeaponId: 'PULSE' as 'PULSE' | 'PLASMA' | 'FLAK' | 'RAIL' | 'TORPEDO',
   };
 
   // Targeting & Reticle

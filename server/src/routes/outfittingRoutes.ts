@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
-import { outfittingService } from '../services/OutfittingService';
+import { outfittingService, type FitSlotId } from '../services/OutfittingService';
+import { outfittingWorkbenchService } from '../services/OutfittingWorkbenchService';
 
 export const outfittingRoutes: FastifyPluginAsync = async (server) => {
   server.get('/catalog', async (_req, reply) => {
@@ -53,8 +54,8 @@ export const outfittingRoutes: FastifyPluginAsync = async (server) => {
       playerId?: string;
       itemId?: string;
       inventoryId?: string;
-      targetSlot?: 'H1' | 'H2' | 'M1' | 'M2' | 'L1' | 'L2';
-      slot?: 'H1' | 'H2' | 'M1' | 'M2' | 'L1' | 'L2';
+      targetSlot?: FitSlotId;
+      slot?: FitSlotId;
     };
     const playerId = body.playerId || 'acc_sol_captain';
     const itemId = body.itemId || body.inventoryId;
@@ -95,6 +96,73 @@ export const outfittingRoutes: FastifyPluginAsync = async (server) => {
     const playerId = body.playerId || 'acc_sol_captain';
     try {
       const result = await outfittingService.buyModule(playerId, body.blueprintId);
+      reply.send(result);
+    } catch (err: any) {
+      reply.status(400).send({ success: false, error: err.message });
+    }
+  });
+
+  // Engineering Reforging & Salvage Workbench (Milestone 1.2)
+  server.get('/workbench/costs', async (_req, reply) => {
+    reply.send({
+      success: true,
+      costs: outfittingWorkbenchService.getCostTable(),
+    });
+  });
+
+  server.post('/workbench/salvage', async (req, reply) => {
+    const body = (req.body || {}) as {
+      playerId?: string;
+      accountId?: string;
+      itemId?: string;
+    };
+    const playerId = body.playerId || body.accountId || 'acc_sol_captain';
+    if (!body.itemId) {
+      return reply.status(400).send({ success: false, error: 'Missing itemId' });
+    }
+    try {
+      const result = await outfittingWorkbenchService.salvageModule(playerId, body.itemId);
+      reply.send(result);
+    } catch (err: any) {
+      reply.status(400).send({ success: false, error: err.message });
+    }
+  });
+
+  server.post('/workbench/reforge', async (req, reply) => {
+    const body = (req.body || {}) as {
+      playerId?: string;
+      accountId?: string;
+      itemId?: string;
+      lockedAffixIndex?: number | null;
+    };
+    const playerId = body.playerId || body.accountId || 'acc_sol_captain';
+    if (!body.itemId) {
+      return reply.status(400).send({ success: false, error: 'Missing itemId' });
+    }
+    try {
+      const result = await outfittingWorkbenchService.reforgeModule(
+        playerId,
+        body.itemId,
+        body.lockedAffixIndex
+      );
+      reply.send(result);
+    } catch (err: any) {
+      reply.status(400).send({ success: false, error: err.message });
+    }
+  });
+
+  server.post('/workbench/upgrade', async (req, reply) => {
+    const body = (req.body || {}) as {
+      playerId?: string;
+      accountId?: string;
+      itemId?: string;
+    };
+    const playerId = body.playerId || body.accountId || 'acc_sol_captain';
+    if (!body.itemId) {
+      return reply.status(400).send({ success: false, error: 'Missing itemId' });
+    }
+    try {
+      const result = await outfittingWorkbenchService.upgradeModule(playerId, body.itemId);
       reply.send(result);
     } catch (err: any) {
       reply.status(400).send({ success: false, error: err.message });

@@ -1,6 +1,12 @@
 import { db } from '../db/Database';
+import {
+  ALL_FACTION_IDS,
+  FACTION_REGISTRY,
+  normalizeFactionId,
+  type FactionId,
+} from '../../../shared/FactionRegistry';
 
-export type FactionId = 'FACTION_SOL' | 'FACTION_HEGEMONY' | 'FACTION_PHORID' | 'FACTION_KRYLL' | 'FACTION_LITHOS';
+export type { FactionId };
 export type StandingTier = 'HONORED' | 'FRIENDLY' | 'NEUTRAL' | 'HOSTILE' | 'NEMESIS';
 
 export interface FactionMetadata {
@@ -11,43 +17,20 @@ export interface FactionMetadata {
   primaryColor: string;
 }
 
-export const FACTION_METADATA: Record<FactionId, FactionMetadata> = {
-  FACTION_SOL: {
-    id: 'FACTION_SOL',
-    name: 'Sol-Perimeter Alliance',
-    crestIcon: '🚀',
-    description: 'Frontier human coalition fighting for trade sovereignty and liberation from Hegemony tributes.',
-    primaryColor: '#38bdf8',
+export const FACTION_METADATA: Record<FactionId, FactionMetadata> = ALL_FACTION_IDS.reduce(
+  (acc, fid) => {
+    const entry = FACTION_REGISTRY[fid];
+    acc[fid] = {
+      id: entry.id,
+      name: entry.name,
+      crestIcon: entry.crestIcon,
+      description: entry.description,
+      primaryColor: entry.primaryColor,
+    };
+    return acc;
   },
-  FACTION_HEGEMONY: {
-    id: 'FACTION_HEGEMONY',
-    name: 'Vaelic Hegemony',
-    crestIcon: '🦅',
-    description: 'Authoritarian galactic empire demanding strict sector tariffs, mineral tithes, and absolute obedience.',
-    primaryColor: '#ef4444',
-  },
-  FACTION_PHORID: {
-    id: 'FACTION_PHORID',
-    name: 'Phorid Sporeborn',
-    crestIcon: '🍄',
-    description: 'Deep fungal collective consciousness seeking symbiotic ecological balance and ancient Precursor wisdom.',
-    primaryColor: '#a855f7',
-  },
-  FACTION_KRYLL: {
-    id: 'FACTION_KRYLL',
-    name: 'Kryll Free Cartel',
-    crestIcon: '🐀',
-    description: 'Hyper-capitalist rodentoid scavenger clans trading illicit rumors, scrap alloys, and surplus hyperdrives.',
-    primaryColor: '#f59e0b',
-  },
-  FACTION_LITHOS: {
-    id: 'FACTION_LITHOS',
-    name: 'The Lithos Axiom',
-    crestIcon: '💠',
-    description: 'Silicon-crystalline geometers who administer the Obsidian Smelter and guard Precursor ruins with mathematical detachment.',
-    primaryColor: '#8ee3ef',
-  },
-};
+  {} as Record<FactionId, FactionMetadata>
+);
 
 /**
  * Day 21: Airspace clearance verdict for operating around a faction-controlled planet.
@@ -147,19 +130,13 @@ export class ReputationService {
       standingsMap.set(r.faction_id, parseInt(r.standing, 10));
     }
 
-    const factions: FactionId[] = ['FACTION_SOL', 'FACTION_HEGEMONY', 'FACTION_PHORID', 'FACTION_KRYLL', 'FACTION_LITHOS'];
     const results: FactionStanding[] = [];
 
-    for (const fid of factions) {
+    for (const fid of ALL_FACTION_IDS) {
+      const entry = FACTION_REGISTRY[fid];
       let score = standingsMap.get(fid);
       if (score === undefined) {
-        // Seed default standing
-        score =
-          fid === 'FACTION_SOL' ? 35
-          : fid === 'FACTION_HEGEMONY' ? -25
-          : fid === 'FACTION_PHORID' ? 15
-          : fid === 'FACTION_LITHOS' ? 0
-          : 5;
+        score = entry.startingStanding;
         await db.query(
           `INSERT INTO faction_standings (account_id, faction_id, standing)
            VALUES ($1, $2, $3)
@@ -168,20 +145,19 @@ export class ReputationService {
         );
       }
 
-      const meta = FACTION_METADATA[fid];
       const details = this.getTierDetails(score);
 
       results.push({
         factionId: fid,
-        name: meta.name,
-        crestIcon: meta.crestIcon,
+        name: entry.name,
+        crestIcon: entry.crestIcon,
         standing: score,
         tier: details.tier,
         perkDesc: details.perkDesc,
         discountPercent: details.discountPercent,
         surchargePercent: details.surchargePercent,
         isDockingPermitted: details.isDockingPermitted,
-        primaryColor: meta.primaryColor,
+        primaryColor: entry.primaryColor,
       });
     }
 
@@ -197,10 +173,11 @@ export class ReputationService {
     amount: number,
     reason: string
   ): Promise<{ updatedStandings: FactionStanding[]; logMessage: string }> {
+    const normalizedPrimary = normalizeFactionId(primaryFactionId);
     // Current primary score
     const curRes = await db.query<any>(
       `SELECT standing FROM faction_standings WHERE account_id = $1 AND faction_id = $2`,
-      [accountId, primaryFactionId]
+      [accountId, normalizedPrimary]
     );
     const curScore = parseInt(curRes.rows[0]?.standing || '0', 10);
     const newScore = Math.max(-100, Math.min(100, curScore + amount));
@@ -209,25 +186,14 @@ export class ReputationService {
       `INSERT INTO faction_standings (account_id, faction_id, standing)
        VALUES ($1, $2, $3)
        ON CONFLICT (account_id, faction_id) DO UPDATE SET standing = $3, updated_at = NOW()`,
-      [accountId, primaryFactionId, newScore]
+      [accountId, normalizedPrimary, newScore]
     );
 
-    // Cascading cross-faction standing offsets
-    const cascades: Array<{ fid: FactionId; delta: number }> = [];
-
-    if (primaryFactionId === 'FACTION_HEGEMONY') {
-      // Opposing Hegemony improves Sol standing, slightly improves Phorid
-      cascades.push({ fid: 'FACTION_SOL', delta: Math.round(-amount * 0.7) });
-      cascades.push({ fid: 'FACTION_PHORID', delta: Math.round(-amount * 0.4) });
-    } else if (primaryFactionId === 'FACTION_SOL') {
-      // Opposing Sol improves Hegemony standing
-      cascades.push({ fid: 'FACTION_HEGEMONY', delta: Math.round(-amount * 0.7) });
-      cascades.push({ fid: 'FACTION_PHORID', delta: Math.round(amount * 0.3) });
-    } else if (primaryFactionId === 'FACTION_PHORID') {
-      // Symbiosis with Phorid slightly angers Hegemony
-      cascades.push({ fid: 'FACTION_HEGEMONY', delta: Math.round(-amount * 0.5) });
-      cascades.push({ fid: 'FACTION_SOL', delta: Math.round(amount * 0.2) });
-    }
+    // Cascading cross-faction standing offsets sourced from FactionRegistry
+    const cascades = FACTION_REGISTRY[normalizedPrimary].cascades.map((rule) => ({
+      fid: rule.targetFactionId,
+      delta: Math.round(amount * rule.multiplier),
+    }));
 
     for (const casc of cascades) {
       if (casc.delta === 0) continue;
@@ -373,7 +339,7 @@ export class ReputationService {
     sectorId: number,
     factionId: string
   ): Promise<boolean> {
-    const normalized = factionId === 'FACTION_VAELIC' ? 'FACTION_HEGEMONY' : factionId;
+    const normalized = normalizeFactionId(factionId);
     const { rows } = await db.query<any>(
       `SELECT id FROM diplomatic_truces 
        WHERE account_id = $1 AND sector_id = $2 AND faction_id = $3 AND expires_at > NOW() 
@@ -391,7 +357,7 @@ export class ReputationService {
     sectorId: number,
     factionId: string
   ): Promise<string | null> {
-    const normalized = factionId === 'FACTION_VAELIC' ? 'FACTION_HEGEMONY' : factionId;
+    const normalized = normalizeFactionId(factionId);
     const { rows } = await db.query<any>(
       `SELECT expires_at FROM diplomatic_truces
        WHERE account_id = $1 AND sector_id = $2 AND faction_id = $3 AND expires_at > NOW()
@@ -417,7 +383,7 @@ export class ReputationService {
       throw new Error(`Planet with ID ${planetId} not found.`);
     }
     const planet = rows[0];
-    const factionId = (planet.controlling_faction === 'FACTION_VAELIC' ? 'FACTION_HEGEMONY' : planet.controlling_faction) || 'FACTION_SOL';
+    const factionId = normalizeFactionId(planet.controlling_faction);
     const sectorId = Number(planet.sector_id);
 
     const standings = await this.getStandings(accountId);
@@ -482,7 +448,7 @@ export class ReputationService {
     sectorId: number,
     factionId: string
   ): Promise<boolean> {
-    const normalized = factionId === 'FACTION_VAELIC' ? 'FACTION_HEGEMONY' : factionId;
+    const normalized = normalizeFactionId(factionId);
     const res = await db.query(
       `DELETE FROM diplomatic_truces WHERE account_id = $1 AND sector_id = $2 AND faction_id = $3`,
       [accountId, sectorId, normalized]
@@ -498,7 +464,7 @@ export class ReputationService {
     accountId: string,
     controllingFaction: string = 'FACTION_SOL'
   ): Promise<{ permitted: boolean; tier: StandingTier; standing: number; reason?: string }> {
-    const normalized = (controllingFaction === 'FACTION_VAELIC' ? 'FACTION_HEGEMONY' : controllingFaction) as FactionId;
+    const normalized = normalizeFactionId(controllingFaction);
     const standings = await this.getStandings(accountId);
     const item = standings.find((s) => s.factionId === normalized);
     const standing = item ? item.standing : 0;
@@ -528,7 +494,7 @@ export class ReputationService {
     accountId: string,
     controllingFaction: string = 'FACTION_SOL'
   ): Promise<number> {
-    const normalized = (controllingFaction === 'FACTION_VAELIC' ? 'FACTION_HEGEMONY' : controllingFaction) as FactionId;
+    const normalized = normalizeFactionId(controllingFaction);
     const standings = await this.getStandings(accountId);
     const standing = standings.find((s) => s.factionId === normalized);
     if (!standing) return 1.0;

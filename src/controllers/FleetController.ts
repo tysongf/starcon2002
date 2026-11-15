@@ -1,3 +1,5 @@
+import { getFactionEntry } from '../../shared/FactionRegistry';
+
 export interface FleetContext {
   getAccountId: () => string;
   showNotification?: (msg: string, isError?: boolean) => void;
@@ -93,6 +95,27 @@ export class FleetController {
   public renderRoster(roster: any): void {
     if (!roster) return;
 
+    // 0. Update Active Flagship Banner (Milestone 1.2)
+    if (roster.activeFlagship) {
+      const f = roster.activeFlagship;
+      const elClass = document.getElementById('flagship-banner-class');
+      const elTitle = document.getElementById('flagship-banner-title');
+      const elStats = document.getElementById('flagship-banner-stats');
+      if (elClass) {
+        elClass.textContent = `ACTIVE FLAGSHIP // ${f.mainHullClass} [${(f.factionId || '').replace('FACTION_', '')}]`;
+      }
+      if (elTitle) {
+        elTitle.textContent = `${f.name} — ${f.hullSubtype}`;
+      }
+      if (elStats) {
+        elStats.textContent =
+          `SLOTS: ${f.slotLayout.high}H / ${f.slotLayout.mid}M / ${f.slotLayout.low}L • ` +
+          `${f.powerGridMax} MW / ${f.cpuMax} tf • ` +
+          `ARMOR ${f.armor}/${f.maxArmor} • SHIELD ${f.shield}/${f.maxShield} • ` +
+          `CARGO ${f.cargoCapacity} m³ • FUEL ${f.fuel}/${f.maxFuel} • SPD ${f.baseSpeed}`;
+      }
+    }
+
     // 1. Update Command Bridge Telemetry
     if (this.fleetBridgeBadge) {
       this.fleetBridgeBadge.textContent = `COMMAND BRIDGE // TIER ${roster.bridgeTier}`;
@@ -131,7 +154,7 @@ export class FleetController {
             </div>
           `;
         } else if (occupied) {
-          const factionColor = occupied.factionId === 'FACTION_SOL' ? '#38bdf8' : occupied.factionId === 'FACTION_KRYLL' ? '#fbbf24' : '#f87171';
+          const factionColor = getFactionEntry(occupied.factionId).primaryColor;
           card.innerHTML = `
             <div class="slot-header">
               <span class="slot-number-badge">WINGMAN SLOT ${slot} // ACTIVE</span>
@@ -161,12 +184,17 @@ export class FleetController {
               </div>
             </div>
             <div class="fleet-actions-row">
+              <button class="hud-btn small-btn primary promote-btn" data-ship-id="${occupied.id}" data-ship-name="${occupied.name}">
+                ★ SET AS FLAGSHIP
+              </button>
               <button class="hud-btn small-btn recall-btn" data-ship-id="${occupied.id}">
                 RECALL TO RESERVE
               </button>
             </div>
           `;
 
+          const promoteBtn = card.querySelector('.promote-btn');
+          promoteBtn?.addEventListener('click', () => this.promoteFlagship(occupied.id, occupied.name));
           const recallBtn = card.querySelector('.recall-btn');
           recallBtn?.addEventListener('click', () => this.assignSlot(occupied.id, null));
         } else {
@@ -231,7 +259,7 @@ export class FleetController {
         for (const ship of roster.reserveShips) {
           const card = document.createElement('div');
           card.className = 'wingman-slot-card';
-          const factionColor = ship.factionId === 'FACTION_SOL' ? '#38bdf8' : ship.factionId === 'FACTION_KRYLL' ? '#fbbf24' : '#f87171';
+          const factionColor = getFactionEntry(ship.factionId).primaryColor;
 
           let slotOptions = '';
           for (let s = 1; s <= roster.maxWingmen; s++) {
@@ -248,31 +276,34 @@ export class FleetController {
             <div class="slot-ship-name">${ship.name}</div>
             <div class="slot-ship-meta">
               <span style="color: ${factionColor}; font-weight: bold;">[${ship.factionId.replace('FACTION_', '')}]</span>
-              <span>${ship.hullClass}</span>
+              <span>${ship.mainHullClass || ''} • ${ship.hullSubtype || ship.hullClass}</span>
             </div>
             <div class="slot-stats-row">
               <div class="slot-stat-item">
-                <span class="slot-stat-label">HULL</span>
-                <span class="slot-stat-val">${ship.hull} / ${ship.maxHull}</span>
+                <span class="slot-stat-label">SLOTS</span>
+                <span class="slot-stat-val" style="color: #fbbf24;">${ship.slotLayout ? `${ship.slotLayout.high}H/${ship.slotLayout.mid}M/${ship.slotLayout.low}L` : '2H/2M/2L'}</span>
               </div>
               <div class="slot-stat-item">
-                <span class="slot-stat-label">SHIELD</span>
-                <span class="slot-stat-val">${ship.shield} / ${ship.maxShield}</span>
+                <span class="slot-stat-label">HULL / SHLD</span>
+                <span class="slot-stat-val">${ship.hull}/${ship.maxHull} • ${ship.shield}</span>
               </div>
               <div class="slot-stat-item">
-                <span class="slot-stat-label">SPEED</span>
-                <span class="slot-stat-val">${ship.speed} m/s</span>
+                <span class="slot-stat-label">PG / CPU</span>
+                <span class="slot-stat-val">${ship.powerGridMax || 120}MW / ${ship.cpuMax || 180}tf</span>
               </div>
               <div class="slot-stat-item">
-                <span class="slot-stat-label">FIREPOWER</span>
-                <span class="slot-stat-val">${ship.firepower} DPS</span>
+                <span class="slot-stat-label">CARGO / SPD</span>
+                <span class="slot-stat-val">${ship.cargoCapacity || 50}m³ • ${ship.speed}</span>
               </div>
             </div>
             <div class="fleet-actions-row">
+              <button class="hud-btn small-btn primary promote-reserve-btn" data-ship-id="${ship.id}" data-ship-name="${ship.name}">
+                ★ SET AS FLAGSHIP
+              </button>
               <select class="hud-select slot-picker" id="slot-picker-${ship.id}">
                 ${slotOptions}
               </select>
-              <button class="hud-btn small-btn primary deploy-reserve-btn" data-ship-id="${ship.id}">
+              <button class="hud-btn small-btn deploy-reserve-btn" data-ship-id="${ship.id}">
                 ASSIGN TO WING
               </button>
               <button class="hud-btn small-btn rename-btn" data-ship-id="${ship.id}" data-current-name="${ship.name}">
@@ -283,6 +314,11 @@ export class FleetController {
               </button>
             </div>
           `;
+
+          const promoteReserveBtn = card.querySelector('.promote-reserve-btn');
+          promoteReserveBtn?.addEventListener('click', () => {
+            this.promoteFlagship(ship.id, ship.name);
+          });
 
           const deployBtn = card.querySelector('.deploy-reserve-btn');
           const slotPicker = card.querySelector(`#slot-picker-${ship.id}`) as HTMLSelectElement | null;
@@ -379,26 +415,87 @@ export class FleetController {
   }
 
   // =========================================================================
-  // Day 33: Orbital Shipyard Manufacturing
+  // Milestone 1.3: Unified Flagship Swap & 64-Hull Starship Foundry (8x8)
   // =========================================================================
+
+  private selectedHullClassFilter: string = 'ALL';
+  private selectedHullFactionFilter: string = 'ALL';
+
+  public async promoteFlagship(fleetShipId: string, shipName?: string): Promise<void> {
+    const accountId = this.ctx.getAccountId();
+    this.ctx.playUiBlip?.();
+    try {
+      const res = await fetch('/api/fleet/promote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId, fleetShipId }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        this.rosterData = data.roster;
+        this.renderRoster(data.roster);
+        const unfittedCount = (data.unfittedModules || []).length;
+        const unfittedNote =
+          unfittedCount > 0 ? ` (${unfittedCount} overflow module(s) returned to Locker)` : '';
+        this.ctx.showNotification?.(
+          `★ Flagship Transferred to "${data.activeFlagship?.name || shipName || 'New Vessel'}"${unfittedNote}`
+        );
+        this.ctx.onFleetUpdated?.();
+      } else {
+        this.ctx.showNotification?.(data.error || 'Flagship promotion failed.', true);
+      }
+    } catch (err: any) {
+      console.error('[FleetController] Failed to promote flagship:', err);
+    }
+  }
 
   public async loadShipyardData(colonyId?: string): Promise<void> {
     const accountId = this.ctx.getAccountId();
     try {
-      let url = `/api/shipyard/fleet/blueprints?accountId=${encodeURIComponent(accountId)}`;
+      let url = `/api/shipyard/hulls?accountId=${encodeURIComponent(accountId)}`;
       if (colonyId) url += `&colonyId=${encodeURIComponent(colonyId)}`;
 
       const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
         this.shipyardData = data;
+        this.bindHullFilterButtons(colonyId);
         this.renderShipyard(data, colonyId);
       } else {
         const err = await res.json();
-        this.ctx.showNotification?.(err.error || 'Failed to load shipyard blueprints', true);
+        this.ctx.showNotification?.(err.error || 'Failed to load shipyard hulls', true);
       }
     } catch (err: any) {
       console.error('[FleetController] Failed to load shipyard data:', err);
+    }
+  }
+
+  private bindHullFilterButtons(colonyId?: string): void {
+    const filterBar = document.getElementById('shipyard-class-filters');
+    if (filterBar && filterBar.dataset.bound !== '1') {
+      filterBar.dataset.bound = '1';
+      filterBar.querySelectorAll('.hull-filter-btn').forEach((btn) => {
+        btn.addEventListener('click', (ev) => {
+          const target = ev.currentTarget as HTMLElement;
+          this.selectedHullClassFilter = target.dataset.class || 'ALL';
+          filterBar.querySelectorAll('.hull-filter-btn').forEach((b) => b.classList.remove('active', 'primary'));
+          target.classList.add('active', 'primary');
+          if (this.shipyardData) {
+            this.renderShipyard(this.shipyardData, colonyId);
+          }
+        });
+      });
+    }
+
+    const factionSelect = document.getElementById('shipyard-faction-filter') as HTMLSelectElement | null;
+    if (factionSelect && factionSelect.dataset.bound !== '1') {
+      factionSelect.dataset.bound = '1';
+      factionSelect.addEventListener('change', (ev) => {
+        this.selectedHullFactionFilter = (ev.currentTarget as HTMLSelectElement).value || 'ALL';
+        if (this.shipyardData) {
+          this.renderShipyard(this.shipyardData, colonyId);
+        }
+      });
     }
   }
 
@@ -411,32 +508,36 @@ export class FleetController {
 
     this.shipyardBlueprintsGrid.innerHTML = '';
 
-    for (const bp of data.blueprints || []) {
+    const allHulls = data.hulls || data.blueprints || [];
+    const filteredHulls = allHulls.filter((h: any) => {
+      if (this.selectedHullClassFilter !== 'ALL' && h.mainClass !== this.selectedHullClassFilter) {
+        return false;
+      }
+      if (this.selectedHullFactionFilter !== 'ALL' && h.factionId !== this.selectedHullFactionFilter) {
+        return false;
+      }
+      return true;
+    });
+
+    for (const bp of filteredHulls) {
       const card = document.createElement('div');
       card.className = `blueprint-card ${!bp.canAfford ? 'locked' : ''}`;
 
-      const factionColor =
-        bp.factionId === 'FACTION_SOL'
-          ? '#38bdf8'
-          : bp.factionId === 'FACTION_KRYLL'
-          ? '#fbbf24'
-          : bp.factionId === 'FACTION_VAELIC' || bp.factionId === 'FACTION_HEGEMONY'
-          ? '#f87171'
-          : bp.factionId === 'FACTION_PHORID'
-          ? '#a855f7'
-          : '#34d399';
+      const fac = getFactionEntry(bp.factionId);
+      const factionColor = fac.primaryColor;
 
       const missingText = (bp.missingRequirements || []).join(' • ');
+      const slotsLabel = `${bp.highSlots}H / ${bp.midSlots}M / ${bp.lowSlots}L`;
 
       card.innerHTML = `
         <div class="blueprint-header">
           <div>
-            <div class="blueprint-title">${bp.name}</div>
+            <div class="blueprint-title">${bp.displayName || bp.name}</div>
             <div style="font-family: monospace; font-size: 0.75rem; color: ${factionColor}; font-weight: bold;">
-              [${bp.factionId.replace('FACTION_', '')}] • TIER ${bp.tier} ${bp.hullClass}
+              ${fac.crestIcon} [${fac.shortName}] • ${bp.mainClass} (T${bp.tier})
             </div>
           </div>
-          <span class="ability-badge">⚡ ${bp.specialAbility}</span>
+          <span class="ability-badge" style="color: #fbbf24;">SLOTS: ${slotsLabel}</span>
         </div>
 
         <p style="font-size: 0.78rem; color: #94a3b8; margin: 0; line-height: 1.3;">
@@ -445,20 +546,20 @@ export class FleetController {
 
         <div class="slot-stats-row">
           <div class="slot-stat-item">
-            <span class="slot-stat-label">HULL</span>
-            <span class="slot-stat-val" style="color: #4ade80;">${bp.baseHull}</span>
+            <span class="slot-stat-label">ARMOR / SHLD</span>
+            <span class="slot-stat-val" style="color: #4ade80;">${bp.baseArmor} / ${bp.baseShield}</span>
           </div>
           <div class="slot-stat-item">
-            <span class="slot-stat-label">SHIELD</span>
-            <span class="slot-stat-val" style="color: #60a5fa;">${bp.baseShield}</span>
+            <span class="slot-stat-label">PG / CPU</span>
+            <span class="slot-stat-val" style="color: #60a5fa;">${bp.powerGridMax}MW / ${bp.cpuMax}tf</span>
           </div>
           <div class="slot-stat-item">
-            <span class="slot-stat-label">SPEED</span>
-            <span class="slot-stat-val">${bp.baseSpeed} m/s</span>
+            <span class="slot-stat-label">CARGO / FUEL</span>
+            <span class="slot-stat-val">${bp.cargoCapacity}m³ / ${bp.maxFuel}u</span>
           </div>
           <div class="slot-stat-item">
-            <span class="slot-stat-label">DPS</span>
-            <span class="slot-stat-val">${bp.baseFirepower}</span>
+            <span class="slot-stat-label">SPD / TURN</span>
+            <span class="slot-stat-val">${bp.baseSpeed} / ${bp.baseTurnRate}</span>
           </div>
         </div>
 
@@ -500,45 +601,61 @@ export class FleetController {
         }
 
         <div class="fleet-actions-row">
-          <input type="text" class="hud-input name-input" id="hull-name-${bp.id}" placeholder="${bp.name}" style="flex: 1; font-size: 0.78rem;" />
-          <button class="hud-btn primary small-btn fabricate-btn" data-blueprint-id="${bp.id}" ${!bp.canAfford ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
-            FABRICATE HULL
+          <input type="text" class="hud-input name-input" id="hull-name-${bp.hullClass}" placeholder="${bp.displayName}" style="flex: 1; font-size: 0.78rem;" />
+          <button class="hud-btn small-btn fabricate-btn" data-hull-class="${bp.hullClass}" data-promote="false" ${!bp.canAfford ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
+            COMMISSION
+          </button>
+          <button class="hud-btn primary small-btn fabricate-fly-btn" data-hull-class="${bp.hullClass}" data-promote="true" ${!bp.canAfford ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
+            ★ COMMISSION & FLY
           </button>
         </div>
       `;
 
-      const fabBtn = card.querySelector('.fabricate-btn');
-      const nameInput = card.querySelector(`#hull-name-${bp.id}`) as HTMLInputElement | null;
-      fabBtn?.addEventListener('click', () => {
-        const customName = nameInput?.value?.trim() || bp.name;
-        this.fabricateShip(bp.id, customName, colonyId);
+      const nameInput = card.querySelector(`#hull-name-${bp.hullClass}`) as HTMLInputElement | null;
+      card.querySelector('.fabricate-btn')?.addEventListener('click', () => {
+        const customName = nameInput?.value?.trim() || bp.displayName;
+        this.commissionHull(bp.hullClass, customName, colonyId, false);
+      });
+      card.querySelector('.fabricate-fly-btn')?.addEventListener('click', () => {
+        const customName = nameInput?.value?.trim() || bp.displayName;
+        this.commissionHull(bp.hullClass, customName, colonyId, true);
       });
 
       this.shipyardBlueprintsGrid.appendChild(card);
     }
   }
 
-  public async fabricateShip(blueprintId: string, customName?: string, colonyId?: string): Promise<void> {
+  public async commissionHull(
+    hullClass: string,
+    customName?: string,
+    colonyId?: string,
+    promoteImmediately: boolean = false
+  ): Promise<void> {
     const accountId = this.ctx.getAccountId();
     this.ctx.playUiBlip?.();
     try {
-      const res = await fetch('/api/shipyard/fleet/fabricate', {
+      const res = await fetch('/api/shipyard/hulls/commission', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accountId, blueprintId, customName, colonyId }),
+        body: JSON.stringify({ accountId, hullClass, customName, colonyId, promoteImmediately }),
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        this.ctx.showNotification?.(`Commissioned "${data.ship?.name}" into Fleet Hangar Reserve!`);
+        if (data.promoted) {
+          this.ctx.showNotification?.(`★ Commissioned & Promoted "${customName || hullClass}" as Active Flagship!`);
+        } else if (data.promotionWarning) {
+          this.ctx.showNotification?.(`Commissioned "${data.ship?.name}" into Hangar (${data.promotionWarning})`, true);
+        } else {
+          this.ctx.showNotification?.(`Commissioned "${data.ship?.name}" into Fleet Hangar!`);
+        }
         this.ctx.onFleetUpdated?.();
-        // Refresh shipyard and switch to roster subtab to see the new ship
         await this.loadShipyardData(colonyId);
         this.switchFleetSubtab('roster');
       } else {
-        this.ctx.showNotification?.(data.error || 'Fabrication failed.', true);
+        this.ctx.showNotification?.(data.error || 'Commission failed.', true);
       }
     } catch (err: any) {
-      console.error('[FleetController] Failed to fabricate ship:', err);
+      console.error('[FleetController] Failed to commission hull:', err);
     }
   }
 }

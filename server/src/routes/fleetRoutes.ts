@@ -76,7 +76,24 @@ export const fleetRoutes: FastifyPluginAsync = async (server) => {
     reply.send(result);
   });
 
-  // 6. Debug Reset
+  // 6. Promote Reserve or Active Escort Ship to Player Active Flagship (Milestone 1.2)
+  server.post('/promote', async (req, reply) => {
+    const body = (req.body || {}) as {
+      accountId?: string;
+      fleetShipId: string;
+    };
+    const accountId = body.accountId || 'acc_sol_captain';
+    if (!body.fleetShipId) {
+      return reply.status(400).send({ success: false, error: 'fleetShipId is required.' });
+    }
+    const result = await fleetService.promoteFlagship(accountId, body.fleetShipId);
+    if (!result.success) {
+      return reply.status(400).send(result);
+    }
+    reply.send(result);
+  });
+
+  // 7. Debug Reset
   server.post('/debug-reset', async (req, reply) => {
     const body = (req.body || {}) as { accountId?: string };
     const accountId = body.accountId || 'acc_sol_captain';

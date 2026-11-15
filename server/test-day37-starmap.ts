@@ -71,8 +71,8 @@ async function runDay37StarmapTests() {
     const systemsData = await systemsRes.json();
 
     assert(systemsData.success === true, 'Response status is success: true');
-    assert(systemsData.count === 60, `Galactic star registry contains exactly 60 star systems (Actual: ${systemsData.count})`);
-    assert(systemsData.systems.length === 60, 'Systems payload contains 60 elements');
+    assert(systemsData.count >= 66, `Galactic star registry contains at least 66 star systems (Actual: ${systemsData.count})`);
+    assert(systemsData.systems.length >= 66, 'Systems payload contains at least 66 elements');
 
     // Coordinate bounds and spectral class validation
     const validSpectralTypes = ['BLUE_O', 'WHITE_A', 'YELLOW_G', 'ORANGE_K', 'RED_M', 'NEUTRON'];

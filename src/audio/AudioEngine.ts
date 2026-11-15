@@ -953,6 +953,53 @@ export class AudioEngine {
         break;
       }
 
+      case 'WARDENS': {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(520 + (charCode % 6) * 60 + variance, now);
+        osc.frequency.exponentialRampToValueAtTime(360, now + 0.09);
+        gain.gain.setValueAtTime(0.01, now);
+        gain.gain.linearRampToValueAtTime(0.11, now + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.09);
+        break;
+      }
+
+      case 'MINERS_GUILD': {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(140 + (charCode % 5) * 18 + variance, now);
+        gain.gain.setValueAtTime(0.01, now);
+        gain.gain.linearRampToValueAtTime(0.09, now + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.07);
+        break;
+      }
+
+      case 'FREEBOOTERS': {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(220 + (charCode % 7) * 24 + variance, now);
+        osc.frequency.linearRampToValueAtTime(175, now + 0.06);
+        gain.gain.setValueAtTime(0.01, now);
+        gain.gain.linearRampToValueAtTime(0.12, now + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.06);
+        break;
+      }
+
       default: {
         // Sol Alliance / Radio Military Transceiver
         const osc = this.ctx.createOscillator();

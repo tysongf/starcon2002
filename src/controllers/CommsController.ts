@@ -1,4 +1,5 @@
 import { AudioEngine } from '../audio/AudioEngine';
+import { FACTION_REGISTRY, getFactionEntry } from '../../shared/FactionRegistry';
 
 export interface CommsCallbacks {
   audio: AudioEngine;
@@ -8,6 +9,7 @@ export interface CommsCallbacks {
   getTarget?: () => any;
   getPlayerPosition?: () => any;
   onCommsClosed?: () => void;
+  onMissionAccepted?: () => void;
 }
 
 export class CommsController {
@@ -46,6 +48,9 @@ export class CommsController {
   public currentAlienNpcId: string | null = null;
   public isConvoyComms: boolean = false;
   public currentConvoyId: string | null = null;
+  public isFrontierCaptainComms: boolean = false;
+  public currentFrontierCaptainKey: string | null = null;
+  public currentFrontierCaptainSectorId: number = 1;
   public isHyperspaceInterception: boolean = false;
   public currentInterceptionHandshake: any = null;
   public onHyperspaceInterceptionResolved?: (result: any) => void;
@@ -178,7 +183,7 @@ export class CommsController {
     }
   }
 
-  public hailCurrentTargetOrEnvoy(): void {
+  public async hailCurrentTargetOrEnvoy(): Promise<void> {
     const target = this.callbacks.getTarget?.();
     const playerPos = this.callbacks.getPlayerPosition?.();
 
@@ -201,16 +206,103 @@ export class CommsController {
       }
     }
 
+    const sectorId = this.callbacks.getCurrentSectorId();
+    try {
+      const res = await fetch(`/api/captains/sector/${sectorId}?accountId=acc_sol_captain`);
+      if (res.ok) {
+        const data = await res.json();
+        const captains = data.captains || [];
+        if (captains.length > 0) {
+          await this.openFrontierCaptainComms(captains[0].captainKey, sectorId);
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn('[Frontier Comms] Falling back to static envoy:', err);
+    }
+
     const targetName = document.getElementById('reticle-name')?.textContent || '';
     if (targetName.includes('INTERDICTOR') || targetName.includes('HEGEMONY') || targetName.includes('DRONE')) {
       this.openAlienComms('npc_vorash');
-    } else if (targetName.includes('SCAVENGER') || targetName.includes('VULTURE') || targetName.includes('KRYLL')) {
-      this.openAlienComms('npc_skrit');
-    } else if (this.callbacks.getCurrentSectorId() === 2) {
+    } else if (sectorId === 2) {
       this.openAlienComms('npc_vorash');
     } else {
       this.openAlienComms('npc_skrit');
     }
+  }
+
+  public async loadSectorCaptainsPill(): Promise<void> {
+    const pillEl = document.getElementById('hud-frontier-hail-pill');
+    if (!pillEl) return;
+    const sectorId = this.callbacks.getCurrentSectorId();
+    try {
+      const res = await fetch(`/api/captains/sector/${sectorId}?accountId=acc_sol_captain`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const captains = data.captains || [];
+      if (captains.length === 0) {
+        pillEl.classList.add('hidden');
+        return;
+      }
+      pillEl.classList.remove('hidden');
+      pillEl.innerHTML =
+        `<span class="hail-pill-lbl">📡 SECTOR PATROLS:</span>` +
+        captains
+          .map((c: any) => {
+            const rumorBadge = c.hasUnclaimedRumor ? ' 📜' : '';
+            return `<button class="hud-btn-mini btn-hail-captain" data-key="${c.captainKey}" title="${c.factionName} // ${c.vesselName}">${c.name}${rumorBadge}</button>`;
+          })
+          .join('');
+      pillEl.querySelectorAll('.btn-hail-captain').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+          const key = (e.currentTarget as HTMLElement).dataset.key;
+          if (key) this.openFrontierCaptainComms(key, sectorId);
+        });
+      });
+    } catch (err) {
+      console.warn('[Frontier Comms] Failed loading sector patrols:', err);
+    }
+  }
+
+  public async openFrontierCaptainComms(captainKey: string, sectorId: number): Promise<void> {
+    this.isConvoyComms = false;
+    this.currentConvoyId = null;
+    this.currentAlienNpcId = null;
+    this.isHyperspaceInterception = false;
+    this.isFrontierCaptainComms = true;
+    this.currentFrontierCaptainKey = captainKey;
+    this.currentFrontierCaptainSectorId = sectorId;
+
+    if (this.elAlienCommsModal) {
+      this.elAlienCommsModal.classList.remove('hidden');
+    }
+    this.audio.playCommsHailingChime();
+
+    try {
+      const res = await fetch(`/api/captains/${encodeURIComponent(captainKey)}?accountId=acc_sol_captain&sectorId=${sectorId}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!data.dialog) return;
+      this.renderCaptainDialogState(data.dialog);
+    } catch (err) {
+      console.error('[Frontier Comms] Failed opening captain comms:', err);
+    }
+  }
+
+  private renderCaptainDialogState(dialog: any): void {
+    this.renderAlienDialogNode({
+      speakerName: dialog.speakerName,
+      title: dialog.title,
+      species: dialog.species,
+      mood: dialog.mood,
+      dialogueText: dialog.text,
+      rumorMission: dialog.rumorMission,
+      options: (dialog.options || []).map((opt: any) => ({
+        id: opt.id,
+        text: opt.hintTag ? `${opt.label} [${opt.hintTag}]` : opt.label,
+        actionType: opt.actionType,
+      })),
+    });
   }
 
   public async openConvoyComms(convoyId: string): Promise<void> {
@@ -259,6 +351,7 @@ export class CommsController {
 
   public openHyperspaceInterception(handshake: any, onResolved: (result: any) => void): void {
     this.isConvoyComms = false;
+    this.currentAlienNpcId = null;
     this.isHyperspaceInterception = true;
     this.currentInterceptionHandshake = handshake;
     this.onHyperspaceInterceptionResolved = onResolved;
@@ -268,10 +361,18 @@ export class CommsController {
     }
     this.audio.playCommsHailingChime();
 
-    let species = 'VAELIC';
-    if (handshake.factionId === 'FACTION_PHORID') species = 'PHORID';
-    else if (handshake.factionId === 'FACTION_KRYLL') species = 'KRYLL';
-    else if (handshake.factionId === 'FACTION_SOL') species = 'SOL';
+    if (handshake.captainKey && handshake.captainDialog) {
+      this.isFrontierCaptainComms = true;
+      this.currentFrontierCaptainKey = handshake.captainKey;
+      this.currentFrontierCaptainSectorId = handshake.captainDialog.sectorId || 2;
+      this.renderCaptainDialogState(handshake.captainDialog);
+      return;
+    }
+
+    this.isFrontierCaptainComms = false;
+    this.currentFrontierCaptainKey = null;
+
+    const species = getFactionEntry(handshake.factionId).captain.species;
 
     const dialogNode = {
       speakerName: handshake.alienCommander,
@@ -327,19 +428,12 @@ export class CommsController {
     }
 
     if (this.elAlienCommsCrestIcon && this.elAlienCommsCrestLabel) {
-      if (dialog.species === 'VAELIC') {
-        this.elAlienCommsCrestIcon.textContent = '🦅';
-        this.elAlienCommsCrestLabel.textContent = 'VAELIC HEGEMONY';
-      } else if (dialog.species === 'PHORID') {
-        this.elAlienCommsCrestIcon.textContent = '🍄';
-        this.elAlienCommsCrestLabel.textContent = 'PHORID SPOREBORN';
-      } else if (dialog.species === 'KRYLL') {
-        this.elAlienCommsCrestIcon.textContent = '🐀';
-        this.elAlienCommsCrestLabel.textContent = 'KRYLL FREE CARTEL';
-      } else {
-        this.elAlienCommsCrestIcon.textContent = '🚀';
-        this.elAlienCommsCrestLabel.textContent = 'SOL ALLIANCE';
-      }
+      const sp = (dialog.species || '').toUpperCase();
+      const matchedFaction =
+        Object.values(FACTION_REGISTRY).find((f) => f.captain.species === sp || f.id === sp) ||
+        FACTION_REGISTRY.FACTION_SOL;
+      this.elAlienCommsCrestIcon.textContent = matchedFaction.crestIcon;
+      this.elAlienCommsCrestLabel.textContent = matchedFaction.shortName;
     }
 
     // Start portrait animation loop if not running
@@ -370,6 +464,14 @@ export class CommsController {
           <div class="convoy-barter-manifest-card">
             <div class="manifest-card-title">📦 IN-FLIGHT HAULER CARGO MANIFEST (15% BULK DISCOUNT):</div>
             <div class="manifest-items-grid">${items}</div>
+          </div>
+        `;
+      } else if (dialog.rumorMission) {
+        const rm = dialog.rumorMission;
+        manifestHtml = `
+          <div class="convoy-barter-manifest-card" style="border-color: rgba(245, 158, 11, 0.55);">
+            <div class="manifest-card-title" style="color:#fbbf24;">📜 ENCRYPTED SECRET CONTRACT // TARGET: SECTOR ${rm.targetSectorId}</div>
+            <div style="font-size:0.78rem; color:#e2e8f0; margin-top:4px;"><strong>${rm.title}</strong> — +${rm.rewardCredits.toLocaleString()} CR, +${rm.rewardStanding} Standing, ${rm.rewardModuleRarity || 'RARE'} ${rm.rewardModuleCategory || 'MODULE'}</div>
           </div>
         `;
       }
@@ -425,10 +527,76 @@ export class CommsController {
   }
 
   public async selectAlienDialogOption(optionIndex: number): Promise<void> {
-    if (!this.currentAlienNpcId && !this.isConvoyComms && !this.isHyperspaceInterception) return;
+    if (!this.currentAlienNpcId && !this.isConvoyComms && !this.isHyperspaceInterception && !this.isFrontierCaptainComms) return;
 
     this.audio.playUiBlip();
     try {
+      if (this.isFrontierCaptainComms && this.currentFrontierCaptainKey) {
+        const selectedOpt = this.alienCurrentOptions[optionIndex];
+        const res = await fetch('/api/captains/respond', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            accountId: 'acc_sol_captain',
+            captainKey: this.currentFrontierCaptainKey,
+            sectorId: this.currentFrontierCaptainSectorId,
+            optionId: selectedOpt?.id || '',
+          }),
+        });
+        if (!res.ok) return;
+        const outcome = await res.json();
+
+        if (outcome.notification) {
+          this.callbacks.showApNotification(outcome.notification, false);
+          this.callbacks.refreshPlayerHold();
+          this.refreshFactionStandings();
+        }
+        if (outcome.acceptedMission) {
+          this.callbacks.onMissionAccepted?.();
+          this.loadSectorCaptainsPill();
+        }
+
+        // Handle Hyperspace Interception completion when player chooses terminal action
+        if (this.isHyperspaceInterception && this.currentInterceptionHandshake) {
+          if (outcome.combatStarted || outcome.peacefulResolved || outcome.closed) {
+            const mappedAction = outcome.combatStarted
+              ? 'ATTACK'
+              : outcome.actionTaken === 'BRIBE_CREDITS'
+                ? 'BRIBE_CREDITS'
+                : outcome.actionTaken === 'BRIBE_FUEL'
+                  ? 'BRIBE_FUEL'
+                  : 'PEACEFUL_PASS';
+            const hsRes = await fetch('/api/starmap/hyperspace/comms-action', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                accountId: 'acc_sol_captain',
+                blipId: this.currentInterceptionHandshake.blipId,
+                actionId: mappedAction,
+              }),
+            });
+            const hsData = await hsRes.json();
+            this.closeAlienComms();
+            this.onHyperspaceInterceptionResolved?.(hsData);
+            return;
+          }
+        }
+
+        if (outcome.closed) {
+          this.closeAlienComms();
+          return;
+        }
+        if (outcome.combatStarted && outcome.combatSetup) {
+          this.closeAlienComms();
+          this.callbacks.showApNotification('⚔️ PATROL ENGAGED! Weapons free!', true);
+          return;
+        }
+        if (outcome.dialog) {
+          this.renderCaptainDialogState(outcome.dialog);
+        }
+        return;
+      }
+
       if (this.isHyperspaceInterception && this.currentInterceptionHandshake) {
         const selectedOption = this.alienCurrentOptions[optionIndex];
         const actionId = selectedOption?.action || selectedOption?.id || 'ATTACK';
@@ -692,6 +860,8 @@ export class CommsController {
     this.currentAlienNpcId = null;
     this.isConvoyComms = false;
     this.currentConvoyId = null;
+    this.isFrontierCaptainComms = false;
+    this.currentFrontierCaptainKey = null;
     this.audio.playCommsCloseSound();
 
     this.callbacks.onCommsClosed?.();
@@ -1016,6 +1186,164 @@ export class CommsController {
         ctx.moveTo(cx + 10, cy + 32);
         ctx.lineTo(cx + 68, cy + 35 + twitchWhisker);
         ctx.stroke();
+        break;
+      }
+
+      case 'LITHOS': {
+        // Lithos Axiom: Floating rotating geometric crystalline octahedron with harmonic eye matrix
+        const pulse = Math.sin(t * 2.5) * 4 + (this.isAlienSpeaking ? Math.sin(t * 18) * 5 : 0);
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(Math.sin(t * 0.9) * 0.14);
+
+        // Outer crystalline hexagon prism
+        ctx.fillStyle = 'rgba(14, 116, 144, 0.35)';
+        ctx.strokeStyle = '#8ee3ef';
+        ctx.lineWidth = 2.5;
+        ctx.shadowColor = '#38bdf8';
+        ctx.shadowBlur = 14;
+        ctx.beginPath();
+        ctx.moveTo(0, -76 - pulse * 0.5);
+        ctx.lineTo(54, -22);
+        ctx.lineTo(42, 46);
+        ctx.lineTo(0, 74 + pulse * 0.5);
+        ctx.lineTo(-42, 46);
+        ctx.lineTo(-54, -22);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Inner geometric facets
+        ctx.strokeStyle = 'rgba(56, 189, 248, 0.6)';
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(0, -76);
+        ctx.lineTo(0, 74);
+        ctx.moveTo(-54, -22);
+        ctx.lineTo(54, -22);
+        ctx.moveTo(-42, 46);
+        ctx.lineTo(42, 46);
+        ctx.stroke();
+
+        // Resonant Tri-Eye Lattice
+        const eyeGlow = this.isAlienSpeaking ? '#e0f2fe' : '#38bdf8';
+        ctx.fillStyle = eyeGlow;
+        [-22, 0, 22].forEach((ox, idx) => {
+          const oy = idx === 1 ? -14 : -4;
+          ctx.beginPath();
+          ctx.arc(ox, oy, idx === 1 ? 6.5 : 4.5, 0, Math.PI * 2);
+          ctx.fill();
+        });
+
+        // Voice Modulation Frequency Diamond
+        ctx.strokeStyle = '#67e8f9';
+        ctx.beginPath();
+        ctx.moveTo(-20, 22);
+        ctx.lineTo(0, 22 - Math.abs(pulse));
+        ctx.lineTo(20, 22);
+        ctx.lineTo(0, 22 + Math.abs(pulse));
+        ctx.closePath();
+        ctx.stroke();
+
+        ctx.restore();
+        break;
+      }
+
+      case 'WARDENS': {
+        // Remnant Precursor Wardens: Ancient gilded sentinel mask with teal energy core
+        const floatY = Math.sin(t * 2.1) * 3;
+        const glow = this.isAlienSpeaking ? '#99f6e4' : '#2dd4bf';
+        ctx.save();
+        ctx.translate(cx, cy + floatY);
+        ctx.fillStyle = '#042f2e';
+        ctx.strokeStyle = '#facc15';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(0, -78);
+        ctx.lineTo(48, -32);
+        ctx.lineTo(36, 56);
+        ctx.lineTo(0, 78);
+        ctx.lineTo(-36, 56);
+        ctx.lineTo(-48, -32);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = glow;
+        ctx.shadowColor = '#2dd4bf';
+        ctx.shadowBlur = 16;
+        ctx.fillRect(-30, -14, 60, 10);
+        ctx.beginPath();
+        ctx.arc(0, 26, 8 + (this.isAlienSpeaking ? Math.abs(Math.sin(t * 16)) * 5 : 0), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.restore();
+        break;
+      }
+
+      case 'MINERS_GUILD': {
+        // Deep-Core Miners Guild: Heavy EVA hazard visor helmet & ore headlamps
+        const bob = Math.sin(t * 1.8) * 2;
+        ctx.save();
+        ctx.translate(cx, cy + bob);
+        ctx.fillStyle = '#334155';
+        ctx.strokeStyle = '#f97316';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(0, -4, 52, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = '#0f172a';
+        ctx.strokeStyle = '#fb923c';
+        ctx.fillRect(-34, -22, 68, 28);
+        ctx.strokeRect(-34, -22, 68, 28);
+
+        ctx.fillStyle = this.isAlienSpeaking ? '#fed7aa' : '#fbbf24';
+        ctx.beginPath();
+        ctx.arc(-44, -28, 7, 0, Math.PI * 2);
+        ctx.arc(44, -28, 7, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        break;
+      }
+
+      case 'FREEBOOTERS': {
+        // Freebooter Armada: Cybernetic corsair skull-visor & red optical scar
+        const tilt = Math.sin(t * 2.4) * 0.05;
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(tilt);
+        ctx.fillStyle = '#27272a';
+        ctx.strokeStyle = '#fb7185';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(-48, -42);
+        ctx.lineTo(0, -68);
+        ctx.lineTo(48, -42);
+        ctx.lineTo(54, 24);
+        ctx.lineTo(24, 60);
+        ctx.lineTo(-24, 60);
+        ctx.lineTo(-54, 24);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = '#f43f5e';
+        ctx.shadowColor = '#f43f5e';
+        ctx.shadowBlur = 12;
+        ctx.fillRect(-34, -14, 24, 9);
+        ctx.beginPath();
+        ctx.arc(22, -9, 9, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        ctx.strokeStyle = '#fda4af';
+        ctx.beginPath();
+        ctx.moveTo(-26, 26);
+        ctx.lineTo(26, 26 + (this.isAlienSpeaking ? Math.sin(t * 20) * 5 : 0));
+        ctx.stroke();
+        ctx.restore();
         break;
       }
 

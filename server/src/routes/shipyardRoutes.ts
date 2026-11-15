@@ -115,6 +115,50 @@ export const shipyardRoutes: FastifyPluginAsync = async (server) => {
     reply.send(result);
   });
 
+  // 7b. Get 64-Hull Starship Foundry Catalog (Milestone 1.3: 8 Main Classes x 8 Factions)
+  server.get('/hulls', async (req, reply) => {
+    const query = (req.query || {}) as {
+      accountId?: string;
+      colonyId?: string;
+      mainClass?: string;
+      factionId?: string;
+    };
+    const accountId = query.accountId || 'acc_sol_captain';
+    const result = await shipyardService.getHullCatalog(
+      accountId,
+      query.colonyId,
+      query.mainClass,
+      query.factionId
+    );
+    reply.send(result);
+  });
+
+  // 7c. Commission Any of the 64 Hulls (optionally promoting immediately to Active Flagship)
+  server.post('/hulls/commission', async (req, reply) => {
+    const body = (req.body || {}) as {
+      accountId?: string;
+      hullClass: string;
+      customName?: string;
+      colonyId?: string;
+      promoteImmediately?: boolean;
+    };
+    const accountId = body.accountId || 'acc_sol_captain';
+    if (!body.hullClass) {
+      return reply.status(400).send({ success: false, error: 'hullClass is required.' });
+    }
+    const result = await shipyardService.commissionHull(
+      accountId,
+      body.hullClass,
+      body.customName,
+      body.colonyId,
+      Boolean(body.promoteImmediately)
+    );
+    if (!result.success) {
+      return reply.status(400).send(result);
+    }
+    reply.send(result);
+  });
+
   // 8. Refurbish Recovered Derelict Escort Wreck (Day 35: 50% discount)
   server.post('/fleet/refurbish', async (req, reply) => {
     const body = (req.body || {}) as {
