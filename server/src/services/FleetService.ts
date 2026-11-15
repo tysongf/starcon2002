@@ -23,7 +23,7 @@ export interface FleetShip {
   cpuMax: number;
   maxFuel: number;
   cargoCapacity: number;
-  slotLayout: { high: number; mid: number; low: number };
+  slotLayout: { high: number; mid: number; low: number; bay: number };
   geometryProfile: HullGeometryProfile;
   specialAbility: string;
   fittedModules: any[];
@@ -54,7 +54,7 @@ export interface ActiveFlagshipSummary {
   cpuMax: number;
   baseSpeed: number;
   baseTurnRate: number;
-  slotLayout: { high: number; mid: number; low: number };
+  slotLayout: { high: number; mid: number; low: number; bay: number };
   geometryProfile: HullGeometryProfile;
   currentSectorId: number;
 }
@@ -140,6 +140,7 @@ export class FleetService {
           high: Number(rawFlagship.high_slots ?? hullDef.highSlots),
           mid: Number(rawFlagship.mid_slots ?? hullDef.midSlots),
           low: Number(rawFlagship.low_slots ?? hullDef.lowSlots),
+          bay: Number(rawFlagship.bay_slots ?? hullDef.baySlots),
         },
         geometryProfile: hullDef.geometryProfile,
         currentSectorId: Number(rawFlagship.current_sector_id ?? 1),
@@ -498,8 +499,9 @@ export class FleetService {
          high_slots = $18,
          mid_slots = $19,
          low_slots = $20,
+         bay_slots = $21,
          updated_at = NOW()
-       WHERE id = $21`,
+       WHERE id = $22`,
       [
         incomingDef.hullClass,
         incoming.main_hull_class || incomingDef.mainClass,
@@ -521,6 +523,7 @@ export class FleetService {
         incomingDef.highSlots,
         incomingDef.midSlots,
         incomingDef.lowSlots,
+        incomingDef.baySlots,
         outgoing.id,
       ]
     );
@@ -536,6 +539,7 @@ export class FleetService {
       highSlots: incomingDef.highSlots,
       midSlots: incomingDef.midSlots,
       lowSlots: incomingDef.lowSlots,
+      baySlots: incomingDef.baySlots,
       powerGridMax: incomingDef.powerGridMax,
       cpuMax: incomingDef.cpuMax,
     });
@@ -661,6 +665,7 @@ export class FleetService {
         high: hullDef.highSlots,
         mid: hullDef.midSlots,
         low: hullDef.lowSlots,
+        bay: hullDef.baySlots,
       },
       geometryProfile: hullDef.geometryProfile,
       specialAbility: r.special_ability,

@@ -279,6 +279,8 @@ export class ColonyController {
         btnSilo.disabled = false;
       }
     }
+
+    void this.loadColonyWorkforceUI(col);
   }
 
   /**
@@ -582,6 +584,220 @@ export class ColonyController {
       this.callbacks.refreshFactionStandings();
     } catch (err) {
       console.error('[ColonyController] Failed to remit precursor relic:', err);
+    }
+  }
+
+  private colonyModulesCatalog: any[] = [];
+
+  /**
+   * Renders Milestone 1.5 Colony Workforce, Colony Concourse Hiring & 8 Specialty Modules.
+   */
+  public async loadColonyWorkforceUI(col: any): Promise<void> {
+    const root = document.getElementById('colony-workforce-root');
+    if (!root || !col) return;
+
+    try {
+      const [rosterRes, marketRes, modCatRes] = await Promise.all([
+        fetch('http://localhost:3000/api/crew/roster?accountId=acc_sol_captain'),
+        fetch(`http://localhost:3000/api/crew/market?accountId=acc_sol_captain&sourceType=COLONY&sourceId=${encodeURIComponent(col.id)}`),
+        this.colonyModulesCatalog.length > 0 ? Promise.resolve(null) : fetch('http://localhost:3000/api/colonies/modules/catalog'),
+      ]);
+
+      const roster = rosterRes.ok ? await rosterRes.json() : { crew: [] };
+      const market = marketRes.ok ? await marketRes.json() : { candidates: [] };
+      if (modCatRes && modCatRes.ok) {
+        const mc = await modCatRes.json();
+        this.colonyModulesCatalog = mc.modules || [];
+      }
+
+      const crewList: any[] = roster.crew || [];
+      const stationedHere = crewList.filter((c) => c.assignmentType === 'COLONY' && c.assignedColonyId === col.id);
+      const assignablePool = crewList.filter((c) => c.assignmentType !== 'COLONY' || c.assignedColonyId !== col.id);
+      const candidates: any[] = market.candidates || [];
+      const moduleTiers: Record<string, number> = col.colony_modules || col.colonyModules || {};
+      const wageSubsidy = Number(col.local_wage_subsidy ?? col.localWageSubsidy ?? 0);
+
+      root.innerHTML = `
+        <div class="colony-workforce-section">
+          <div class="col-header">
+            <h4>👷 COLONY SPECIALIST WORKFORCE (${stationedHere.length} STATIONED)</h4>
+            <span class="col-subtext">LOCAL WAGE SUBSIDY: +${wageSubsidy} Cr/cycle • CORE UPGRADES REQUIRE MATCHING SPECIALISTS</span>
+          </div>
+          <div class="colony-crew-strip">
+            ${
+              stationedHere.length === 0
+                ? '<div class="slot-empty-notice">No Specialists stationed here yet. Station Reserve crew or recruit settlers below to unlock Tier 2/3 & Specialty Modules.</div>'
+                : stationedHere
+                    .map(
+                      (c) => `
+                        <div class="colony-crew-chip rarity-${c.rarity.toLowerCase()}">
+                          <strong>${c.name}</strong> (${c.specialties.join(' / ')})
+                          <button class="fit-btn-small btn-col-unassign" data-crew-id="${c.id}">RECALL TO SHIP</button>
+                        </div>
+                      `
+                    )
+                    .join('')
+            }
+          </div>
+          ${
+            assignablePool.length > 0
+              ? `<div class="colony-assign-bar">
+                  <select id="select-col-station-crew" class="colony-select">
+                    ${assignablePool.map((c) => `<option value="${c.id}">${c.name} [${c.rarity}] — ${c.specialties.join(', ')}</option>`).join('')}
+                  </select>
+                  <button id="btn-col-station-crew" class="colony-action-btn success">STATION SPECIALIST AT COLONY</button>
+                </div>`
+              : ''
+          }
+          <div class="colony-market-mini">
+            <div class="section-title" style="margin-top:0.65rem;">🏢 SETTLEMENT HALL APPLICANTS (RECRUIT AT COLONY)</div>
+            <div class="colony-candidates-row">
+              ${
+                candidates.length === 0
+                  ? '<span class="slot-empty-notice">No local applicants currently posted.</span>'
+                  : candidates
+                      .map(
+                        (cand) => `
+                          <div class="colony-cand-card rarity-${cand.rarity.toLowerCase()}">
+                            <div><strong>${cand.name}</strong> <span class="rarity-pill rarity-${cand.rarity.toLowerCase()}">${cand.rarity}</span></div>
+                            <div class="col-subtext">${cand.specialties.join(' / ')} • Apt ${cand.aptitude}</div>
+                            <button class="fit-btn-small btn-col-hire" data-listing-id="${cand.listingId}">HIRE (${cand.hiringFee} Cr)</button>
+                          </div>
+                        `
+                      )
+                      .join('')
+              }
+            </div>
+          </div>
+
+          <div class="section-title" style="margin-top:0.85rem;">🏗️ SPECIALTY COLONY MODULES (8 SPECIALIZATION TRACKS)</div>
+          <div class="colony-modules-grid">
+            ${this.colonyModulesCatalog
+              .map((mod) => {
+                const curTier = Number(moduleTiers[mod.key] || 0);
+                const nextTier = curTier + 1;
+                const reqCount = nextTier;
+                const matching = stationedHere.filter((c) =>
+                  c.specialties.some((sp: string) => mod.acceptedSpecialties.includes(sp))
+                ).length;
+                const reqMet = matching >= reqCount;
+                return `
+                  <div class="facility-card colony-module-card ${curTier > 0 ? 'built' : ''}">
+                    <div class="facility-header">
+                      <div class="facility-name-group">
+                        <span class="facility-icon">${mod.icon}</span>
+                        <span class="facility-title">${mod.name.toUpperCase()}</span>
+                      </div>
+                      <span class="facility-tier-badge ${curTier >= mod.maxTier ? 'max' : ''}">TIER ${curTier}/${mod.maxTier}</span>
+                    </div>
+                    <p class="facility-desc">${mod.benefitSummary}</p>
+                    <div class="colony-req-line ${reqMet ? 'met' : 'unmet'}">
+                      Requires ${curTier >= mod.maxTier ? 'MAXED' : `${reqCount}x (${mod.acceptedSpecialties.join(' / ')}) — Stationed: ${matching}/${reqCount}`}
+                    </div>
+                    <button class="facility-upgrade-btn btn-col-mod-upgrade" data-mod-key="${mod.key}" ${curTier >= mod.maxTier ? 'disabled' : ''}>
+                      ${curTier >= mod.maxTier ? 'MAX TIER REACHED' : `${curTier === 0 ? 'CONSTRUCT' : 'UPGRADE'} TIER ${nextTier}`}
+                    </button>
+                  </div>
+                `;
+              })
+              .join('')}
+          </div>
+        </div>
+      `;
+
+      root.querySelector('#btn-col-station-crew')?.addEventListener('click', async () => {
+        const sel = root.querySelector('#select-col-station-crew') as HTMLSelectElement | null;
+        if (!sel?.value) return;
+        const res = await fetch('http://localhost:3000/api/crew/assign', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            accountId: 'acc_sol_captain',
+            crewId: sel.value,
+            assignmentType: 'COLONY',
+            colonyId: col.id,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          this.callbacks.showApNotification(`⚠️ ${data.error || 'Stationing failed'}`, true);
+          return;
+        }
+        this.callbacks.audio.playUiBlip();
+        this.callbacks.showApNotification('✅ Specialist stationed at colony', false);
+        await this.loadColonyWorkforceUI(col);
+      });
+
+      root.querySelectorAll('.btn-col-unassign').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const crewId = (btn as HTMLElement).dataset.crewId;
+          if (!crewId) return;
+          const res = await fetch('http://localhost:3000/api/crew/assign', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              accountId: 'acc_sol_captain',
+              crewId,
+              assignmentType: 'RESERVE',
+            }),
+          });
+          if (res.ok) {
+            this.callbacks.audio.playUiBlip();
+            await this.loadColonyWorkforceUI(col);
+          }
+        });
+      });
+
+      root.querySelectorAll('.btn-col-hire').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const listingId = (btn as HTMLElement).dataset.listingId;
+          if (!listingId) return;
+          const res = await fetch('http://localhost:3000/api/crew/hire', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              accountId: 'acc_sol_captain',
+              listingId,
+              sourceType: 'COLONY',
+              sourceId: col.id,
+            }),
+          });
+          const data = await res.json();
+          if (!res.ok || !data.success) {
+            this.callbacks.showApNotification(`⚠️ ${data.error || 'Recruit failed'}`, true);
+            return;
+          }
+          this.callbacks.audio.playCargoHarvestSound();
+          this.callbacks.showApNotification(`👷 Recruited ${data.crewMember.name} at colony!`, false);
+          this.callbacks.refreshPlayerHold();
+          await this.loadColonyWorkforceUI(col);
+        });
+      });
+
+      root.querySelectorAll('.btn-col-mod-upgrade').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const moduleKey = (btn as HTMLElement).dataset.modKey;
+          if (!moduleKey) return;
+          const res = await fetch(`http://localhost:3000/api/colonies/${col.id}/modules/upgrade`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ accountId: 'acc_sol_captain', moduleKey }),
+          });
+          const data = await res.json();
+          if (!res.ok || !data.success) {
+            this.callbacks.showApNotification(`⚠️ ${data.error || 'Module upgrade failed'}`, true);
+            return;
+          }
+          this.callbacks.audio.playFacilityUpgradeSound();
+          this.callbacks.showApNotification(`🏗️ ${data.message}`, false);
+          this.activeColony = data.colony;
+          this.callbacks.fetchPlayerAP();
+          this.callbacks.refreshPlayerHold();
+          this.refreshColonyDashboardUI();
+        });
+      });
+    } catch (err) {
+      console.warn('[ColonyController] Failed to load workforce/modules UI:', err);
     }
   }
 }

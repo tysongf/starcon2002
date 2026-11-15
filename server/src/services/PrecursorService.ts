@@ -327,12 +327,20 @@ export class PrecursorService {
       );
     }
 
-    // 3. Validate Credits
+    // 3. Validate Credits (discounted by stationed Physicist / Archaeologist / Research Bay bonus)
+    let precursorDiscount = 0;
+    try {
+      const { crewService } = await import('./CrewService');
+      const overview = await crewService.getRosterSummary(accountId);
+      precursorDiscount = Math.min(0.35, overview.bonuses.researchPrecursorBonus * 0.5);
+    } catch {}
+    const effectiveCreditCost = Math.max(50, Math.round(techDef.creditCost * (1 - precursorDiscount)));
+
     const accRes = await db.query<any>('SELECT credits FROM accounts WHERE id = $1', [accountId]);
     const credits = accRes.rows[0]?.credits || 0;
-    if (credits < techDef.creditCost) {
+    if (credits < effectiveCreditCost) {
       throw new Error(
-        `INSUFFICIENT_CREDITS: Synthesis requires ${techDef.creditCost} Credits (current: ${credits} CR).`
+        `INSUFFICIENT_CREDITS: Synthesis requires ${effectiveCreditCost} Credits (current: ${credits} CR).`
       );
     }
 
@@ -347,7 +355,7 @@ export class PrecursorService {
       'UPDATE ship_cargo SET quantity = quantity - $1 WHERE ship_id = $2 AND commodity_id = $3',
       [techDef.relicCost, shipId, 'COMM_PRECURSOR_RELIC']
     );
-    await db.query('UPDATE accounts SET credits = credits - $1 WHERE id = $2', [techDef.creditCost, accountId]);
+    await db.query('UPDATE accounts SET credits = credits - $1 WHERE id = $2', [effectiveCreditCost, accountId]);
 
     // 6. Record synthesis in research table
     await db.query(

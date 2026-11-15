@@ -41,6 +41,7 @@ const testFiles = [
   'server/test-milestone-1.2.ts',
   'server/test-milestone-1.3.ts',
   'server/test-milestone-1.4.ts',
+  'server/test-milestone-1.5.ts',
 ];
 
 console.log('================================================================================');
@@ -84,7 +85,7 @@ if (failedCount > 0) {
   console.error(`FAILED SUITES (${failedCount}):`, failures.join(', '));
   process.exit(1);
 } else {
-  console.log('🎉 100% CLEAN PASSES ACROSS ALL 35 INTEGRATION TEST SUITES!');
+  console.log(`🎉 100% CLEAN PASSES ACROSS ALL ${testFiles.length} INTEGRATION TEST SUITES!`);
   console.log('================================================================================\n');
 }
 

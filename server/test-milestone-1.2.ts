@@ -100,7 +100,7 @@ async function main() {
   });
   assert.equal(promoteCruiser.status, 200, `Promote failed: ${JSON.stringify(promoteCruiser.data)}`);
   assert.equal(promoteCruiser.data.activeFlagship.hullClass, 'SOL_CRUISER');
-  assert.deepEqual(promoteCruiser.data.activeFlagship.slotLayout, { high: 3, mid: 2, low: 3 });
+  assert.deepEqual(promoteCruiser.data.activeFlagship.slotLayout, { high: 3, mid: 2, low: 3, bay: 6 });
   assert.equal(promoteCruiser.data.activeFlagship.powerGridMax, 190);
   assert.equal(promoteCruiser.data.activeFlagship.cpuMax, 265);
   assert.equal(promoteCruiser.data.demotedShip.hullClass, 'CORVETTE', 'outgoing Corvette demoted to Hangar');
@@ -139,7 +139,7 @@ async function main() {
   });
   assert.equal(promoteRunner.status, 200, `Promote KRYLL_RUNNER failed: ${JSON.stringify(promoteRunner.data)}`);
   assert.equal(promoteRunner.data.activeFlagship.hullClass, 'KRYLL_RUNNER');
-  assert.deepEqual(promoteRunner.data.activeFlagship.slotLayout, { high: 2, mid: 3, low: 1 });
+  assert.deepEqual(promoteRunner.data.activeFlagship.slotLayout, { high: 2, mid: 3, low: 1, bay: 1 });
 
   const unfittedSlots = promoteRunner.data.unfittedModules.map((m: any) => m.fitSlot).sort();
   assert.ok(

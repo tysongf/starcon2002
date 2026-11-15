@@ -14,7 +14,7 @@ export interface DroppedModule {
   blueprintId: string;
   name: string;
   customName: string;
-  slotType: 'HIGH' | 'MID' | 'LOW';
+  slotType: 'HIGH' | 'MID' | 'LOW' | 'BAY';
   mainCategory: string;
   subtype: string;
   techPrefix?: string;

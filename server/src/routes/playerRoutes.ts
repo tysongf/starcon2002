@@ -168,6 +168,9 @@ export const playerRoutes: FastifyPluginAsync = async (server) => {
       await db.query('DELETE FROM planet_beacons WHERE account_id = $1', [accountId]);
       await db.query('DELETE FROM colonies WHERE account_id = $1', [accountId]);
       await db.query('UPDATE player_fleet SET deployment_slot = NULL WHERE account_id = $1', [accountId]);
+      await db.query('DELETE FROM crew_roster WHERE account_id = $1', [accountId]);
+      await db.query('DELETE FROM crew_market_claims WHERE account_id = $1', [accountId]);
+      await db.query('UPDATE accounts SET crew_arrears_cycles = 0, crew_refresh_nonce = 0 WHERE id = $1', [accountId]);
       await db.query('UPDATE precursor_sites SET is_deciphered = FALSE');
       await db.query('DELETE FROM precursor_research WHERE account_id = $1', [accountId]);
     }
@@ -179,7 +182,7 @@ export const playerRoutes: FastifyPluginAsync = async (server) => {
     const body = (req.body || {}) as { accountId?: string };
     const accountId = body.accountId || 'acc_sol_captain';
     try {
-      await db.query('UPDATE accounts SET credits = 2500, tech_components = 25 WHERE id = $1', [accountId]);
+      await db.query('UPDATE accounts SET credits = 2500, tech_components = 25, crew_arrears_cycles = 0, crew_refresh_nonce = 0 WHERE id = $1', [accountId]);
       await db.query(
         `UPDATE ships SET
            current_sector_id = 1,
@@ -203,6 +206,7 @@ export const playerRoutes: FastifyPluginAsync = async (server) => {
            high_slots = 2,
            mid_slots = 2,
            low_slots = 2,
+           bay_slots = 2,
            nav_target_sector_id = NULL,
            is_in_hyperspace = FALSE,
            hyperspace_x = 500.0,
@@ -229,6 +233,9 @@ export const playerRoutes: FastifyPluginAsync = async (server) => {
       await db.query('DELETE FROM planet_beacons WHERE account_id = $1', [accountId]);
       await db.query('DELETE FROM colonies WHERE account_id = $1', [accountId]);
       await db.query('UPDATE player_fleet SET deployment_slot = NULL WHERE account_id = $1', [accountId]);
+      await db.query('DELETE FROM crew_roster WHERE account_id = $1', [accountId]);
+      await db.query('DELETE FROM crew_market_claims WHERE account_id = $1', [accountId]);
+      await db.query('UPDATE accounts SET crew_arrears_cycles = 0, crew_refresh_nonce = 0 WHERE id = $1', [accountId]);
       await db.query('UPDATE precursor_sites SET is_deciphered = FALSE');
       await db.query('DELETE FROM precursor_research WHERE account_id = $1', [accountId]);
       await db.query(`DELETE FROM player_inventory WHERE account_id = $1 AND (blueprint_id LIKE 'BP_PRECURSOR_%' OR id::text NOT LIKE 'a1b2c3d4-%')`, [accountId]);

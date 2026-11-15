@@ -182,7 +182,17 @@ async function runMilestone08GrandCapstone() {
     const colonyId = foundColonyData.colony?.id || 'colony_sec1_aegis_01';
     assert(foundColonyRes.ok, `Colony established at Aegis Prime (ID: ${colonyId})`);
 
-    // 2.2 Upgrade Colony Shipyard to Tier 1 and Tier 2 (Cruiser Slipway)
+    // 2.2 Station Mechanic & Engineer Specialists, then Upgrade Colony Shipyard to Tier 1 and Tier 2
+    await fetch(`${BASE_URL}/api/crew/debug-seed`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accountId: PLAYER_ID, specialties: ['Mechanic'], assignColonyId: colonyId }),
+    });
+    await fetch(`${BASE_URL}/api/crew/debug-seed`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accountId: PLAYER_ID, specialties: ['Engineer'], assignColonyId: colonyId }),
+    });
     const upGantry1Res = await fetch(`${BASE_URL}/api/colonies/${colonyId}/shipyard/upgrade`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

@@ -8,13 +8,18 @@ import {
 } from '../procgen/ProceduralModuleCatalog';
 import { getHullDef, type HullGeometryProfile } from '../procgen/HullClassCatalog';
 
-export type FitSlotId = 'H1' | 'H2' | 'H3' | 'M1' | 'M2' | 'M3' | 'L1' | 'L2' | 'L3';
+export type FitSlotId =
+  | 'H1' | 'H2' | 'H3'
+  | 'M1' | 'M2' | 'M3'
+  | 'L1' | 'L2' | 'L3'
+  | 'B1' | 'B2' | 'B3' | 'B4' | 'B5' | 'B6' | 'B7' | 'B8';
 
-export function buildActiveSlotKeys(highSlots: number, midSlots: number, lowSlots: number): FitSlotId[] {
+export function buildActiveSlotKeys(highSlots: number, midSlots: number, lowSlots: number, baySlots: number = 0): FitSlotId[] {
   const keys: FitSlotId[] = [];
   for (let i = 1; i <= Math.min(3, Math.max(1, highSlots)); i++) keys.push(`H${i}` as FitSlotId);
   for (let i = 1; i <= Math.min(3, Math.max(1, midSlots)); i++) keys.push(`M${i}` as FitSlotId);
   for (let i = 1; i <= Math.min(3, Math.max(1, lowSlots)); i++) keys.push(`L${i}` as FitSlotId);
+  for (let i = 1; i <= Math.min(8, Math.max(0, baySlots)); i++) keys.push(`B${i}` as FitSlotId);
   return keys;
 }
 
@@ -23,7 +28,7 @@ export interface FittedModule {
   blueprintId: string;
   name: string;
   customName: string;
-  slotType: 'HIGH' | 'MID' | 'LOW';
+  slotType: 'HIGH' | 'MID' | 'LOW' | 'BAY';
   mainCategory: string;
   subtype: string;
   techPrefix?: string;
@@ -48,7 +53,7 @@ export interface PlayerLoadout {
   flagshipName: string;
   factionId: string;
   hullSeed: number;
-  slotLayout: { high: number; mid: number; low: number };
+  slotLayout: { high: number; mid: number; low: number; bay: number };
   techComponents: number;
   hullStats: {
     armor: number;
@@ -88,6 +93,7 @@ export class OutfittingService {
     const highSlots = Number(ship?.high_slots ?? hullDef.highSlots);
     const midSlots = Number(ship?.mid_slots ?? hullDef.midSlots);
     const lowSlots = Number(ship?.low_slots ?? hullDef.lowSlots);
+    const baySlots = Number(ship?.bay_slots ?? hullDef.baySlots);
     const powerGridMax = Number(ship?.power_grid_max ?? hullDef.powerGridMax);
     const cpuMax = Number(ship?.cpu_max ?? hullDef.cpuMax);
     const techComponents = Number((accRes.rows[0] as any)?.tech_components ?? 25);
@@ -121,7 +127,7 @@ export class OutfittingService {
 
     const { rows } = await db.query(query, [accountId]);
 
-    const activeKeys = buildActiveSlotKeys(highSlots, midSlots, lowSlots);
+    const activeKeys = buildActiveSlotKeys(highSlots, midSlots, lowSlots, baySlots);
     const fitted: Record<string, FittedModule | null> = {};
     for (const key of activeKeys) {
       fitted[key] = null;
@@ -157,7 +163,7 @@ export class OutfittingService {
       flagshipName: ship?.flagship_name || 'UNS Endeavour',
       factionId: ship?.faction_id || hullDef.factionId,
       hullSeed: Number(ship?.hull_seed ?? hullDef.hullSeedDefault),
-      slotLayout: { high: highSlots, mid: midSlots, low: lowSlots },
+      slotLayout: { high: highSlots, mid: midSlots, low: lowSlots, bay: baySlots },
       techComponents,
       hullStats: {
         armor: Number(ship?.armor ?? hullDef.baseArmor),
@@ -188,7 +194,7 @@ export class OutfittingService {
 
     if (!(targetSlot in current.fitted)) {
       throw new Error(
-        `SLOT_UNAVAILABLE_ON_HULL: Slot ${targetSlot} is not available on your active ${current.hullSubtype} (${current.slotLayout.high}H/${current.slotLayout.mid}M/${current.slotLayout.low}L).`
+        `SLOT_UNAVAILABLE_ON_HULL: Slot ${targetSlot} is not available on your active ${current.hullSubtype} (${current.slotLayout.high}H/${current.slotLayout.mid}M/${current.slotLayout.low}L/${current.slotLayout.bay}B).`
       );
     }
 
@@ -200,7 +206,13 @@ export class OutfittingService {
     }
 
     // Verify slot type matches
-    const expectedSlotType = targetSlot.startsWith('H') ? 'HIGH' : targetSlot.startsWith('M') ? 'MID' : 'LOW';
+    const expectedSlotType = targetSlot.startsWith('H')
+      ? 'HIGH'
+      : targetSlot.startsWith('M')
+      ? 'MID'
+      : targetSlot.startsWith('B')
+      ? 'BAY'
+      : 'LOW';
     if (item.slotType !== expectedSlotType) {
       throw new Error(`Cannot fit ${item.slotType} module into ${targetSlot} (${expectedSlotType}) slot.`);
     }
@@ -252,6 +264,7 @@ export class OutfittingService {
       highSlots: number;
       midSlots: number;
       lowSlots: number;
+      baySlots?: number;
       powerGridMax: number;
       cpuMax: number;
     }
@@ -284,7 +297,7 @@ export class OutfittingService {
     );
 
     const activeSlotSet = new Set<string>(
-      buildActiveSlotKeys(opts.highSlots, opts.midSlots, opts.lowSlots)
+      buildActiveSlotKeys(opts.highSlots, opts.midSlots, opts.lowSlots, opts.baySlots ?? 2)
     );
 
     const fittedMods: FittedModule[] = rows.map((raw: any) => ({

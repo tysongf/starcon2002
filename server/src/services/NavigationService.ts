@@ -174,9 +174,15 @@ export class NavigationService {
       activeEscortsCount = 0;
     }
 
+    let warpDiscount = 0;
+    try {
+      const { crewService } = await import('./CrewService');
+      const overview = await crewService.getRosterSummary(playerId);
+      warpDiscount = overview.bonuses.warpFuelDiscount || 0;
+    } catch {}
     const baseFuelCost = NavigationService.WARP_FUEL_COST;
     const escortFuelCost = activeEscortsCount * 1;
-    const totalFuelCost = baseFuelCost + escortFuelCost;
+    const totalFuelCost = Math.max(1, Math.round((baseFuelCost + escortFuelCost) * (1 - warpDiscount)));
 
     if (activeEscortsCount > 0) {
       if (ship.fuel < totalFuelCost) {

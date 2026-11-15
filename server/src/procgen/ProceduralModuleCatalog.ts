@@ -37,7 +37,9 @@ export type ModuleSubtype =
   | 'Cargo Bay'
   | 'Crew Pod'
   | 'Mining Drone'
-  | 'Salvage Drone';
+  | 'Salvage Drone'
+  | 'Deep-Core Scanner Link'
+  | 'Bio-Telemetry Node';
 
 export interface TechPrefixDef {
   prefix: string;
@@ -55,7 +57,7 @@ export interface ModuleSubtypeDef {
   subtype: ModuleSubtype;
   mainCategory: ModuleMainCategory;
   blueprintId: string;
-  slotType: 'HIGH' | 'MID' | 'LOW';
+  slotType: 'HIGH' | 'MID' | 'LOW' | 'BAY';
   basePrice: number;
   powerGridCost: number;
   cpuCost: number;
@@ -307,6 +309,30 @@ export const MODULE_SUBTYPE_CATALOG: readonly ModuleSubtypeDef[] = [
     compatibleSuffixes: ['Processor', 'Recycler', 'Sequencer', 'Coupler', 'Transceiver', 'Controller'],
     description: 'Magnetic tractor-recovery drone bay amplifying derelict wreck scrap yield and loot scan fidelity.',
   },
+  {
+    subtype: 'Deep-Core Scanner Link',
+    mainCategory: 'UTILITY_DRONE',
+    blueprintId: 'MOD_SCANNER_DEEPCORE',
+    slotType: 'MID',
+    basePrice: 740,
+    powerGridCost: 12.0,
+    cpuCost: 22.0,
+    baseStats: { miningRateBonus: 0.14, rareOreLuckBonus: 0.12, scannerRangeBonus: 30, subtype: 'Deep-Core Scanner Link' },
+    compatibleSuffixes: ['Scanner', 'Analyser', 'Sequencer', 'Transceiver'],
+    description: 'Sub-surface seismic lidar node paired with Miner & Geologist telemetry consoles (+14% yield, +12% rare ore).',
+  },
+  {
+    subtype: 'Bio-Telemetry Node',
+    mainCategory: 'COMMERCE',
+    blueprintId: 'MOD_BIO_TELEMETRY_NODE',
+    slotType: 'LOW',
+    basePrice: 820,
+    powerGridCost: 10.0,
+    cpuCost: 24.0,
+    baseStats: { researchYieldBonus: 0.16, crewCapacityBonus: 4, moraleBonus: 0.08, subtype: 'Bio-Telemetry Node' },
+    compatibleSuffixes: ['Biomatrix', 'Sequencer', 'Controller', 'Processor'],
+    description: 'Cryo-linked specimen analysis bus feeding live orbital telemetry to onboard Science Officers (+16% research, +4 Berths).',
+  },
 ];
 
 const SUBTYPE_MAP = new Map<string, ModuleSubtypeDef>(
@@ -384,7 +410,7 @@ const DEFAULT_SUFFIXES: readonly string[] = ['Emitter', 'Matrix', 'Processor', '
  */
 export function rollModulePrefixAndAffixes(params: {
   subtype: string;
-  slotType: 'HIGH' | 'MID' | 'LOW';
+  slotType: 'HIGH' | 'MID' | 'LOW' | 'BAY';
   compatibleSuffixes?: readonly string[];
   basePowerGridCost: number;
   baseCpuCost: number;

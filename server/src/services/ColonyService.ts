@@ -3,6 +3,14 @@ import { getPlanetClassProfile } from '../procgen/PlanetTaxonomyCatalog';
 import { apService } from './ActionPointService';
 import { reputationService } from './ReputationService';
 import { BIOSPHERE_TIERS } from './XenobiologyService';
+import {
+  COLONY_FACILITY_CREW_REQUIREMENTS,
+  COLONY_MODULES,
+  COLONY_MODULE_MAP,
+  getColonyModuleUpgradeRequirement,
+  type ColonyModuleKey,
+} from '../procgen/CrewCatalog';
+import { crewService } from './CrewService';
 
 export interface ColonyDetail {
   id: string;
@@ -31,6 +39,17 @@ export interface ColonyDetail {
   biosphereMoraleBonus?: number;
   taxBonus?: number;
   unlockedProjects?: string[];
+  colonyModules?: Record<ColonyModuleKey, number>;
+  stationedCrew?: Array<{
+    id: string;
+    name: string;
+    rarity: string;
+    primarySpecialty: string;
+    specialties: string[];
+    aptitude: number;
+    morale: number;
+  }>;
+  localWageSubsidy?: number;
 }
 
 export class ColonyService {
@@ -200,14 +219,70 @@ export class ColonyService {
 
     const effectiveMaxPop = Math.round(c.max_population * bioTierDef.populationMultiplier);
 
+    const rawMods: Record<string, number> =
+      typeof c.colony_modules === 'string'
+        ? JSON.parse(c.colony_modules || '{}')
+        : c.colony_modules || {};
+    const colonyModules = {} as Record<ColonyModuleKey, number>;
+    for (const mDef of COLONY_MODULES) {
+      colonyModules[mDef.key] = Number(rawMods[mDef.key] || 0);
+    }
+
+    const { rows: crewRows } = await db.query<any>(
+      `SELECT id, name, rarity, primary_specialty, specialties, aptitude, morale
+       FROM crew_roster
+       WHERE account_id = $1 AND assignment_type = 'COLONY' AND assigned_colony_id = $2
+       ORDER BY aptitude DESC`,
+      [accountId, colonyId]
+    );
+    const stationedCrew = crewRows.map((cr) => ({
+      id: cr.id,
+      name: cr.name,
+      rarity: cr.rarity,
+      primarySpecialty: cr.primary_specialty,
+      specialties: Array.isArray(cr.specialties) ? cr.specialties : JSON.parse(cr.specialties || '[]'),
+      aptitude: Number(cr.aptitude),
+      morale: Number(cr.morale),
+    }));
+
+    let localCrewOutputMult = 1.0;
+    let localCrewPopMult = 1.0;
+    let localWageSubsidy = Number(c.habitation_tier || 1) * 12;
+    const tradeExTier = colonyModules.TRADE_EXCHANGE || 0;
+    if (tradeExTier === 1) localWageSubsidy += 45;
+    else if (tradeExTier === 2) localWageSubsidy += 100;
+    else if (tradeExTier >= 3) localWageSubsidy += 180;
+
+    const refineryTier = colonyModules.ORE_REFINERY || 0;
+    const refineryMult = refineryTier === 1 ? 1.2 : refineryTier === 2 ? 1.4 : refineryTier >= 3 ? 1.65 : 1.0;
+    const medbayTier = colonyModules.COLONIAL_MEDBAY || 0;
+    const medbayPopMult = medbayTier === 1 ? 1.15 : medbayTier === 2 ? 1.3 : medbayTier >= 3 ? 1.5 : 1.0;
+
+    for (const sc of stationedCrew) {
+      if (sc.morale < 20) continue;
+      const scale = (sc.aptitude / 100) * (sc.morale < 50 ? 0.5 : 1.0);
+      if (sc.specialties.includes('Geologist') || sc.specialties.includes('Miner') || sc.specialties.includes('Mechanic')) {
+        localCrewOutputMult += 0.1 * scale;
+      }
+      if (sc.specialties.includes('Settler') || sc.specialties.includes('Biologist') || sc.specialties.includes('Medic')) {
+        localCrewPopMult += 0.14 * scale;
+      }
+      if (sc.specialties.includes('Merchant')) {
+        localWageSubsidy += Math.round(28 * scale);
+      }
+      if (sc.specialties.includes('Settler')) {
+        localWageSubsidy += Math.round(18 * scale);
+      }
+    }
+
     // Calculate deterministic accrual rates
-    // Base extraction: 6 units per minute at Tier 1, scaled by derrickTier and population factor
+    // Base extraction: 6 units per minute at Tier 1, scaled by derrickTier, population factor, refinery & stationed crew
     // Spore-Synthesized Crops (BIO_SPORE_AGRICULTURE) doubles COMM_RATIONS output
     const sporeMult = (c.commodity_id === 'COMM_RATIONS' && unlockedProjects.includes('BIO_SPORE_AGRICULTURE')) ? 2.0 : 1.0;
     const derrickMult = c.derrick_tier === 1 ? 1.0 : c.derrick_tier === 2 ? 2.5 : 5.0;
     const popFactor = 1.0 + (c.population / 1000);
     const habFactor = 0.5 + (c.habitability_rating / 200);
-    const unitsPerSecond = (6 / 60) * derrickMult * popFactor * habFactor * sporeMult;
+    const unitsPerSecond = (6 / 60) * derrickMult * popFactor * habFactor * sporeMult * refineryMult * localCrewOutputMult;
     const productionRatePerMinute = Math.round(unitsPerSecond * 60 * 10) / 10;
 
     let newStockpile = c.stockpiled_amount;
@@ -223,9 +298,9 @@ export class ColonyService {
         needsUpdate = true;
       }
 
-      // 2. Accrue Population Growth (mitigated by habitation tier and BIO_CELLULAR_GROWTH)
+      // 2. Accrue Population Growth (mitigated by habitation tier, BIO_CELLULAR_GROWTH, Colonial Medbay & Settlers)
       const growthMult = unlockedProjects.includes('BIO_CELLULAR_GROWTH') ? 1.5 : 1.0;
-      const popGrowthPerSec = 0.05 * c.habitation_tier * growthMult;
+      const popGrowthPerSec = 0.05 * c.habitation_tier * growthMult * medbayPopMult * localCrewPopMult;
       const accruedPop = Math.floor(elapsedSeconds * popGrowthPerSec);
       if (accruedPop > 0 && c.population < effectiveMaxPop) {
         newPop = Math.min(effectiveMaxPop, c.population + accruedPop);
@@ -285,6 +360,9 @@ export class ColonyService {
       biosphereMoraleBonus: bioTierDef.moraleBonus,
       taxBonus: bioTierDef.taxBonus,
       unlockedProjects,
+      colonyModules,
+      stationedCrew,
+      localWageSubsidy,
     };
   }
 
@@ -332,6 +410,22 @@ export class ColonyService {
     }
 
     const nextTier = currentTier + 1;
+
+    // 0. Check N-Specialist Crew Prerequisite for Facility Upgrade
+    const crewReq = COLONY_FACILITY_CREW_REQUIREMENTS[facilityType]?.[nextTier];
+    if (crewReq) {
+      const { count } = await crewService.getMatchingColonyCrewCount(
+        accountId,
+        colonyId,
+        crewReq.acceptedSpecialties
+      );
+      if (count < crewReq.requiredCount) {
+        throw new Error(
+          `CREW_SPECIALTY_REQUIRED: Upgrading ${facilityType} to Tier ${nextTier} requires ${crewReq.label} stationed at this colony (Current: ${count}/${crewReq.requiredCount}).`
+        );
+      }
+    }
+
     let creditCost = nextTier === 2 ? 400 : 1000;
     let apCost = nextTier === 2 ? 3 : 5;
     if (facilityType === 'SHIPYARD') {
@@ -377,6 +471,70 @@ export class ColonyService {
       success: true,
       colony: updated,
       message: `${facilityType} successfully upgraded to Tier ${nextTier}. Facility operational.`,
+    };
+  }
+
+  /**
+   * Builds or upgrades one of the 8 Colony Specialty Modules (Tier 1..3),
+   * enforcing N matching Specialist crew stationed at the colony.
+   */
+  public async upgradeColonyModule(
+    colonyId: string,
+    accountId: string = 'acc_sol_captain',
+    moduleKey: ColonyModuleKey
+  ): Promise<{ success: boolean; colony: ColonyDetail; moduleKey: ColonyModuleKey; newTier: number; message: string }> {
+    const def = COLONY_MODULE_MAP.get(moduleKey);
+    if (!def) {
+      throw new Error(`UNKNOWN_COLONY_MODULE: ${moduleKey} is not a valid Colony Specialty Module.`);
+    }
+
+    const colony = await this.getColonyDetail(colonyId, accountId);
+    const currentMods = { ...(colony.colonyModules || {}) } as Record<ColonyModuleKey, number>;
+    const currentTier = Number(currentMods[moduleKey] || 0);
+    if (currentTier >= def.maxTier) {
+      throw new Error(`MAX_TIER_REACHED: ${def.name} is already at Tier ${def.maxTier}.`);
+    }
+
+    const nextTier = currentTier + 1;
+    const req = getColonyModuleUpgradeRequirement(moduleKey, nextTier);
+    if (req) {
+      const { count } = await crewService.getMatchingColonyCrewCount(accountId, colonyId, req.acceptedSpecialties);
+      if (count < req.requiredCount) {
+        throw new Error(
+          `CREW_SPECIALTY_REQUIRED: Constructing ${def.name} Tier ${nextTier} requires ${req.label} stationed at this colony (Current: ${count}/${req.requiredCount}).`
+        );
+      }
+    }
+
+    const creditCost = def.baseCreditCost * nextTier;
+    const apCost = def.baseApCost + (nextTier - 1) * 2;
+    const accRes = await db.query<any>('SELECT credits FROM accounts WHERE id = $1', [accountId]);
+    const credits = Number(accRes.rows[0]?.credits || 0);
+    if (credits < creditCost) {
+      throw new Error(`INSUFFICIENT_CREDITS: ${def.name} Tier ${nextTier} requires ${creditCost} Cr (Current: ${credits} Cr).`);
+    }
+    await db.query('UPDATE accounts SET credits = credits - $1 WHERE id = $2', [creditCost, accountId]);
+
+    const apCheck = await apService.deductAP(accountId, apCost, `Colony Module ${def.name} Tier ${nextTier}`);
+    if (!apCheck.success) {
+      await db.query('UPDATE accounts SET credits = credits + $1 WHERE id = $2', [creditCost, accountId]);
+      throw new Error(apCheck.error || `INSUFFICIENT_AP: Upgrade requires ${apCost} AP.`);
+    }
+
+    currentMods[moduleKey] = nextTier;
+    await db.query('UPDATE colonies SET colony_modules = $1::jsonb WHERE id = $2 AND account_id = $3', [
+      JSON.stringify(currentMods),
+      colonyId,
+      accountId,
+    ]);
+
+    const updated = await this.getColonyDetail(colonyId, accountId);
+    return {
+      success: true,
+      colony: updated,
+      moduleKey,
+      newTier: nextTier,
+      message: `${def.name} upgraded to Tier ${nextTier}. Stationed Specialists active.`,
     };
   }
 

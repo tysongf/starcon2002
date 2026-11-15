@@ -1264,6 +1264,11 @@ export class CombatClient {
           }
         } else if (ev.type === 'CONTAINER_SCOOPED') {
           this.callbacks.showApNotification(`📦 ${ev.data?.scavengerName || 'Scavenger'} scooped ${ev.data?.title || 'Canister'}!`, false);
+        } else if (ev.type === 'CASTAWAY_RESCUED') {
+          this.audio.playLootPickupSound();
+          const c = ev.data?.crewMember || ev.data?.crew;
+          const label = c ? `${c.name} (${c.rarity} ${c.specialties?.join('/') || c.primarySpecialty})` : 'Survivor Specialist';
+          this.callbacks.showApNotification(`🛟 CRYO-POD RESCUED // Recruited ${label}`, false);
         } else if (ev.type === 'LIFE_SUPPORT_EXHAUSTED') {
           this.callbacks.showApNotification('⚠️ LIFE SUPPORT EXHAUSTED: Initiating emergency clone recall!', true);
           this.handleEmergencyRecall();

@@ -23,6 +23,7 @@ import { TacticalCommandWheel } from './controllers/TacticalCommandWheel';
 import { StarmapController } from './controllers/StarmapController';
 import { HyperspaceFlightController } from './controllers/HyperspaceFlightController';
 import { MissionBoardController } from './controllers/MissionBoardController';
+import { CrewController } from './controllers/CrewController';
 
 class GameEngine {
   private canvas: HTMLCanvasElement;
@@ -53,6 +54,7 @@ class GameEngine {
   public starmapController!: StarmapController;
   public hyperspaceFlightController!: HyperspaceFlightController;
   public missionBoardController!: MissionBoardController;
+  public crewController!: CrewController;
 
   // Navigation & Sector Jump System (Day 8)
   private currentSectorId: number = 1;
@@ -247,7 +249,7 @@ class GameEngine {
   private viewTabExchange: HTMLElement | null = null;
   private viewTabOutfitting: HTMLElement | null = null;
   private viewTabArmory: HTMLElement | null = null;
-  private activeStationTab: 'exchange' | 'outfitting' | 'armory' | 'contracts' | 'missions' | 'salvage' | 'diplomacy' | 'fleet' = 'exchange';
+  private activeStationTab: 'exchange' | 'outfitting' | 'armory' | 'contracts' | 'missions' | 'salvage' | 'diplomacy' | 'fleet' | 'crew' = 'exchange';
 
   private valFittingPg: HTMLElement | null = null;
   private valFittingCpu: HTMLElement | null = null;
@@ -283,6 +285,8 @@ class GameEngine {
   private viewTabDiplomacy: HTMLElement | null = null;
   private tabBtnFleet: HTMLElement | null = null;
   private viewTabFleet: HTMLElement | null = null;
+  private tabBtnCrew: HTMLElement | null = null;
+  private viewTabCrew: HTMLElement | null = null;
   private btnHudHailTarget: HTMLElement | null = null;
 
   public get activeTruceExpiresAt(): number | null {
@@ -803,6 +807,11 @@ class GameEngine {
     this.tabBtnFleet = document.getElementById('tab-btn-fleet');
     this.viewTabFleet = document.getElementById('view-tab-fleet');
     this.tabBtnFleet?.addEventListener('click', () => this.switchStationTab('fleet'));
+
+    // Milestone 1.5: Procedural Crew & Station Bays Tab
+    this.tabBtnCrew = document.getElementById('tab-btn-crew');
+    this.viewTabCrew = document.getElementById('view-tab-crew');
+    this.tabBtnCrew?.addEventListener('click', () => this.switchStationTab('crew'));
 
     // Day 29: Xenobiology & Genomics Lab Tab & Direct Trigger
     document.getElementById('tab-btn-xenobiology')?.addEventListener('click', () => this.openXenobiologyLab());
@@ -1832,6 +1841,15 @@ class GameEngine {
       getActivePlanet: () => this.activePlanet,
       getActivePlanetDetail: () => this.activePlanetDetail,
       getPlayerAP: () => this.playerAP,
+    });
+
+    this.crewController = new CrewController({
+      audio: this.audio,
+      getAccountId: () => 'acc_sol_captain',
+      getActivePortId: () => this.activePortId,
+      getCurrentSectorId: () => this.currentSectorId,
+      showApNotification: (msg, isErr) => this.showApNotification(msg, !!isErr),
+      refreshPlayerHold: () => this.refreshPlayerHold(),
     });
 
     this.surveyController = new SurveyController({
@@ -2954,7 +2972,7 @@ class GameEngine {
   /**
    * Day 13, 14, 15, 16 & 32: Station Dock Tab Switcher (Exchange / Outfitting / Armory / Contracts / Salvage / Diplomacy / Fleet)
    */
-  public switchStationTab(tab: 'exchange' | 'outfitting' | 'armory' | 'contracts' | 'missions' | 'salvage' | 'diplomacy' | 'fleet'): void {
+  public switchStationTab(tab: 'exchange' | 'outfitting' | 'armory' | 'contracts' | 'missions' | 'salvage' | 'diplomacy' | 'fleet' | 'crew'): void {
     this.activeStationTab = tab as any;
     this.audio.playUiBlip();
 
@@ -2966,6 +2984,7 @@ class GameEngine {
     this.tabBtnSalvage?.classList.toggle('active', tab === 'salvage');
     this.tabBtnDiplomacy?.classList.toggle('active', tab === 'diplomacy');
     this.tabBtnFleet?.classList.toggle('active', tab === 'fleet');
+    this.tabBtnCrew?.classList.toggle('active', tab === 'crew');
 
     this.viewTabExchange?.classList.toggle('hidden', tab !== 'exchange');
     this.viewTabOutfitting?.classList.toggle('hidden', tab !== 'outfitting');
@@ -2975,6 +2994,7 @@ class GameEngine {
     this.viewTabSalvage?.classList.toggle('hidden', tab !== 'salvage');
     this.viewTabDiplomacy?.classList.toggle('hidden', tab !== 'diplomacy');
     this.viewTabFleet?.classList.toggle('hidden', tab !== 'fleet');
+    this.viewTabCrew?.classList.toggle('hidden', tab !== 'crew');
 
     if (tab === 'outfitting') {
       this.loadOutfittingData();
@@ -2991,6 +3011,8 @@ class GameEngine {
       this.refreshAstrometryBureau();
     } else if (tab === 'fleet') {
       this.fleetController.loadFleetData();
+    } else if (tab === 'crew') {
+      this.crewController.loadCrewTab();
     } else if (tab === 'exchange') {
       this.loadPortInventory();
     }
@@ -3009,7 +3031,8 @@ class GameEngine {
       const { fitted, locker, powerGridMax, powerGridUsed, cpuMax, cpuUsed } = data;
       const loadout = fitted || {};
       const lockerList = locker || [];
-      const layout = data.slotLayout || { high: 2, mid: 2, low: 2 };
+      const layout = data.slotLayout || { high: 2, mid: 2, low: 2, bay: 2 };
+      const bayCount = Number(layout.bay ?? 2);
       const techComponents = Number(data.techComponents ?? 25);
 
       // Update Outfitting Chassis Strip & Tech Components Currency
@@ -3018,7 +3041,7 @@ class GameEngine {
       const elTechComp = document.getElementById('outfitting-tech-components');
       const elOutfitCredits = document.getElementById('outfitting-player-credits');
       if (elHullBadge) {
-        elHullBadge.textContent = `${data.mainHullClass || data.shipClass} // ${layout.high}H • ${layout.mid}M • ${layout.low}L`;
+        elHullBadge.textContent = `${data.mainHullClass || data.shipClass} // ${layout.high}H • ${layout.mid}M • ${layout.low}L • ${bayCount} BAY`;
       }
       if (elHullName) {
         elHullName.textContent = `${data.flagshipName || 'UNS Endeavour'} — ${data.hullSubtype || data.shipClass}`;
@@ -3075,13 +3098,14 @@ class GameEngine {
         else this.fittingOverbudgetAlert.classList.add('hidden');
       }
 
-      // Render Dynamic Paperdoll Hardpoints (H1..H3, M1..M3, L1..L3)
+      // Render Dynamic Paperdoll Hardpoints (H1..H6, M1..M6, L1..L6, B1..B8)
       if (this.paperdollSlotsList) {
         this.paperdollSlotsList.innerHTML = '';
-        const slots: Array<{ slot: string; cat: 'HIGH' | 'MID' | 'LOW' }> = [];
+        const slots: Array<{ slot: string; cat: 'HIGH' | 'MID' | 'LOW' | 'BAY' }> = [];
         for (let i = 1; i <= layout.high; i++) slots.push({ slot: `H${i}`, cat: 'HIGH' });
         for (let i = 1; i <= layout.mid; i++) slots.push({ slot: `M${i}`, cat: 'MID' });
         for (let i = 1; i <= layout.low; i++) slots.push({ slot: `L${i}`, cat: 'LOW' });
+        for (let i = 1; i <= bayCount; i++) slots.push({ slot: `B${i}`, cat: 'BAY' });
 
         for (const s of slots) {
           const item = loadout[s.slot];
@@ -3154,8 +3178,8 @@ class GameEngine {
             const pgCost = mod.powerGridCost ?? mod.power_grid_cost ?? 0;
             const cpuCost = mod.cpuCost ?? mod.cpu_cost ?? 0;
 
-            const prefix = cat === 'HIGH' ? 'H' : cat === 'MID' ? 'M' : 'L';
-            const slotCount = cat === 'HIGH' ? layout.high : cat === 'MID' ? layout.mid : layout.low;
+            const prefix = cat === 'HIGH' ? 'H' : cat === 'MID' ? 'M' : cat === 'BAY' ? 'B' : 'L';
+            const slotCount = cat === 'HIGH' ? layout.high : cat === 'MID' ? layout.mid : cat === 'BAY' ? bayCount : layout.low;
             let fitButtonsHtml = '';
             for (let i = 1; i <= slotCount; i++) {
               const sId = `${prefix}${i}`;

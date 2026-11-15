@@ -44,6 +44,7 @@ export interface CaptainDialogOption {
     | 'ACCEPT_RUMOR'
     | 'BARTER_FUEL'
     | 'BARTER_SALVAGE'
+    | 'RECRUIT_SPECIALIST'
     | 'BRIBE_CREDITS'
     | 'BRIBE_FUEL'
     | 'BLUFF'
@@ -299,6 +300,12 @@ function buildCaptainTree(params: {
           actionType: 'BARTER_SALVAGE',
           standingDelta: 2,
           hintTag: '+140 CR',
+        },
+        {
+          id: 'OPT_RECRUIT_CREW',
+          label: '🤝 Recruit Shipboard Specialist from their Crew',
+          actionType: 'RECRUIT_SPECIALIST',
+          hintTag: 'CREW HIRE',
         },
         {
           id: 'OPT_BARTER_BACK',

@@ -13,6 +13,11 @@ import {
   computeMiningCapabilities,
   generateSectorAsteroids,
 } from '../procgen/MiningOreCatalog';
+import {
+  generateProceduralCrewCandidate,
+  type CrewComputedBonuses,
+} from '../procgen/CrewCatalog';
+import { crewService } from './CrewService';
 import { db } from '../db/Database';
 
 export const contractService = new ContractService();
@@ -131,6 +136,7 @@ export interface SectorEntity {
   asteroidMiningTimer?: number;
   miningHeat?: number;
   miningProfile?: MiningCapabilities;
+  crewBonuses?: CrewComputedBonuses;
   miningBusy?: boolean;
   rarePrecisionCompletions?: number;
   lastAmbushAt?: number;
@@ -204,7 +210,7 @@ export interface Projectile {
 }
 
 export interface CombatEvent {
-  type: 'HIT' | 'SHIELD_BREAK' | 'DESTROYED' | 'LOOT_SPAWNED' | 'LOOT_COLLECTED' | 'POD_EJECTED' | 'CONTAINER_SCOOPED' | 'WRECK_SPAWNED' | 'TOW_ATTACHED' | 'TOW_RELEASED' | 'SALVAGE_BEAM_TICK' | 'WRECK_DISINTEGRATED' | 'TRUCE_DECLARED' | 'TRUCE_BROKEN' | 'LIFE_SUPPORT_EXHAUSTED' | 'WARP_SPOOL_STARTED' | 'WARP_SPOOL_INTERRUPTED' | 'WARP_JUMP_SUCCESS' | 'CONVOY_SURRENDERED' | 'COMMS_ABORTED' | 'AMBUSH_TRIGGERED' | 'AMBUSH_CLEARED' | 'ESCORT_FAILED' | 'ALLEGIANCE_DECLARED' | 'COMBAT_BOND_AWARDED' | 'SKIRMISH_VICTORY' | 'TACTICAL_ORDER_ISSUED' | 'WINGMAN_DESTROYED' | 'ABILITY_TRIGGERED' | 'MINING_BEAM_TICK' | 'MINING_YIELD' | 'CARGO_HOLD_FULL' | 'THERMAL_VENT_WARNING' | 'THERMAL_VENT_ERUPTION' | 'MINING_AMBUSH' | 'ASTEROID_FRACTURED' | 'ASTEROID_DEPLETED';
+  type: 'HIT' | 'SHIELD_BREAK' | 'DESTROYED' | 'LOOT_SPAWNED' | 'LOOT_COLLECTED' | 'POD_EJECTED' | 'CONTAINER_SCOOPED' | 'WRECK_SPAWNED' | 'TOW_ATTACHED' | 'TOW_RELEASED' | 'SALVAGE_BEAM_TICK' | 'WRECK_DISINTEGRATED' | 'TRUCE_DECLARED' | 'TRUCE_BROKEN' | 'LIFE_SUPPORT_EXHAUSTED' | 'WARP_SPOOL_STARTED' | 'WARP_SPOOL_INTERRUPTED' | 'WARP_JUMP_SUCCESS' | 'CONVOY_SURRENDERED' | 'COMMS_ABORTED' | 'AMBUSH_TRIGGERED' | 'AMBUSH_CLEARED' | 'ESCORT_FAILED' | 'ALLEGIANCE_DECLARED' | 'COMBAT_BOND_AWARDED' | 'SKIRMISH_VICTORY' | 'TACTICAL_ORDER_ISSUED' | 'WINGMAN_DESTROYED' | 'ABILITY_TRIGGERED' | 'MINING_BEAM_TICK' | 'MINING_YIELD' | 'CARGO_HOLD_FULL' | 'THERMAL_VENT_WARNING' | 'THERMAL_VENT_ERUPTION' | 'MINING_AMBUSH' | 'ASTEROID_FRACTURED' | 'ASTEROID_DEPLETED' | 'CASTAWAY_RESCUED';
 
   sourceId?: string;
   targetId?: string;
@@ -1319,6 +1325,17 @@ export class SectorRoom {
     } catch {
       // Ignore closed socket
     }
+
+    // Milestone 1.5: Load player's stationed crew bonuses asynchronously
+    crewService
+      .getRosterSummary(playerId)
+      .then((overview) => {
+        const ent = this.entities.get(entityId);
+        if (ent) {
+          ent.crewBonuses = overview.bonuses;
+        }
+      })
+      .catch(() => {});
 
     // Day 36: Initialize Session AAR Tracker for this player
     if (!this.sessionAAR.has(playerId)) {
@@ -2476,13 +2493,14 @@ export class SectorRoom {
         this.spawnMiningAmbush(entity);
       }
 
-      entity.asteroidMiningTimer = (entity.asteroidMiningTimer || 0) + dt;
+      entity.asteroidMiningTimer = (entity.asteroidMiningTimer || 0) + dt * (1 + (entity.crewBonuses?.miningSpeedBonus || 0));
       if (entity.asteroidMiningTimer >= 0.5 && !entity.miningBusy) {
         entity.asteroidMiningTimer = 0;
         const rawUnits = Math.min(ast.remainingYield, profile.unitsPerTick);
         if (rawUnits <= 0) continue;
 
-        const deliveredQty = Math.max(1, Math.round(rawUnits * profile.yieldMultiplier));
+        const crewYieldMult = 1 + (entity.crewBonuses?.miningYieldBonus || 0);
+        const deliveredQty = Math.max(1, Math.round(rawUnits * profile.yieldMultiplier * crewYieldMult));
         const playerId = entity.id.replace('player_', '');
         entity.miningBusy = true;
 
@@ -2716,6 +2734,11 @@ export class SectorRoom {
     let accel = isEscapePod ? 8.0 : entity.type === 'HAULER' ? 6.0 : entity.type === 'DRONE' ? 18.0 : entity.type === 'SCAVENGER' ? 14.0 : entity.type === 'WINGMAN' ? 24.0 : 22.0;
     const turnAccel = isEscapePod ? 2.0 : entity.type === 'HAULER' ? 1.4 : entity.type === 'SCAVENGER' ? 2.8 : entity.type === 'WINGMAN' ? 3.4 : 3.6;
     let maxSpeed = isEscapePod ? 13.0 : entity.type === 'HAULER' ? 10.0 : entity.type === 'DRONE' ? 24.0 : entity.type === 'SCAVENGER' ? 18.0 : entity.type === 'WINGMAN' ? 30.0 : 28.0;
+    if (entity.type === 'PLAYER' && entity.crewBonuses?.flightSpeedBonus) {
+      const spdMult = 1 + entity.crewBonuses.flightSpeedBonus;
+      accel *= spdMult;
+      maxSpeed *= spdMult;
+    }
 
     // Day 14: Emergency Life Support countdown for Escape Pods
     if (isEscapePod && typeof entity.lifeSupportSeconds === 'number') {
@@ -3621,6 +3644,7 @@ export class SectorRoom {
       return;
     }
 
+    const projBefore = this.projectiles.length;
     const weaponId = (entity.inputs.activeWeaponId as 'PULSE' | 'PLASMA' | 'FLAK' | 'RAIL' | 'TORPEDO') || 'PULSE';
     const forwardX = Math.sin(entity.yaw);
     const forwardZ = Math.cos(entity.yaw);
@@ -3720,6 +3744,15 @@ export class SectorRoom {
         color: '#00f0ff',
         projType: 'PULSE',
       });
+    }
+
+    if (entity.type === 'PLAYER' && entity.crewBonuses) {
+      const dmgMult = 1 + (entity.crewBonuses.weaponDamageBonus || 0);
+      const cdMult = Math.max(0.55, 1 - (entity.crewBonuses.fireCadenceBonus || 0));
+      entity.fireCooldown *= cdMult;
+      for (let i = projBefore; i < this.projectiles.length; i++) {
+        this.projectiles[i].damage = Math.round(this.projectiles[i].damage * dmgMult);
+      }
     }
   }
 
@@ -4318,16 +4351,27 @@ export class SectorRoom {
         const drop = LootGenerator.generateDrop(catalog);
         const containerId = `loot_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
 
+        const items: any[] = [
+          drop,
+          { name: 'Composite Alloy Scrap', quantity: 18, category: 'COMMODITY', unitValue: 120 },
+        ];
+        if (Math.random() < 0.35) {
+          items.push({
+            type: 'CASTAWAY',
+            name: 'Emergency Cryo-Pod Survivor',
+            factionId: target.factionId || 'FACTION_SOL',
+            originLabel: `${target.name} Wreckage`,
+            seed: Math.floor(Date.now() % 100000000) + Math.floor(Math.random() * 9999),
+          });
+        }
+
         const container: SectorLootContainer = {
           id: containerId,
           x: Math.round(target.x * 10) / 10,
           z: Math.round(target.z * 10) / 10,
           title: `${target.name.split(' ')[0]} Salvage Canister`,
           rarity: drop.rarity,
-          items: [
-            drop,
-            { name: 'Composite Alloy Scrap', quantity: 18, category: 'COMMODITY', unitValue: 120 },
-          ],
+          items,
           createdAt: Date.now(),
         };
 
@@ -4363,6 +4407,7 @@ export class SectorRoom {
     if (dist > maxScoop) return null;
 
     let anyRemaining = false;
+    const rescuedCrew: any[] = [];
     for (const item of container.items) {
       if (item.type === 'ORE' && item.commodityId) {
         const res = await tradeService.addMinedOreToCargo(playerId, item.commodityId, Number(item.quantity || 1));
@@ -4379,8 +4424,37 @@ export class SectorRoom {
             },
           });
         }
+      } else if (item.type === 'CASTAWAY') {
+        const candidate = generateProceduralCrewCandidate({
+          listingId: `RESCUE_${containerId}`,
+          seed: Number(item.seed || Date.now()),
+          factionId: item.factionId || 'FACTION_SOL',
+          originSource: 'RESCUE_POD',
+          originLabel: item.originLabel || container.title,
+        });
+        const enrolled = await crewService.enrollEncounterCrew(playerId, candidate);
+        rescuedCrew.push(enrolled);
+        this.pendingEvents.push({
+          type: 'CASTAWAY_RESCUED',
+          targetId: pEntity.id,
+          x: container.x,
+          z: container.z,
+          data: {
+            crewMember: enrolled,
+            containerId,
+          },
+        });
       } else if (item.blueprintId) {
         await outfittingService.addLootToPlayer(playerId, item);
+      }
+    }
+
+    if (rescuedCrew.length > 0) {
+      const sock = this.clients.get(playerId);
+      if (sock && sock.readyState === 1) {
+        try {
+          sock.send(JSON.stringify({ type: 'CASTAWAY_RESCUED', crewMembers: rescuedCrew }));
+        } catch {}
       }
     }
 

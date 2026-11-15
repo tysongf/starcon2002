@@ -194,6 +194,37 @@ export const combatRoutes: FastifyPluginAsync = async (server) => {
     reply.send({ success: true, asteroids: room.serializeAsteroids(), containers: room.containers });
   });
 
+  // Deterministic Ship-to-Ship Castaway Pod Encounter setup for debugging & regression verification
+  server.post('/api/combat/debug/castaway-setup', async (req, reply) => {
+    const body = (req.body || {}) as { playerId?: string; sectorId?: number; factionId?: string };
+    const playerId = body.playerId || 'acc_sol_captain';
+    const sectorId = Number(body.sectorId || 2);
+    const room = combatManager.getOrCreateRoom(sectorId);
+    const pEntity = room.entities.get(`player_${playerId}`);
+    const px = pEntity ? pEntity.x : 0;
+    const pz = pEntity ? pEntity.z : 0;
+    const containerId = `castaway_pod_${Date.now()}`;
+    const container = {
+      id: containerId,
+      x: Math.round((px + 8) * 10) / 10,
+      z: Math.round((pz + 8) * 10) / 10,
+      title: 'Distress Cryo-Pod Capsule',
+      rarity: 'RARE' as const,
+      items: [
+        {
+          type: 'CASTAWAY',
+          name: 'Stranded Officer Cryo-Capsule',
+          factionId: body.factionId || 'FACTION_MINERS_GUILD',
+          originLabel: 'Disabled Ore Hauler Cryo-Pod',
+          seed: 441122,
+        },
+      ],
+      createdAt: Date.now(),
+    };
+    room.containers.push(container);
+    reply.send({ success: true, containerId, container });
+  });
+
   // Persistent Wrecks & In-Situ Salvage
   server.get('/api/combat/wrecks', async (req, reply) => {
     const query = (req.query || {}) as { sectorId?: string };

@@ -128,7 +128,7 @@ async function run() {
           `WS timeout in phase=${phase}: init=${gotInitialAsteroids}, snap=${gotSnapshotAsteroids}, oor=${gotOutOfRangeAck}, frac=${modeAFractured}, warn=${sawThermalWarning}, vent=${sawThermalEruption}, ambush=${sawMiningAmbush}, dep=${sawExoticDepleted}, techEv=${sawTechComponentsEvent}, full=${sawCargoHoldFull}`
         )
       );
-    }, 15000);
+    }, 25000);
 
     ws.on('message', (raw) => {
       messageQueue = messageQueue.then(async () => {

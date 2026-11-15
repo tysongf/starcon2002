@@ -902,7 +902,7 @@ export class ShipyardService {
 
       return {
         ...h,
-        slotLayout: { high: h.highSlots, mid: h.midSlots, low: h.lowSlots },
+        slotLayout: { high: h.highSlots, mid: h.midSlots, low: h.lowSlots, bay: h.baySlots },
         effectiveCreditCost: effCredit,
         effectiveApCost: effAP,
         effectiveAlloyCost: effAlloy,

@@ -1,6 +1,8 @@
 import { db } from '../db/Database';
 import { reputationService } from './ReputationService';
 import { GalacticMissionRecord, galacticMissionService } from './GalacticMissionService';
+import { crewService } from './CrewService';
+import { generateProceduralCrewCandidate } from '../procgen/CrewCatalog';
 import {
   CanonicalFactionId,
   CaptainDialogOption,
@@ -324,6 +326,70 @@ export class FrontierCaptainService {
         customMood = 'FRIENDLY';
         notification = `📡 Sold nav telemetry (+140 Cr, +2 Standing)`;
         break;
+      }
+
+      case 'RECRUIT_SPECIALIST': {
+        const listingId = `CREW_HAIL_${params.sectorId}_${profile.captainKey}`;
+        const claimRes = await db.query<any>(
+          'SELECT 1 FROM crew_market_claims WHERE account_id = $1 AND listing_id = $2',
+          [accountId, listingId]
+        );
+        if (claimRes.rows.length > 0) {
+          nextNodeId = 'BARTER';
+          customText = `No spare officers left to spare from ${profile.vesselName}'s manifest, Captain.`;
+          customMood = 'CAUTIOUS';
+          break;
+        }
+
+        let seed = 918273;
+        for (let i = 0; i < listingId.length; i++) {
+          seed = (Math.imul(seed, 33) + listingId.charCodeAt(i)) >>> 0;
+        }
+        const standingMap = await this.getStandingMap(accountId);
+        const curStanding = standingMap.get(profile.factionId) ?? 0;
+        const rosterInfo = await crewService.getRosterSummary(accountId).catch(() => null);
+        const diplDiscount = Math.max(0.75, 1 - (rosterInfo?.bonuses?.reputationGainBonus || 0) * 0.4);
+        const candidate = generateProceduralCrewCandidate({
+          listingId,
+          seed,
+          factionId: profile.factionId,
+          minRarity: curStanding >= 15 ? 'UNCOMMON' : 'COMMON',
+          originSource: 'CAPTAIN_HAIL',
+          originLabel: `${profile.vesselName} Transfer`,
+          discountMultiplier: diplDiscount,
+        });
+
+        const accRes = await db.query<{ credits: number }>('SELECT credits FROM accounts WHERE id = $1', [accountId]);
+        const curCredits = Number(accRes.rows[0]?.credits || 0);
+        if (curCredits < candidate.hiringFee) {
+          nextNodeId = 'BARTER';
+          customText = `Transferring ${candidate.name} (${candidate.rarity} ${candidate.primarySpecialty}) requires a ${candidate.hiringFee} Cr buyout, but you hold ${curCredits} Cr.`;
+          customMood = 'CAUTIOUS';
+          break;
+        }
+
+        remainingCredits = curCredits - candidate.hiringFee;
+        await db.query('UPDATE accounts SET credits = $1 WHERE id = $2', [remainingCredits, accountId]);
+        await db.query(
+          'INSERT INTO crew_market_claims (account_id, listing_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+          [accountId, listingId]
+        );
+        const enrolled = await crewService.enrollEncounterCrew(accountId, candidate);
+        nextNodeId = 'GREETING';
+        customText = `Signed transfer papers for ${enrolled.name} (${enrolled.rarity} ${enrolled.specialties.join('/')}) aboard your ship!`;
+        customMood = 'FRIENDLY';
+        notification = `🤝 Recruited ${enrolled.name} (${enrolled.specialties.join(', ')}) for ${candidate.hiringFee} Cr`;
+        return {
+          success: true,
+          actionType: chosen.actionType,
+          nextNodeId,
+          node: profile.nodes[nextNodeId] || profile.nodes.GREETING,
+          customText,
+          customMood,
+          remainingCredits,
+          crewRecruited: enrolled,
+          notification,
+        } as any;
       }
 
       case 'BRIBE_CREDITS': {

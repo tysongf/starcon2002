@@ -1,4 +1,5 @@
 import { db } from '../db/Database';
+import { crewService } from './CrewService';
 
 export interface BiosphereTierDef {
   tier: number;
@@ -266,8 +267,10 @@ export class XenobiologyService {
       );
     }
 
-    // 3. Award Bio-Data points (15 points per specimen)
-    const pointsAwarded = quantity * 15;
+    // 3. Award Bio-Data points (15 points per specimen, boosted by Research Bay & Science Officers)
+    const crewOverview = await crewService.getRosterSummary(accountId).catch(() => null);
+    const bioMult = 1 + (crewOverview?.bonuses?.researchBioDataBonus || 0);
+    const pointsAwarded = Math.max(1, Math.round(quantity * 15 * bioMult));
 
     // 4. Update species mastery
     const lab = await this.getLabStatus(accountId);

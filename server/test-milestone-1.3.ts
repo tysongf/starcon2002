@@ -157,7 +157,7 @@ async function run() {
   assert.equal(promRes.status, 200);
   assert.equal(promRes.data.activeFlagship.hullClass, 'MINERS_EXTRACTOR');
   assert.equal(promRes.data.activeFlagship.mainHullClass, 'INDUSTRIAL_EXTRACTOR');
-  assert.deepEqual(promRes.data.activeFlagship.slotLayout, { high: 1, mid: 3, low: 3 });
+  assert.deepEqual(promRes.data.activeFlagship.slotLayout, { high: 1, mid: 3, low: 3, bay: 4 });
   assert.ok(promRes.data.activeFlagship.cargoCapacity > 280, 'Miners Extractor must carry high industrial tonnage');
   console.log('✓ Commissioned & Promoted MINERS_EXTRACTOR Flagship (1H/3M/3L)');
 

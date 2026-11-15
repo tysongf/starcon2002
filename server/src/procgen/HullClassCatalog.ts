@@ -32,6 +32,7 @@ export interface HullSubtypeDef {
   highSlots: 1 | 2 | 3;
   midSlots: 1 | 2 | 3;
   lowSlots: 1 | 2 | 3;
+  baySlots: number;
   powerGridMax: number;
   cpuMax: number;
   baseArmor: number;
@@ -61,6 +62,7 @@ interface MainClassBaseline {
   highSlots: 1 | 2 | 3;
   midSlots: 1 | 2 | 3;
   lowSlots: 1 | 2 | 3;
+  baySlots: number;
   powerGridMax: number;
   cpuMax: number;
   baseArmor: number;
@@ -89,6 +91,7 @@ const MAIN_CLASS_BASELINES: readonly MainClassBaseline[] = [
     highSlots: 2,
     midSlots: 2,
     lowSlots: 1,
+    baySlots: 1,
     powerGridMax: 105,
     cpuMax: 175,
     baseArmor: 100,
@@ -115,6 +118,7 @@ const MAIN_CLASS_BASELINES: readonly MainClassBaseline[] = [
     highSlots: 2,
     midSlots: 2,
     lowSlots: 2,
+    baySlots: 2,
     powerGridMax: 120,
     cpuMax: 185,
     baseArmor: 115,
@@ -141,6 +145,7 @@ const MAIN_CLASS_BASELINES: readonly MainClassBaseline[] = [
     highSlots: 2,
     midSlots: 3,
     lowSlots: 2,
+    baySlots: 3,
     powerGridMax: 145,
     cpuMax: 225,
     baseArmor: 150,
@@ -167,6 +172,7 @@ const MAIN_CLASS_BASELINES: readonly MainClassBaseline[] = [
     highSlots: 1,
     midSlots: 2,
     lowSlots: 3,
+    baySlots: 4,
     powerGridMax: 140,
     cpuMax: 205,
     baseArmor: 175,
@@ -193,6 +199,7 @@ const MAIN_CLASS_BASELINES: readonly MainClassBaseline[] = [
     highSlots: 1,
     midSlots: 3,
     lowSlots: 3,
+    baySlots: 4,
     powerGridMax: 155,
     cpuMax: 220,
     baseArmor: 200,
@@ -219,6 +226,7 @@ const MAIN_CLASS_BASELINES: readonly MainClassBaseline[] = [
     highSlots: 3,
     midSlots: 2,
     lowSlots: 2,
+    baySlots: 5,
     powerGridMax: 175,
     cpuMax: 235,
     baseArmor: 180,
@@ -245,6 +253,7 @@ const MAIN_CLASS_BASELINES: readonly MainClassBaseline[] = [
     highSlots: 3,
     midSlots: 2,
     lowSlots: 3,
+    baySlots: 6,
     powerGridMax: 195,
     cpuMax: 270,
     baseArmor: 215,
@@ -271,6 +280,7 @@ const MAIN_CLASS_BASELINES: readonly MainClassBaseline[] = [
     highSlots: 3,
     midSlots: 3,
     lowSlots: 3,
+    baySlots: 8,
     powerGridMax: 220,
     cpuMax: 295,
     baseArmor: 250,
@@ -479,6 +489,7 @@ function synthesizeHullDef(
     highSlots: ov.highSlots ?? baseline.highSlots,
     midSlots: ov.midSlots ?? baseline.midSlots,
     lowSlots: ov.lowSlots ?? baseline.lowSlots,
+    baySlots: ov.baySlots ?? baseline.baySlots,
     powerGridMax: ov.powerGridMax ?? Math.round(baseline.powerGridMax * d.powerGridMult),
     cpuMax: ov.cpuMax ?? Math.round(baseline.cpuMax * d.cpuMult),
     baseArmor: ov.baseArmor ?? Math.round(baseline.baseArmor * d.armorMult),

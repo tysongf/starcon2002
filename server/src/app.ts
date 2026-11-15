@@ -24,6 +24,7 @@ import { fleetRoutes } from './routes/fleetRoutes';
 import { starmapRoutes } from './routes/starmapRoutes';
 import { missionRoutes } from './routes/missionRoutes';
 import { captainRoutes } from './routes/captainRoutes';
+import { crewRoutes } from './routes/crewRoutes';
 import { galacticMissionService } from './services/GalacticMissionService';
 
 export async function buildApp(options: FastifyServerOptions = {}): Promise<FastifyInstance> {
@@ -117,6 +118,7 @@ export async function buildApp(options: FastifyServerOptions = {}): Promise<Fast
   await server.register(starmapRoutes, { prefix: '/api/starmap' });
   await server.register(missionRoutes, { prefix: '/api/missions' });
   await server.register(captainRoutes, { prefix: '/api/captains' });
+  await server.register(crewRoutes, { prefix: '/api/crew' });
 
   return server;
 }

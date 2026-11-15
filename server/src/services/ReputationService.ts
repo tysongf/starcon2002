@@ -1,4 +1,5 @@
 import { db } from '../db/Database';
+import { crewService } from './CrewService';
 import {
   ALL_FACTION_IDS,
   FACTION_REGISTRY,
@@ -174,13 +175,23 @@ export class ReputationService {
     reason: string
   ): Promise<{ updatedStandings: FactionStanding[]; logMessage: string }> {
     const normalizedPrimary = normalizeFactionId(primaryFactionId);
+    let effectiveAmount = amount;
+    if (amount > 0) {
+      try {
+        const roster = await crewService.getRosterSummary(accountId);
+        const diplMult = 1 + (roster.bonuses.reputationGainBonus || 0);
+        effectiveAmount = Math.max(amount, Math.round(amount * diplMult));
+      } catch {
+        effectiveAmount = amount;
+      }
+    }
     // Current primary score
     const curRes = await db.query<any>(
       `SELECT standing FROM faction_standings WHERE account_id = $1 AND faction_id = $2`,
       [accountId, normalizedPrimary]
     );
     const curScore = parseInt(curRes.rows[0]?.standing || '0', 10);
-    const newScore = Math.max(-100, Math.min(100, curScore + amount));
+    const newScore = Math.max(-100, Math.min(100, curScore + effectiveAmount));
 
     await db.query(
       `INSERT INTO faction_standings (account_id, faction_id, standing)
@@ -192,7 +203,7 @@ export class ReputationService {
     // Cascading cross-faction standing offsets sourced from FactionRegistry
     const cascades = FACTION_REGISTRY[normalizedPrimary].cascades.map((rule) => ({
       fid: rule.targetFactionId,
-      delta: Math.round(amount * rule.multiplier),
+      delta: Math.round(effectiveAmount * rule.multiplier),
     }));
 
     for (const casc of cascades) {

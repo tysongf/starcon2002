@@ -98,8 +98,18 @@ async function runTests() {
   assert.ok(detData.colony.productionRatePerMinute > 0, 'Production rate should be positive');
   console.log(` -> Telemetry Verified: Rate = ${detData.colony.productionRatePerMinute} units/min, Stockpile = ${detData.colony.stockpiledAmount}/${detData.colony.siloCapacity}`);
 
-  // 6. Upgrade Extraction Derrick to Tier 2
-  console.log('[Test 6] Upgrade Extraction Derrick to Tier 2...');
+  // 6. Upgrade Extraction Derrick to Tier 2 (station Miner + Merchant specialists per Milestone 1.5 gating)
+  console.log('[Test 6] Station Colony Specialists & Upgrade Extraction Derrick to Tier 2...');
+  await fetch(`${BASE_URL}/api/crew/debug-seed`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ accountId: 'acc_sol_captain', specialties: ['Miner'], assignColonyId: colony.id }),
+  });
+  await fetch(`${BASE_URL}/api/crew/debug-seed`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ accountId: 'acc_sol_captain', specialties: ['Merchant'], assignColonyId: colony.id }),
+  });
   const upDerrickRes = await fetch(`${BASE_URL}/api/colonies/${colony.id}/upgrade`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

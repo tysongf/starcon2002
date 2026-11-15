@@ -547,6 +547,7 @@ export class CommsController {
         const outcome = await res.json();
 
         if (outcome.notification) {
+          if (outcome.crewRecruited) this.audio.playLootPickupSound();
           this.callbacks.showApNotification(outcome.notification, false);
           this.callbacks.refreshPlayerHold();
           this.refreshFactionStandings();

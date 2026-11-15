@@ -9452,3 +9452,224 @@ kbd {
   border-color: #22d3ee !important;
   color: #67e8f9 !important;
 }
+
+/* Milestone 1.5: Procedural Crew, Ship Station Bays & Colony Specialty Modules */
+.slot-tag-badge.bay {
+  background: rgba(139, 92, 246, 0.2);
+  border-color: #a78bfa;
+  color: #ddd6fe;
+}
+
+.crew-payroll-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.85rem;
+  background: rgba(15, 23, 42, 0.78);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  border-radius: 8px;
+}
+
+.crew-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-bottom: 0.45rem;
+}
+
+.crew-arrears-pill {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 4px;
+  border: 1px solid rgba(52, 211, 153, 0.45);
+  color: #6ee7b7;
+  background: rgba(6, 78, 59, 0.45);
+}
+
+.crew-arrears-pill.alert {
+  border-color: rgba(248, 113, 113, 0.7);
+  color: #fecaca;
+  background: rgba(127, 29, 29, 0.55);
+}
+
+.crew-bonus-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.crew-bonus-chip {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  padding: 0.18rem 0.5rem;
+  border-radius: 4px;
+  background: rgba(30, 41, 59, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  color: #cbd5e1;
+}
+
+.crew-payroll-right {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.crew-main-grid {
+  display: grid;
+  grid-template-columns: 1.15fr 0.85fr;
+  gap: 0.9rem;
+}
+
+.crew-panel-col {
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 8px;
+  padding: 0.75rem;
+  max-height: 58vh;
+  overflow-y: auto;
+}
+
+.crew-stations-list,
+.crew-roster-list,
+.crew-market-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin-top: 0.5rem;
+}
+
+.crew-station-card,
+.crew-member-card {
+  padding: 0.6rem 0.75rem;
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.88);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.crew-station-card.occupied {
+  border-color: rgba(56, 189, 248, 0.45);
+}
+
+.crew-station-head,
+.crew-member-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.crew-occupant-row,
+.crew-specialties-row,
+.crew-stats-row,
+.crew-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  margin-top: 0.4rem;
+  font-size: 0.76rem;
+}
+
+.crew-spec-pill {
+  padding: 0.14rem 0.45rem;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  background: rgba(14, 116, 144, 0.35);
+  border: 1px solid rgba(34, 211, 238, 0.45);
+  color: #a5f3fc;
+}
+
+.crew-trait-tag {
+  font-size: 0.7rem;
+  color: #fde68a;
+}
+
+.crew-wage-tag {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: #94a3b8;
+}
+
+.crew-vacant-notice {
+  margin-top: 0.35rem;
+  font-size: 0.72rem;
+  color: #64748b;
+}
+
+.crew-action-btn {
+  padding: 0.38rem 0.75rem;
+  border-radius: 5px;
+  font-family: var(--font-header);
+  font-size: 0.72rem;
+  letter-spacing: 0.05em;
+  border: 1px solid #38bdf8;
+  background: rgba(14, 116, 144, 0.4);
+  color: #e0f2fe;
+  cursor: pointer;
+}
+
+.crew-action-btn.success {
+  border-color: #34d399;
+  background: rgba(6, 95, 70, 0.5);
+  color: #d1fae5;
+}
+
+.colony-workforce-root {
+  margin-top: 1rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid rgba(56, 189, 248, 0.25);
+}
+
+.colony-crew-strip,
+.colony-candidates-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.45rem;
+}
+
+.colony-crew-chip,
+.colony-cand-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.45rem 0.65rem;
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  font-size: 0.75rem;
+}
+
+.colony-assign-bar {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  align-items: center;
+}
+
+.colony-modules-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.6rem;
+  margin-top: 0.5rem;
+}
+
+.colony-req-line {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  margin: 0.25rem 0 0.4rem;
+}
+
+.colony-req-line.met {
+  color: #6ee7b7;
+}
+
+.colony-req-line.unmet {
+  color: #fca5a5;
+}

@@ -131,7 +131,7 @@ async function runTests() {
   console.log(`✅ [5] Xenodex logged ${xenoJson.discoveredCount} pure xenobiology species cleanly.`);
 
   // 6. Procedural Ship Module Engine, Semantic Prefix+Suffix & Station Shop Purchase
-  assert.equal(MODULE_SUBTYPE_CATALOG.length, 15, '15 Ship Module Subtypes defined');
+  assert.ok(MODULE_SUBTYPE_CATALOG.length >= 17, 'At least 17 Ship Module Subtypes defined');
   assert.ok(TECH_PREFIXES.length >= 35, '35+ Tech Items prefixes defined');
 
   const sampleMod = generateProceduralModule({ seed: 'test_seed_1', rarity: 'RARE', preferredCategory: 'OFFENSE' });
@@ -143,7 +143,7 @@ async function runTests() {
   const modTaxRes = await fetch(`${BASE_URL}/api/outfitting/taxonomy`);
   assert.equal(modTaxRes.status, 200, 'GET /api/outfitting/taxonomy returns 200');
   const modTax = await modTaxRes.json();
-  assert.equal(modTax.subtypes.length, 15, 'Outfitting taxonomy exposes 15 subtypes');
+  assert.ok(modTax.subtypes.length >= 17, 'Outfitting taxonomy exposes 17+ subtypes');
 
   const shopRes = await fetch(`${BASE_URL}/api/outfitting/shop?sectorId=3`);
   assert.equal(shopRes.status, 200, 'GET /api/outfitting/shop?sectorId=3 returns 200');

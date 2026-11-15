@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { db } from '../db/Database';
 import { colonyService } from '../services/ColonyService';
 import { shipyardService } from '../services/ShipyardService';
+import { COLONY_MODULES, COLONY_FACILITY_CREW_REQUIREMENTS, type ColonyModuleKey } from '../procgen/CrewCatalog';
 
 export const colonyRoutes: FastifyPluginAsync = async (server) => {
   // Found Colony Outpost
@@ -57,6 +58,28 @@ export const colonyRoutes: FastifyPluginAsync = async (server) => {
     const accountId = body.accountId || 'acc_sol_captain';
     try {
       const result = await colonyService.upgradeFacility(colonyId, accountId, body.facilityType);
+      reply.send(result);
+    } catch (err: any) {
+      reply.status(400).send({ success: false, error: err.message });
+    }
+  });
+
+  // Colony Modules Catalog & Crew Requirements
+  server.get('/api/colonies/modules/catalog', async (_req, reply) => {
+    reply.send({
+      success: true,
+      modules: COLONY_MODULES,
+      facilityRequirements: COLONY_FACILITY_CREW_REQUIREMENTS,
+    });
+  });
+
+  // Upgrade Specialty Colony Module
+  server.post('/api/colonies/:colonyId/modules/upgrade', async (req, reply) => {
+    const { colonyId } = req.params as { colonyId: string };
+    const body = (req.body || {}) as { accountId?: string; moduleKey: ColonyModuleKey };
+    const accountId = body.accountId || 'acc_sol_captain';
+    try {
+      const result = await colonyService.upgradeColonyModule(colonyId, accountId, body.moduleKey);
       reply.send(result);
     } catch (err: any) {
       reply.status(400).send({ success: false, error: err.message });

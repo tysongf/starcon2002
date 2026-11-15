@@ -370,8 +370,14 @@ export class TradeService {
         0.06
       );
       const repMultiplier = await reputationService.calculateMarketMultiplier(playerId, port.faction_id);
-      const effectiveBuyPrice = Math.round(buyPrice * repMultiplier);
-      const effectiveSellPrice = Math.max(1, Math.round(sellPrice / repMultiplier));
+      let tradeBonus = 0;
+      try {
+        const { crewService } = await import('./CrewService');
+        const overview = await crewService.getRosterSummary(playerId);
+        tradeBonus = overview.bonuses.tradeMarginBonus || 0;
+      } catch {}
+      const effectiveBuyPrice = Math.max(1, Math.round(buyPrice * repMultiplier * (1 - tradeBonus * 0.5)));
+      const effectiveSellPrice = Math.max(1, Math.round((sellPrice / repMultiplier) * (1 + tradeBonus)));
 
       // 5. Fetch Hold & Credit Status
       const hold = await this.getPlayerHold(playerId);

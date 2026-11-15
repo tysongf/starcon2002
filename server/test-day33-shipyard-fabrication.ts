@@ -229,6 +229,12 @@ async function runDay33ShipyardTests() {
     assert(foundRes.ok, 'Colony founded on Aegis Prime');
     const colonyId = (await foundRes.json()).colony.id;
 
+    // Station 1x Mechanic specialist to authorize Tier 1 Orbital Shipyard Gantry
+    await fetch(`${BASE_URL}/api/crew/debug-seed`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accountId: PLAYER_ID, specialties: ['Mechanic'], assignColonyId: colonyId }),
+    });
     // Upgrade Shipyard to Tier 1 (Light Frigate Slipway, costs 500 Cr, 4 AP)
     const upShipyard1Res = await fetch(`${BASE_URL}/api/colonies/${colonyId}/shipyard/upgrade`, {
       method: 'POST',
@@ -333,6 +339,12 @@ async function runDay33ShipyardTests() {
     // Phase 9: Capital Slipway Tier 2 Upgrade & Heavy Hull Commission
     // -------------------------------------------------------------------------
     console.log('--- Phase 9: Capital Slipway Tier 2 Upgrade & Interdictor Fabrication ---');
+    // Station 2nd specialist (Engineer) to authorize Tier 2 Capital Slipway
+    await fetch(`${BASE_URL}/api/crew/debug-seed`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accountId: PLAYER_ID, specialties: ['Engineer'], assignColonyId: colonyId }),
+    });
     // Upgrade Colony Shipyard to Tier 2 (costs 1,200 Cr, 8 AP)
     const upShipyard2Res = await fetch(`${BASE_URL}/api/colonies/${colonyId}/shipyard/upgrade`, {
       method: 'POST',
