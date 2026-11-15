@@ -32,8 +32,21 @@ async function runDay12WeaponsSuite() {
     });
   });
 
+  const waitFor = async <T>(label: string, fn: () => T | null | undefined, timeoutMs = 2000): Promise<T> => {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      const val = fn();
+      if (val) return val;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    throw new Error(`Timed out waiting for ${label} after ${timeoutMs}ms`);
+  };
+
+  await waitFor('initial TICK_SNAPSHOT', () => (snapshots.length > 0 ? snapshots[0] : null), 3000);
+
   // [2/6] Test Light Pulse Cannon Ballistics
   console.log('\n[2/6] Testing High Slot 1: Light Pulse Cannon Ballistics...');
+  const pulseStartIdx = snapshots.length;
   ws.send(JSON.stringify({
     type: 'INPUT',
     inputs: {
@@ -48,12 +61,12 @@ async function runDay12WeaponsSuite() {
     },
   }));
 
-  await new Promise((r) => setTimeout(r, 350));
-  const recentSnapsPulse = snapshots.slice(-8);
-  const pulseProj = recentSnapsPulse.flatMap((s: any) => s.projectiles).find((p: any) => p.projType === 'PULSE' && p.color === '#00f0ff');
-  if (!pulseProj) {
-    throw new Error(`Expected PULSE projectile with color #00f0ff. Recent snapshots had: ${JSON.stringify(recentSnapsPulse.map((s: any) => s.projectiles))}`);
-  }
+  const pulseProj = await waitFor('PULSE projectile with color #00f0ff', () =>
+    snapshots
+      .slice(pulseStartIdx)
+      .flatMap((s: any) => s.projectiles)
+      .find((p: any) => p.projType === 'PULSE' && p.color === '#00f0ff')
+  );
   const pulseSpeed = Math.sqrt(pulseProj.vx * pulseProj.vx + pulseProj.vz * pulseProj.vz);
   console.log(`  • Pulse Projectile ID: ${pulseProj.id}`);
   console.log(`  • Measured Speed:      ${pulseSpeed.toFixed(1)} u/s (Expected ~78 u/s)`);
@@ -65,10 +78,11 @@ async function runDay12WeaponsSuite() {
     type: 'INPUT',
     inputs: { forward: false, reverse: false, turnLeft: false, turnRight: false, brake: false, firePrimary: false, fireTactical: false, activeWeaponId: 'PULSE' },
   }));
-  await new Promise((r) => setTimeout(r, 200));
+  await new Promise((r) => setTimeout(r, 250));
 
   // [3/6] Test Heavy Plasma Accelerator Ballistics
   console.log('\n[3/6] Testing High Slot 2: Heavy Plasma Accelerator Ballistics...');
+  const plasmaStartIdx = snapshots.length;
   ws.send(JSON.stringify({
     type: 'INPUT',
     inputs: {
@@ -83,12 +97,12 @@ async function runDay12WeaponsSuite() {
     },
   }));
 
-  await new Promise((r) => setTimeout(r, 350));
-  const recentSnapsPlasma = snapshots.slice(-8);
-  const plasmaProj = recentSnapsPlasma.flatMap((s: any) => s.projectiles).find((p: any) => p.projType === 'PLASMA' && p.color === '#10b981');
-  if (!plasmaProj) {
-    throw new Error('Expected PLASMA projectile with color #10b981');
-  }
+  const plasmaProj = await waitFor('PLASMA projectile with color #10b981', () =>
+    snapshots
+      .slice(plasmaStartIdx)
+      .flatMap((s: any) => s.projectiles)
+      .find((p: any) => p.projType === 'PLASMA' && p.color === '#10b981')
+  );
   const plasmaSpeed = Math.sqrt(plasmaProj.vx * plasmaProj.vx + plasmaProj.vz * plasmaProj.vz);
   console.log(`  • Plasma Projectile ID: ${plasmaProj.id}`);
   console.log(`  • Measured Speed:       ${plasmaSpeed.toFixed(1)} u/s (Expected ~48 u/s)`);
@@ -98,15 +112,16 @@ async function runDay12WeaponsSuite() {
   }
   console.log('✓ Heavy Plasma Accelerator ballistics verified.');
 
-  // Release trigger
+  // Release trigger & allow full 0.45s Plasma cooldown to expire before testing Flak
   ws.send(JSON.stringify({
     type: 'INPUT',
     inputs: { forward: false, reverse: false, turnLeft: false, turnRight: false, brake: false, firePrimary: false, fireTactical: false, activeWeaponId: 'PLASMA' },
   }));
-  await new Promise((r) => setTimeout(r, 200));
+  await new Promise((r) => setTimeout(r, 550));
 
   // [4/6] Test Scatter Flak Blaster Tri-Pellet Cluster
   console.log('\n[4/6] Testing Mid Slot 2: Scatter Flak Blaster Spread...');
+  const flakStartIdx = snapshots.length;
   ws.send(JSON.stringify({
     type: 'INPUT',
     inputs: {
@@ -121,20 +136,26 @@ async function runDay12WeaponsSuite() {
     },
   }));
 
-  await new Promise((r) => setTimeout(r, 350));
-  const recentSnapsFlak = snapshots.slice(-8);
-  const flakPellets = recentSnapsFlak.flatMap((s: any) => s.projectiles).filter((p: any) => p.projType === 'FLAK' && p.color === '#fbbf24');
+  const flakPellets = await waitFor('at least 3 FLAK pellets', () => {
+    const uniqueIds = new Map<string, any>();
+    for (const s of snapshots.slice(flakStartIdx)) {
+      for (const p of s.projectiles) {
+        if (p.projType === 'FLAK' && p.color === '#fbbf24') {
+          uniqueIds.set(p.id, p);
+        }
+      }
+    }
+    return uniqueIds.size >= 3 ? Array.from(uniqueIds.values()) : null;
+  });
   console.log(`  • Flak Pellets Spawned: ${flakPellets.length} (Expected 3 pellets in tri-cluster)`);
-  if (flakPellets.length < 3) {
-    throw new Error(`Expected at least 3 flak pellets, found ${flakPellets.length}`);
-  }
   console.log('✓ Scatter Flak Blaster tri-pellet cluster verified.');
 
   // [5/6] Test Afterburner Overdrive Physics & Capacitor Drain
   console.log('\n[5/6] Testing Mid Slot 1: Afterburner Overdrive (Shift)...');
   const snapBeforeBoost = snapshots[snapshots.length - 1];
-  const playerBefore = snapBeforeBoost.entities.find((e: any) => e.type === 'PLAYER');
+  const playerBefore = snapBeforeBoost.entities.find((e: any) => e.id === 'player_acc_sol_test12') || snapBeforeBoost.entities.find((e: any) => e.type === 'PLAYER');
   const energyBefore = playerBefore?.energy || 100;
+  const boostStartIdx = snapshots.length;
 
   ws.send(JSON.stringify({
     type: 'INPUT',
@@ -150,20 +171,24 @@ async function runDay12WeaponsSuite() {
     },
   }));
 
-  await new Promise((r) => setTimeout(r, 600)); // boost for 600ms
-  const snapAfterBoost = snapshots[snapshots.length - 1];
-  const playerAfter = snapAfterBoost.entities.find((e: any) => e.type === 'PLAYER');
-  const playerSpeed = Math.sqrt(playerAfter.vx * playerAfter.vx + playerAfter.vz * playerAfter.vz);
+  const boostResult = await waitFor('Afterburner energy drain & boosted speed > 12 u/s', () => {
+    for (const s of snapshots.slice(boostStartIdx)) {
+      const p = s.entities.find((e: any) => e.id === 'player_acc_sol_test12') || s.entities.find((e: any) => e.type === 'PLAYER');
+      if (!p) continue;
+      const spd = Math.sqrt(p.vx * p.vx + p.vz * p.vz);
+      if (p.energy < energyBefore && spd > 12) {
+        return { snap: s, player: p, speed: spd };
+      }
+    }
+    return null;
+  }, 2500);
+  const snapAfterBoost = boostResult.snap;
+  const playerAfter = boostResult.player;
+  const playerSpeed = boostResult.speed;
 
   console.log(`  • Energy Drain:        ${energyBefore.toFixed(1)} -> ${playerAfter.energy.toFixed(1)}`);
   console.log(`  • Boosted Speed:       ${playerSpeed.toFixed(1)} u/s (Max ~48 u/s)`);
 
-  if (playerAfter.energy >= energyBefore) {
-    throw new Error('Afterburner should drain energy capacitor while active');
-  }
-  if (playerSpeed <= 12) {
-    throw new Error(`Expected boosted speed > 12 u/s, got ${playerSpeed.toFixed(1)}`);
-  }
   console.log('✓ Afterburner Overdrive boost physics and capacitor drain verified.');
 
   // [6/6] Verify Drone AI Circle-Strafing & Event Pipeline

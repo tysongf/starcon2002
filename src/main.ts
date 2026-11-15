@@ -1033,6 +1033,7 @@ class GameEngine {
     if (this.elTelemetryCredits) {
       this.elTelemetryCredits.textContent = `${formattedCredits} Cr`;
     }
+    this.combatClient?.setCargoHudFill(this.playerUsedCargo, this.playerCargoCapacity);
     if (this.elTelemetryCargo) {
       this.elTelemetryCargo.textContent = cargoRatio;
     }
@@ -1769,6 +1770,12 @@ class GameEngine {
       if (this.modalStationName) {
         this.modalStationName.textContent = 'CHARYBDIS WARZONE // SECTOR 201';
       }
+    } else {
+      // Frontier / Deep Star Systems: spawn asteroid mining belt synced with server
+      this.scene.background = new THREE.Color(0x050812);
+      this.scene.fog = new THREE.FogExp2(0x050812, 0.0024);
+      this.asteroidField = new AsteroidField(seed || sectorId * 919, 32);
+      this.scene.add(this.asteroidField.group);
     }
 
     // Reset ship position slightly forward in the sector
@@ -1853,6 +1860,8 @@ class GameEngine {
       getCurrentSectorId: () => this.currentSectorId,
       setCurrentSectorId: (id) => { this.currentSectorId = id; },
       getShipMesh: () => this.shipMesh,
+      getAsteroidField: () => this.asteroidField,
+      refreshCargoHold: () => this.refreshPlayerHold(),
       dockShip: () => this.dockShip(),
       refreshFactionStandings: () => this.refreshFactionStandings(),
       startTruceCountdown: (sec) => this.startTruceCountdown(sec),
@@ -2374,7 +2383,16 @@ class GameEngine {
           this.tacticalCommandWheel.executeOrder('REGROUP_HOLD');
           break;
         case 'KeyG':
-          this.sectorGrid.visible = !this.sectorGrid.visible;
+          e.preventDefault();
+          if (e.shiftKey) {
+            this.sectorGrid.visible = !this.sectorGrid.visible;
+          } else {
+            this.combatClient.toggleAsteroidMiningBeam();
+          }
+          break;
+        case 'KeyR':
+          e.preventDefault();
+          this.combatClient.cycleNearestAsteroid();
           break;
         case 'KeyH':
           e.preventDefault();
@@ -2570,6 +2588,21 @@ class GameEngine {
       }
 
       if (e.button === 0) {
+        // Click raycast to select Asteroid Vein if clicked directly
+        if (this.asteroidField) {
+          const rect = this.renderer.domElement.getBoundingClientRect();
+          const ndc = new THREE.Vector2(
+            ((e.clientX - rect.left) / rect.width) * 2 - 1,
+            -((e.clientY - rect.top) / rect.height) * 2 + 1
+          );
+          const raycaster = new THREE.Raycaster();
+          raycaster.setFromCamera(ndc, this.camera);
+          const astHits = raycaster.intersectObjects(this.asteroidField.getInteractableMeshes(), false);
+          if (astHits.length > 0 && astHits[0].object.userData?.asteroidId) {
+            this.combatClient.targetAsteroid(astHits[0].object.userData.asteroidId);
+            return;
+          }
+        }
         // Left Click -> High Slot 1 (Pulse)
         this.selectWeaponPreset(0);
         this.fireWeaponDirectly('PULSE');
@@ -2760,7 +2793,11 @@ class GameEngine {
       this.station.update(deltaSec);
     }
     if (this.asteroidField) {
-      this.asteroidField.update(deltaSec);
+      this.asteroidField.update(
+        deltaSec,
+        this.combatClient?.targetedAsteroidId || null,
+        this.combatClient?.activeMiningAsteroidId || null
+      );
     }
 
     const dockStatus = this.station

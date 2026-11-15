@@ -110,6 +110,90 @@ export const combatRoutes: FastifyPluginAsync = async (server) => {
     reply.send({ success: true, entityId: body.entityId, sectorId });
   });
 
+  // Milestone 1.4: Authoritative Space Mining Asteroids Telemetry & Test Rig Helper
+  server.get('/api/combat/asteroids', async (req, reply) => {
+    const query = (req.query || {}) as { sectorId?: string };
+    const sectorId = parseInt(query.sectorId || '2', 10);
+    const room = combatManager.getOrCreateRoom(sectorId);
+    reply.send({ success: true, sectorId, asteroids: room.serializeAsteroids() });
+  });
+
+  server.post('/api/combat/debug/mining-setup', async (req, reply) => {
+    const body = (req.body || {}) as {
+      sectorId?: number;
+      playerId?: string;
+      asteroidId?: string;
+      x?: number;
+      z?: number;
+      hp?: number;
+      maxHp?: number;
+      oreCommodityId?: string;
+      oreName?: string;
+      tier?: 'COMMON' | 'UNCOMMON' | 'RARE' | 'EPIC' | 'EXOTIC';
+      remainingYield?: number;
+      playerX?: number;
+      playerZ?: number;
+      playerYaw?: number;
+      miningHeat?: number;
+      clearCargo?: boolean;
+      fillCargo?: boolean;
+    };
+    const sectorId = body.sectorId || 2;
+    const playerId = body.playerId || 'acc_sol_captain';
+    const room = combatManager.getOrCreateRoom(sectorId);
+    const pEntity = room.entities.get(`player_${playerId}`);
+    if (pEntity) {
+      if (typeof body.playerX === 'number') pEntity.x = body.playerX;
+      if (typeof body.playerZ === 'number') pEntity.z = body.playerZ;
+      if (typeof body.playerYaw === 'number') pEntity.yaw = body.playerYaw;
+      if (typeof body.miningHeat === 'number') pEntity.miningHeat = body.miningHeat;
+      pEntity.vx = 0;
+      pEntity.vz = 0;
+      pEntity.energy = pEntity.maxEnergy;
+      pEntity.shields = pEntity.maxShields;
+      pEntity.hp = pEntity.maxHp;
+      pEntity.state = 'IDLE';
+      pEntity.isEscapePod = false;
+      pEntity.lastAmbushAt = undefined;
+      pEntity.miningAsteroidId = null;
+      pEntity.miningBusy = false;
+    }
+    room.projectiles = [];
+    if (body.asteroidId) {
+      const ast = room.asteroids.get(body.asteroidId);
+      if (ast) {
+        if (typeof body.x === 'number') ast.x = body.x;
+        if (typeof body.z === 'number') ast.z = body.z;
+        if (typeof body.hp === 'number') ast.hp = body.hp;
+        if (typeof body.maxHp === 'number') ast.maxHp = body.maxHp;
+        if (body.oreCommodityId) ast.oreCommodityId = body.oreCommodityId;
+        if (body.oreName) ast.oreName = body.oreName;
+        if (body.tier) ast.tier = body.tier;
+        if (typeof body.remainingYield === 'number') ast.remainingYield = body.remainingYield;
+        ast.depletedUntil = null;
+        ast.fractured50 = false;
+        ast.heatState = 'NORMAL';
+        ast.ventChargeUntil = null;
+        ast.ventCooldownUntil = null;
+      }
+    }
+    if (body.clearCargo) {
+      await db.query('DELETE FROM ship_cargo WHERE ship_id IN (SELECT id FROM ships WHERE account_id = $1)', [playerId]);
+    }
+    if (body.fillCargo) {
+      const sRes = await db.query<any>('SELECT id, cargo_capacity FROM ships WHERE account_id = $1', [playerId]);
+      if (sRes.rows.length > 0) {
+        const s = sRes.rows[0];
+        await db.query('DELETE FROM ship_cargo WHERE ship_id = $1', [s.id]);
+        await db.query(
+          'INSERT INTO ship_cargo (ship_id, commodity_id, quantity) VALUES ($1, $2, $3)',
+          [s.id, 'COMM_PYRITE_ORE', Number(s.cargo_capacity || 40)]
+        );
+      }
+    }
+    reply.send({ success: true, asteroids: room.serializeAsteroids(), containers: room.containers });
+  });
+
   // Persistent Wrecks & In-Situ Salvage
   server.get('/api/combat/wrecks', async (req, reply) => {
     const query = (req.query || {}) as { sectorId?: string };
@@ -215,12 +299,34 @@ export const combatRoutes: FastifyPluginAsync = async (server) => {
     const playerId = query.playerId || 'acc_sol_captain';
     const sectorId = parseInt(query.sectorId || '1', 10);
 
+    // Buffer early WebSocket frames until async DB/loadout lookups complete and handleConnection binds handlers.
+    const bufferedMessages: Array<string | Buffer> = [];
+    let closedEarly = false;
+    const earlyMessageHandler = (data: string | Buffer) => {
+      bufferedMessages.push(data);
+    };
+    const earlyCloseHandler = () => {
+      closedEarly = true;
+    };
+    socket.on('message', earlyMessageHandler);
+    socket.on('close', earlyCloseHandler);
+
+    let shipData: any;
     try {
       const ship = await navigationService.getPlayerShip(playerId);
       const loadout = await outfittingService.getPlayerLoadout(playerId);
-      combatManager.handleConnection(socket, sectorId, playerId, { ...ship, loadout });
-    } catch (err) {
-      combatManager.handleConnection(socket, sectorId, playerId);
+      shipData = { ...ship, loadout };
+    } catch {
+      shipData = undefined;
+    }
+
+    socket.removeListener('message', earlyMessageHandler);
+    socket.removeListener('close', earlyCloseHandler);
+    if (closedEarly) return;
+
+    combatManager.handleConnection(socket, sectorId, playerId, shipData);
+    for (const msg of bufferedMessages) {
+      socket.emit('message', msg);
     }
   });
 };

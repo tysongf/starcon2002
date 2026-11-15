@@ -9376,3 +9376,79 @@ kbd {
 .hull-class-filter-bar {
   margin-bottom: 0.85rem;
 }
+
+/* Milestone 1.4: Mining Heat & Cargo HUD Strip */
+.hud-mining-strip {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.3rem;
+  padding-top: 0.3rem;
+  border-top: 1px solid rgba(56, 189, 248, 0.2);
+}
+
+.mining-meter {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex: 1;
+}
+
+.mining-lbl {
+  font-family: var(--font-header);
+  font-size: 0.62rem;
+  color: #94a3b8;
+  letter-spacing: 0.04em;
+}
+
+.mining-bar-track {
+  flex: 1;
+  height: 6px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(71, 85, 105, 0.55);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.mining-heat-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #38bdf8, #f59e0b 65%, #ef4444);
+  transition: width 0.15s ease;
+}
+
+.mining-cargo-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #10b981, #34d399);
+  transition: width 0.15s ease;
+}
+
+.mining-val {
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  color: #e2e8f0;
+  min-width: 2.2rem;
+  text-align: right;
+}
+
+.mining-strip-btn {
+  padding: 0.2rem 0.45rem;
+  font-family: var(--font-header);
+  font-size: 0.62rem;
+  color: #22d3ee;
+  background: rgba(8, 51, 68, 0.75);
+  border: 1px solid rgba(34, 211, 238, 0.45);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.mining-strip-btn.active {
+  color: #fef08a;
+  background: rgba(180, 83, 9, 0.75);
+  border-color: #f59e0b;
+}
+
+.mine-btn {
+  background: rgba(8, 145, 178, 0.28) !important;
+  border-color: #22d3ee !important;
+  color: #67e8f9 !important;
+}

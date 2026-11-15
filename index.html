@@ -300,6 +300,8 @@
             <li><kbd>SHIFT / 3</kbd> Mid Slot 1: Afterburner Overdrive</li>
             <li><kbd>4</kbd> Mid Slot 2: Flak Scatter Blaster</li>
             <li><kbd>E</kbd> Laser Salvage Mining Beam (on targeted wreck)</li>
+            <li><kbd>R</kbd> Target / Cycle Nearest Asteroid Vein</li>
+            <li><kbd>G</kbd> Engage Precision Mining Laser / Drones</li>
             <li><kbd>T</kbd> Deploy / Release Magnetic Tow Tether</li>
             <li><kbd>SPACE</kbd> Fire Active Weapon</li>
             <li><kbd>Q</kbd> Cycle Active Primary Preset</li>
@@ -354,8 +356,9 @@
             <div class="cargo-scan-items" id="convoy-cargo-items">SCANNING...</div>
           </div>
         </div>
-        <!-- Target Interaction Quick-Actions (Day 15 Wrecks, Day 16 Comms, Day 25 Skirmishes) -->
+        <!-- Target Interaction Quick-Actions (Day 15 Wrecks, Day 16 Comms, Day 25 Skirmishes, Milestone 1.4 Mining) -->
         <div id="target-quick-actions" class="target-quick-actions hidden">
+          <button id="btn-hud-mine-asteroid" class="target-action-btn mine-btn hidden">⛏️ ENGAGE MINING BEAM [G]</button>
           <button id="btn-hud-salvage-beam" class="target-action-btn beam-btn">⚡ SALVAGE BEAM [E]</button>
           <button id="btn-hud-tether-wreck" class="target-action-btn tow-btn">🪝 TETHER WRECK [T]</button>
           <button id="btn-hud-hail-target" class="target-action-btn hail-btn">📡 HAIL [H]</button>
@@ -462,6 +465,24 @@
               <div class="vital-bar-fill energy-fill" id="vital-energy-bar" style="width: 100%;"></div>
             </div>
             <span class="vital-numeric" id="vital-energy-text">100 / 100</span>
+          </div>
+          <!-- Milestone 1.4: Mining Heat & Cargo Strip -->
+          <div id="hud-mining-strip" class="hud-mining-strip">
+            <div class="mining-meter">
+              <span class="mining-lbl">HEAT</span>
+              <div class="mining-bar-track">
+                <div class="mining-heat-fill" id="hud-mining-heat-bar" style="width: 0%;"></div>
+              </div>
+              <span class="mining-val" id="hud-mining-heat-val">0%</span>
+            </div>
+            <div class="mining-meter">
+              <span class="mining-lbl">CARGO</span>
+              <div class="mining-bar-track">
+                <div class="mining-cargo-fill" id="hud-mining-cargo-bar" style="width: 0%;"></div>
+              </div>
+              <span class="mining-val" id="hud-mining-cargo-val">0/40</span>
+            </div>
+            <button id="btn-strip-mine-toggle" class="mining-strip-btn" title="Target &amp; Mine Asteroid [R / G]">⛏️ [G] MINE</button>
           </div>
         </div>
 

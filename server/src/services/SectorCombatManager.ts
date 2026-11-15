@@ -5,6 +5,14 @@ import { ContractService } from './ContractService';
 import { wreckService, SectorWreck } from './WreckService';
 import { reputationService } from './ReputationService';
 import { convoyService } from './ConvoyService';
+import { tradeService } from './TradeService';
+import {
+  AsteroidNode,
+  MiningCapabilities,
+  SPACE_ORES,
+  computeMiningCapabilities,
+  generateSectorAsteroids,
+} from '../procgen/MiningOreCatalog';
 import { db } from '../db/Database';
 
 export const contractService = new ContractService();
@@ -118,6 +126,14 @@ export interface SectorEntity {
   aiPatrolAngle?: number;
   lootedCargo?: any[];
   transponderActive?: boolean;
+  // Milestone 1.4: Space Mining & Thermal Signature
+  miningAsteroidId?: string | null;
+  asteroidMiningTimer?: number;
+  miningHeat?: number;
+  miningProfile?: MiningCapabilities;
+  miningBusy?: boolean;
+  rarePrecisionCompletions?: number;
+  lastAmbushAt?: number;
   targetCanisterId?: string | null;
   scoopCooldown?: number;
   // Day 15 Towing & Salvage Mining
@@ -188,7 +204,7 @@ export interface Projectile {
 }
 
 export interface CombatEvent {
-  type: 'HIT' | 'SHIELD_BREAK' | 'DESTROYED' | 'LOOT_SPAWNED' | 'LOOT_COLLECTED' | 'POD_EJECTED' | 'CONTAINER_SCOOPED' | 'WRECK_SPAWNED' | 'TOW_ATTACHED' | 'TOW_RELEASED' | 'SALVAGE_BEAM_TICK' | 'WRECK_DISINTEGRATED' | 'TRUCE_DECLARED' | 'TRUCE_BROKEN' | 'LIFE_SUPPORT_EXHAUSTED' | 'WARP_SPOOL_STARTED' | 'WARP_SPOOL_INTERRUPTED' | 'WARP_JUMP_SUCCESS' | 'CONVOY_SURRENDERED' | 'COMMS_ABORTED' | 'AMBUSH_TRIGGERED' | 'AMBUSH_CLEARED' | 'ESCORT_FAILED' | 'ALLEGIANCE_DECLARED' | 'COMBAT_BOND_AWARDED' | 'SKIRMISH_VICTORY' | 'TACTICAL_ORDER_ISSUED' | 'WINGMAN_DESTROYED' | 'ABILITY_TRIGGERED';
+  type: 'HIT' | 'SHIELD_BREAK' | 'DESTROYED' | 'LOOT_SPAWNED' | 'LOOT_COLLECTED' | 'POD_EJECTED' | 'CONTAINER_SCOOPED' | 'WRECK_SPAWNED' | 'TOW_ATTACHED' | 'TOW_RELEASED' | 'SALVAGE_BEAM_TICK' | 'WRECK_DISINTEGRATED' | 'TRUCE_DECLARED' | 'TRUCE_BROKEN' | 'LIFE_SUPPORT_EXHAUSTED' | 'WARP_SPOOL_STARTED' | 'WARP_SPOOL_INTERRUPTED' | 'WARP_JUMP_SUCCESS' | 'CONVOY_SURRENDERED' | 'COMMS_ABORTED' | 'AMBUSH_TRIGGERED' | 'AMBUSH_CLEARED' | 'ESCORT_FAILED' | 'ALLEGIANCE_DECLARED' | 'COMBAT_BOND_AWARDED' | 'SKIRMISH_VICTORY' | 'TACTICAL_ORDER_ISSUED' | 'WINGMAN_DESTROYED' | 'ABILITY_TRIGGERED' | 'MINING_BEAM_TICK' | 'MINING_YIELD' | 'CARGO_HOLD_FULL' | 'THERMAL_VENT_WARNING' | 'THERMAL_VENT_ERUPTION' | 'MINING_AMBUSH' | 'ASTEROID_FRACTURED' | 'ASTEROID_DEPLETED';
 
   sourceId?: string;
   targetId?: string;
@@ -260,6 +276,28 @@ export interface SnapshotPayload {
     abilityMaxCooldown?: number;
     harmonicShieldActive?: boolean;
     isDecoy?: boolean;
+    // Milestone 1.4 Mining Telemetry
+    miningAsteroidId?: string | null;
+    miningHeat?: number;
+    scoopRadius?: number;
+    beamRange?: number;
+  }>;
+  asteroids?: Array<{
+    id: string;
+    x: number;
+    z: number;
+    radius: number;
+    seed: number;
+    oreCommodityId: string;
+    oreName: string;
+    emissiveHex: string;
+    tier: string;
+    hp: number;
+    maxHp: number;
+    remainingYield: number;
+    maxYield: number;
+    depleted: boolean;
+    heatState: 'NORMAL' | 'VENT_CHARGING' | 'COOLED';
   }>;
   sporeClouds?: SporeCloud[];
   convoys?: Array<{
@@ -318,6 +356,7 @@ export class SectorRoom {
   public readonly clients: Map<string, WebSocket> = new Map();
   public readonly entities: Map<string, SectorEntity> = new Map();
   public readonly wrecks: Map<string, SectorWreckEntity> = new Map();
+  public asteroids: Map<string, AsteroidNode> = new Map();
   public projectiles: Projectile[] = [];
   public containers: SectorLootContainer[] = [];
   public sporeClouds: SporeCloud[] = [];
@@ -624,10 +663,92 @@ export class SectorRoom {
 
   constructor(sectorId: number) {
     this.sectorId = sectorId;
+    this.asteroids = generateSectorAsteroids(sectorId);
     this.seedSectorEntities();
+    this.hydrateSectorAsteroidsFromDb().catch(() => {});
+  }
+
+  private async hydrateSectorAsteroidsFromDb(): Promise<void> {
+    try {
+      const res = await db.query(
+        'SELECT spectral_class, controlling_faction, hazard_level FROM sectors WHERE id = $1',
+        [this.sectorId]
+      );
+      if (res.rows.length === 0) return;
+      const row = res.rows[0] as any;
+      // Only reseed if no asteroid has taken damage yet
+      for (const ast of this.asteroids.values()) {
+        if (ast.hp < ast.maxHp || ast.remainingYield < ast.maxYield || ast.depletedUntil !== null) {
+          return;
+        }
+      }
+      this.asteroids = generateSectorAsteroids(
+        this.sectorId,
+        row.spectral_class,
+        row.controlling_faction,
+        Number(row.hazard_level || 1)
+      );
+      if (this.clients.size > 0) {
+        const msg = JSON.stringify({
+          type: 'SECTOR_ASTEROIDS',
+          sectorId: this.sectorId,
+          asteroids: this.serializeAsteroids(),
+        });
+        for (const client of this.clients.values()) {
+          if (client.readyState === 1) client.send(msg);
+        }
+      }
+    } catch {
+      // Keep deterministic defaults if DB unavailable
+    }
+  }
+
+  public serializeAsteroids(): Array<{
+    id: string;
+    x: number;
+    z: number;
+    radius: number;
+    seed: number;
+    oreCommodityId: string;
+    oreName: string;
+    emissiveHex: string;
+    tier: string;
+    hp: number;
+    maxHp: number;
+    remainingYield: number;
+    maxYield: number;
+    depleted: boolean;
+    heatState: 'NORMAL' | 'VENT_CHARGING' | 'COOLED';
+  }> {
+    return Array.from(this.asteroids.values()).map((a) => ({
+      id: a.id,
+      x: a.x,
+      z: a.z,
+      radius: a.radius,
+      seed: a.seed,
+      oreCommodityId: a.oreCommodityId,
+      oreName: a.oreName,
+      emissiveHex: a.emissiveHex,
+      tier: a.tier,
+      hp: Math.max(0, Math.round(a.hp)),
+      maxHp: a.maxHp,
+      remainingYield: Math.max(0, Math.round(a.remainingYield)),
+      maxYield: a.maxYield,
+      depleted: a.depletedUntil !== null,
+      heatState: a.heatState,
+    }));
   }
 
   public reseedEntities(): void {
+    this.asteroids = generateSectorAsteroids(this.sectorId);
+    this.projectiles = [];
+    this.containers = [];
+    for (const ent of this.entities.values()) {
+      ent.lastAmbushAt = undefined;
+      ent.miningAsteroidId = null;
+      ent.miningHeat = 0;
+      ent.miningBusy = false;
+    }
     this.seedSectorEntities();
   }
 
@@ -1134,6 +1255,10 @@ export class SectorRoom {
     const baseMaxShield = Number(shipData?.max_shield ?? 100) + bonusShield;
     const baseShield = Math.min(baseMaxShield, Number(shipData?.shield ?? 100) + bonusShield);
     const baseMaxEnergy = 100 + bonusEnergy;
+    const miningProfile = computeMiningCapabilities(
+      shipData?.main_hull_class || shipData?.hull_class,
+      fittedMods
+    );
 
     if (!this.entities.has(entityId)) {
       this.entities.set(entityId, {
@@ -1141,7 +1266,7 @@ export class SectorRoom {
         type: 'PLAYER',
         factionId: shipData?.faction_id || 'FACTION_SOL',
         name: shipData?.flagship_name || 'Cmdr. Vance',
-        hullClass: shipData?.hull_class || 'CORVETTE',
+        hullClass: shipData?.main_hull_class || shipData?.hull_class || 'CORVETTE',
         hullSeed: Number(shipData?.hull_seed || 12345),
         x: 0,
         z: 0,
@@ -1171,7 +1296,28 @@ export class SectorRoom {
         },
         lastHitTime: 0,
         fireCooldown: 0,
+        miningHeat: 0,
+        miningProfile,
       });
+    } else {
+      const existing = this.entities.get(entityId)!;
+      existing.hullClass = shipData?.main_hull_class || shipData?.hull_class || existing.hullClass;
+      existing.miningProfile = miningProfile;
+    }
+
+    try {
+      if (socket.readyState === 1) {
+        socket.send(
+          JSON.stringify({
+            type: 'SECTOR_ASTEROIDS',
+            sectorId: this.sectorId,
+            asteroids: this.serializeAsteroids(),
+            miningProfile,
+          })
+        );
+      }
+    } catch {
+      // Ignore closed socket
     }
 
     // Day 36: Initialize Session AAR Tracker for this player
@@ -2003,9 +2149,10 @@ export class SectorRoom {
     // 4. Advance Projectiles and Check Hit Collisions
     this.advanceProjectiles(dt);
 
-    // 5. Day 15: Elastic Tow Cable Physics & Laser Salvage Mining
+    // 5. Day 15 & Milestone 1.4: Elastic Tow Cable Physics, Laser Salvage & Space Ore Mining
     this.processTowPhysics(dt);
     this.processSalvageMining(dt);
+    this.processAsteroidMining(dt, now);
 
     // 6. Broadcast 50ms Snapshot to Connected Clients
     this.broadcastSnapshot(now);
@@ -2199,6 +2346,369 @@ export class SectorRoom {
         }
       }
     }
+  }
+
+  public startMiningBeam(playerId: string, asteroidId: string): { success: boolean; error?: string; asteroidId?: string } {
+    const entity = this.entities.get(`player_${playerId}`);
+    if (!entity || entity.state === 'DESTROYED' || entity.isEscapePod) {
+      return { success: false, error: 'Ship cannot operate mining lasers in current state' };
+    }
+    const asteroid = this.asteroids.get(asteroidId);
+    if (!asteroid || asteroid.depletedUntil !== null || asteroid.remainingYield <= 0) {
+      return { success: false, error: 'Asteroid vein is depleted or unavailable' };
+    }
+    const profile = entity.miningProfile || computeMiningCapabilities(entity.hullClass, []);
+    const dist = Math.hypot(asteroid.x - entity.x, asteroid.z - entity.z);
+    if (dist > profile.beamRange + asteroid.radius) {
+      return { success: false, error: `Asteroid out of mining range (${dist.toFixed(1)}m > ${profile.beamRange}m)` };
+    }
+    if (entity.energy < 4) {
+      return { success: false, error: 'Insufficient capacitor energy to engage mining beam' };
+    }
+
+    entity.miningWreckId = null;
+    entity.miningAsteroidId = asteroidId;
+    entity.asteroidMiningTimer = 0.45; // Quick initial tick
+    this.pendingEvents.push({
+      type: 'MINING_BEAM_TICK',
+      sourceId: entity.id,
+      targetId: asteroid.id,
+      x: asteroid.x,
+      z: asteroid.z,
+      data: {
+        engaged: true,
+        oreCommodityId: asteroid.oreCommodityId,
+        oreName: asteroid.oreName,
+        remainingYield: asteroid.remainingYield,
+        heat: Math.round(entity.miningHeat || 0),
+      },
+    });
+    return { success: true, asteroidId };
+  }
+
+  public stopMiningBeam(playerId: string): void {
+    const entity = this.entities.get(`player_${playerId}`);
+    if (entity) {
+      entity.miningAsteroidId = null;
+    }
+  }
+
+  private processAsteroidMining(dt: number, now: number): void {
+    // 1. Respawn depleted asteroids & process thermal vent charging countdowns
+    for (const ast of this.asteroids.values()) {
+      if (ast.depletedUntil !== null && now >= ast.depletedUntil) {
+        ast.depletedUntil = null;
+        ast.hp = ast.maxHp;
+        ast.fractured50 = false;
+        ast.remainingYield = ast.maxYield;
+        ast.heatState = 'NORMAL';
+        ast.ventChargeUntil = null;
+        ast.ventCooldownUntil = null;
+      }
+
+      if (ast.heatState === 'VENT_CHARGING' && ast.ventChargeUntil && now >= ast.ventChargeUntil) {
+        this.triggerThermalVent(ast, now);
+      } else if (ast.heatState === 'COOLED' && ast.ventCooldownUntil && now >= ast.ventCooldownUntil) {
+        ast.heatState = 'NORMAL';
+      }
+    }
+
+    // 2. Process active player mining beams & passive cooling
+    for (const entity of this.entities.values()) {
+      if (entity.type !== 'PLAYER' || entity.state === 'DESTROYED') continue;
+      const profile = entity.miningProfile || computeMiningCapabilities(entity.hullClass, []);
+
+      if (!entity.miningAsteroidId) {
+        if ((entity.miningHeat || 0) > 0) {
+          entity.miningHeat = Math.max(0, (entity.miningHeat || 0) - 4.0 * dt);
+        }
+        continue;
+      }
+
+      const ast = this.asteroids.get(entity.miningAsteroidId);
+      if (!ast || ast.depletedUntil !== null || ast.remainingYield <= 0) {
+        entity.miningAsteroidId = null;
+        continue;
+      }
+
+      const dist = Math.hypot(ast.x - entity.x, ast.z - entity.z);
+      if (dist > (profile.beamRange + ast.radius) * 1.15 || entity.energy < 2) {
+        entity.miningAsteroidId = null;
+        continue;
+      }
+
+      // Drain capacitor & build thermal signature
+      entity.energy = Math.max(0, entity.energy - profile.energyCostPerSec * dt);
+      const ore = SPACE_ORES[ast.oreCommodityId] || SPACE_ORES.COMM_ORE;
+      const heatRate = ore.heatPerTick * 0.9 * profile.heatGenMultiplier;
+      entity.miningHeat = Math.min(100, (entity.miningHeat || 0) + heatRate * dt);
+
+      // Volatile thermal pocket trigger at >= 75% heat on Uncommon+ veins
+      if (
+        (entity.miningHeat || 0) >= 75 &&
+        ast.tier !== 'COMMON' &&
+        ast.heatState === 'NORMAL' &&
+        (!ast.ventCooldownUntil || now >= ast.ventCooldownUntil)
+      ) {
+        ast.heatState = 'VENT_CHARGING';
+        ast.ventChargeUntil = now + 2000;
+        this.pendingEvents.push({
+          type: 'THERMAL_VENT_WARNING',
+          sourceId: entity.id,
+          targetId: ast.id,
+          x: ast.x,
+          z: ast.z,
+          data: {
+            oreName: ast.oreName,
+            blastRadius: 28,
+            detonateInMs: 2000,
+          },
+        });
+      }
+
+      // Frontier / Hazard claim-jumper patrol ambush at >= 85% heat
+      if (
+        (entity.miningHeat || 0) >= 85 &&
+        this.sectorId !== 1 &&
+        (!entity.lastAmbushAt || now - entity.lastAmbushAt > 45000)
+      ) {
+        entity.lastAmbushAt = now;
+        this.spawnMiningAmbush(entity);
+      }
+
+      entity.asteroidMiningTimer = (entity.asteroidMiningTimer || 0) + dt;
+      if (entity.asteroidMiningTimer >= 0.5 && !entity.miningBusy) {
+        entity.asteroidMiningTimer = 0;
+        const rawUnits = Math.min(ast.remainingYield, profile.unitsPerTick);
+        if (rawUnits <= 0) continue;
+
+        const deliveredQty = Math.max(1, Math.round(rawUnits * profile.yieldMultiplier));
+        const playerId = entity.id.replace('player_', '');
+        entity.miningBusy = true;
+
+        tradeService
+          .addMinedOreToCargo(playerId, ast.oreCommodityId, deliveredQty)
+          .then(async (res) => {
+            entity.miningBusy = false;
+            if (res.added <= 0) {
+              entity.miningAsteroidId = null;
+              this.pendingEvents.push({
+                type: 'CARGO_HOLD_FULL',
+                targetId: entity.id,
+                data: {
+                  usedCargo: res.usedCargo,
+                  cargoCapacity: res.cargoCapacity,
+                  commodityName: res.commodityName,
+                },
+              });
+              return;
+            }
+
+            ast.remainingYield = Math.max(0, ast.remainingYield - rawUnits);
+            ast.hp =
+              ast.remainingYield > 0
+                ? Math.max(1, Math.round(ast.maxHp * (ast.remainingYield / ast.maxYield)))
+                : 0;
+
+            this.pendingEvents.push({
+              type: 'MINING_BEAM_TICK',
+              sourceId: entity.id,
+              targetId: ast.id,
+              x: ast.x,
+              z: ast.z,
+              data: {
+                extracted: res.added,
+                oreCommodityId: ast.oreCommodityId,
+                oreName: ast.oreName,
+                remainingYield: ast.remainingYield,
+                heat: Math.round(entity.miningHeat || 0),
+                fuelRefined: res.fuelRefined,
+              },
+            });
+            this.pendingEvents.push({
+              type: 'MINING_YIELD',
+              targetId: entity.id,
+              x: ast.x,
+              z: ast.z,
+              data: {
+                commodityId: ast.oreCommodityId,
+                commodityName: ast.oreName,
+                quantity: res.added,
+                usedCargo: res.usedCargo,
+                cargoCapacity: res.cargoCapacity,
+                fuelRefined: res.fuelRefined,
+              },
+            });
+
+            if (ast.remainingYield <= 0) {
+              ast.depletedUntil = Date.now() + 90000;
+              ast.heatState = 'COOLED';
+              entity.miningAsteroidId = null;
+              await this.awardPrecisionCompletion(entity, playerId, ast);
+              this.pendingEvents.push({
+                type: 'ASTEROID_DEPLETED',
+                sourceId: entity.id,
+                targetId: ast.id,
+                x: ast.x,
+                z: ast.z,
+                data: {
+                  oreName: ast.oreName,
+                  precision: true,
+                },
+              });
+            }
+          })
+          .catch((err) => {
+            entity.miningBusy = false;
+            console.error('[MINING] Cargo deposit error:', err);
+          });
+      }
+    }
+  }
+
+  private async awardPrecisionCompletion(
+    entity: SectorEntity,
+    playerId: string,
+    ast: AsteroidNode
+  ): Promise<void> {
+    const ore = SPACE_ORES[ast.oreCommodityId];
+    if (!ore) return;
+
+    let techAwarded = 0;
+    if (ast.oreCommodityId === 'COMM_AETHER_CORE') {
+      techAwarded = 2;
+    } else if (ast.oreCommodityId === 'COMM_OBSIDIAN_MATRIX') {
+      techAwarded = 1;
+    } else if (ast.oreCommodityId === 'COMM_LITHIUM_QUARTZ') {
+      entity.rarePrecisionCompletions = (entity.rarePrecisionCompletions || 0) + 1;
+      if (entity.rarePrecisionCompletions % 3 === 0 || entity.miningProfile?.mainHullClass === 'INDUSTRIAL_EXTRACTOR') {
+        techAwarded = 1;
+      }
+    }
+
+    if (techAwarded > 0) {
+      await db.query(
+        'UPDATE accounts SET tech_components = tech_components + $1 WHERE id = $2',
+        [techAwarded, playerId]
+      );
+      this.pendingEvents.push({
+        type: 'LOOT_COLLECTED',
+        targetId: entity.id,
+        x: ast.x,
+        z: ast.z,
+        data: {
+          title: `Precision Crystal Extraction (+${techAwarded} Tech Components)`,
+          techComponents: techAwarded,
+        },
+      });
+    }
+
+    if (ore.minersGuildStanding > 0) {
+      reputationService
+        .modifyStanding(playerId, 'FACTION_MINERS_GUILD', ore.minersGuildStanding, 'PRECISION_MINING')
+        .catch(() => {});
+    }
+  }
+
+  private triggerThermalVent(ast: AsteroidNode, now: number, blastRadius: number = 28): void {
+    ast.heatState = 'COOLED';
+    ast.ventChargeUntil = null;
+    ast.ventCooldownUntil = now + 20000;
+
+    const hitTargets: string[] = [];
+    for (const ent of this.entities.values()) {
+      if (ent.state === 'DESTROYED' || ent.isEscapePod) continue;
+      const d = Math.hypot(ent.x - ast.x, ent.z - ast.z);
+      if (d <= blastRadius) {
+        hitTargets.push(ent.id);
+        let dmg = 22;
+        if (ent.shields > 0) {
+          const absorbed = Math.min(ent.shields, dmg);
+          ent.shields -= absorbed;
+          dmg -= absorbed;
+        }
+        if (dmg > 0) {
+          ent.hp = Math.max(1, ent.hp - dmg);
+        }
+        ent.lastHitTime = now;
+      }
+    }
+
+    this.pendingEvents.push({
+      type: 'THERMAL_VENT_ERUPTION',
+      sourceId: ast.id,
+      x: ast.x,
+      z: ast.z,
+      data: {
+        oreName: ast.oreName,
+        blastRadius,
+        hitTargets,
+      },
+    });
+  }
+
+  public spawnMiningAmbush(targetEntity: SectorEntity): string[] {
+    const isKryllSector = this.sectorId === 7 || this.sectorId === 201;
+    const factionId = isKryllSector ? 'FACTION_KRYLL' : 'FACTION_FREEBOOTERS';
+    const count = targetEntity.miningProfile?.mainHullClass === 'INDUSTRIAL_EXTRACTOR' ? 2 : 1;
+    const spawnedIds: string[] = [];
+
+    for (let i = 0; i < count; i++) {
+      const raiderId = `claimjumper_${this.sectorId}_${Date.now()}_${i}`;
+      const angle = Math.PI * (0.4 + i * 0.9);
+      const dist = 54;
+      this.entities.set(raiderId, {
+        id: raiderId,
+        type: 'DRONE',
+        factionId,
+        name: factionId === 'FACTION_KRYLL' ? `Kryll Vein-Stalker 0${i + 1}` : `Freebooter Claim-Jumper 0${i + 1}`,
+        hullClass: 'INTERCEPTOR',
+        hullSeed: 64100 + Math.floor(Math.random() * 800),
+        x: targetEntity.x + Math.cos(angle) * dist,
+        z: targetEntity.z + Math.sin(angle) * dist,
+        vx: 0,
+        vz: 0,
+        yaw: angle + Math.PI,
+        angularVelocity: 0,
+        hp: 85,
+        maxHp: 85,
+        shields: 55,
+        maxShields: 55,
+        energy: 100,
+        maxEnergy: 100,
+        powerGridMax: 100,
+        powerGridUsed: 65,
+        cpuMax: 140,
+        cpuUsed: 80,
+        state: 'ENGAGE',
+        inputs: {
+          forward: true,
+          reverse: false,
+          turnLeft: false,
+          turnRight: false,
+          brake: false,
+          firePrimary: false,
+          fireTactical: false,
+        },
+        lastHitTime: 0,
+        fireCooldown: 0,
+        isAmbushRaider: true,
+      });
+      spawnedIds.push(raiderId);
+    }
+
+    this.pendingEvents.push({
+      type: 'MINING_AMBUSH',
+      targetId: targetEntity.id,
+      x: targetEntity.x,
+      z: targetEntity.z,
+      data: {
+        factionId,
+        raiderIds: spawnedIds,
+        message: `⚠️ ACOUSTIC SIGNATURE DETECTED! ${factionId === 'FACTION_KRYLL' ? 'Kryll' : 'Freebooter'} Claim-Jumpers warping in!`,
+      },
+    });
+    return spawnedIds;
   }
 
   private integrateEntityPhysics(entity: SectorEntity, dt: number, now: number): void {
@@ -3249,6 +3759,78 @@ export class SectorRoom {
         }
       }
 
+      // Milestone 1.4: Mode A Weapon Fracturing against Asteroids
+      if (!hit) {
+        for (const ast of this.asteroids.values()) {
+          if (ast.depletedUntil !== null || ast.hp <= 0) continue;
+          const dx = ast.x - proj.x;
+          const dz = ast.z - proj.z;
+          const hitRad = ast.radius + 1.2;
+          if (dx * dx + dz * dz <= hitRad * hitRad) {
+            hit = true;
+            ast.hp -= proj.damage;
+
+            const dropOrePod = (qty: number, suffix: string) => {
+              const offsetAngle = Math.random() * Math.PI * 2;
+              const containerId = `ore_${ast.id}_${suffix}_${Date.now()}`;
+              this.containers.push({
+                id: containerId,
+                x: Math.round((ast.x + Math.cos(offsetAngle) * (ast.radius + 3.5)) * 10) / 10,
+                z: Math.round((ast.z + Math.sin(offsetAngle) * (ast.radius + 3.5)) * 10) / 10,
+                title: `${ast.oreName} (${qty}x)`,
+                rarity: ast.tier === 'EXOTIC' ? 'LEGENDARY' : ast.tier,
+                items: [
+                  {
+                    type: 'ORE',
+                    name: ast.oreName,
+                    commodityId: ast.oreCommodityId,
+                    quantity: qty,
+                  },
+                ],
+                createdAt: Date.now(),
+              });
+            };
+
+            if (!ast.fractured50 && ast.hp <= ast.maxHp * 0.5 && ast.hp > 0) {
+              ast.fractured50 = true;
+              const podQty = Math.max(1, Math.round(ast.maxYield * 0.25));
+              ast.remainingYield = Math.max(0, ast.remainingYield - podQty);
+              dropOrePod(podQty, '50');
+              this.pendingEvents.push({
+                type: 'ASTEROID_FRACTURED',
+                sourceId: proj.ownerId,
+                targetId: ast.id,
+                x: ast.x,
+                z: ast.z,
+                data: { oreName: ast.oreName, quantity: podQty },
+              });
+            }
+
+            if (ast.hp <= 0) {
+              const podQty = Math.max(1, Math.round(ast.maxYield * 0.3));
+              ast.hp = 0;
+              ast.remainingYield = 0;
+              ast.depletedUntil = Date.now() + 90000;
+              dropOrePod(podQty, '0');
+              if (ast.tier === 'RARE' || ast.tier === 'EPIC' || ast.tier === 'EXOTIC') {
+                this.triggerThermalVent(ast, Date.now(), 14);
+              } else {
+                ast.heatState = 'COOLED';
+              }
+              this.pendingEvents.push({
+                type: 'ASTEROID_DEPLETED',
+                sourceId: proj.ownerId,
+                targetId: ast.id,
+                x: ast.x,
+                z: ast.z,
+                data: { oreName: ast.oreName, precision: false, quantity: podQty },
+              });
+            }
+            break;
+          }
+        }
+      }
+
       if (!hit) {
         livingProjectiles.push(proj);
       }
@@ -3777,15 +4359,34 @@ export class SectorRoom {
     if (!pEntity) return null;
 
     const dist = Math.hypot(pEntity.x - container.x, pEntity.z - container.z);
-    if (dist > 35) return null;
+    const maxScoop = Math.max(35, pEntity.miningProfile?.scoopRadius || 35);
+    if (dist > maxScoop) return null;
 
+    let anyRemaining = false;
     for (const item of container.items) {
-      if (item.blueprintId) {
+      if (item.type === 'ORE' && item.commodityId) {
+        const res = await tradeService.addMinedOreToCargo(playerId, item.commodityId, Number(item.quantity || 1));
+        if (res.overflow > 0) {
+          item.quantity = res.overflow;
+          anyRemaining = true;
+          this.pendingEvents.push({
+            type: 'CARGO_HOLD_FULL',
+            targetId: pEntity.id,
+            data: {
+              usedCargo: res.usedCargo,
+              cargoCapacity: res.cargoCapacity,
+              commodityName: res.commodityName,
+            },
+          });
+        }
+      } else if (item.blueprintId) {
         await outfittingService.addLootToPlayer(playerId, item);
       }
     }
 
-    this.containers.splice(cIdx, 1);
+    if (!anyRemaining) {
+      this.containers.splice(cIdx, 1);
+    }
 
     // Day 36: Record salvage collection in session AAR
     const aar = this.sessionAAR.get(playerId);
@@ -3870,7 +4471,13 @@ export class SectorRoom {
         abilityMaxCooldown: e.abilityMaxCooldown,
         harmonicShieldActive: e.harmonicShieldActive,
         isDecoy: e.isDecoy,
+        // Milestone 1.4 Mining Telemetry
+        miningAsteroidId: e.miningAsteroidId || null,
+        miningHeat: typeof e.miningHeat === 'number' ? Math.round(e.miningHeat) : 0,
+        scoopRadius: e.miningProfile?.scoopRadius,
+        beamRange: e.miningProfile?.beamRange,
       })),
+      asteroids: this.serializeAsteroids(),
       sporeClouds: this.sporeClouds.map((sc) => ({
         id: sc.id,
         x: Math.round(sc.x * 10) / 10,
@@ -4106,6 +4713,13 @@ export class SectorCombatManager {
           room.startSalvageBeam(playerId, msg.wreckId);
         } else if (msg.type === 'STOP_SALVAGE_BEAM') {
           room.stopSalvageBeam(playerId);
+        } else if (msg.type === 'START_MINING_BEAM') {
+          const mineRes = room.startMiningBeam(playerId, msg.asteroidId);
+          try {
+            socket.send(JSON.stringify({ type: 'S_MINING_BEAM_ACK', ...mineRes }));
+          } catch {}
+        } else if (msg.type === 'STOP_MINING_BEAM') {
+          room.stopMiningBeam(playerId);
         } else if (msg.type === 'DECLARE_ALLEGIANCE') {
           room.declareAllegiance(playerId, msg.factionId);
         } else if (msg.type === 'C_TACTICAL_ORDER' || msg.type === 'TACTICAL_ORDER') {

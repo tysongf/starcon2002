@@ -46,6 +46,55 @@ export const COMMODITIES: Record<string, CommodityDef> = {
     category: 'RAW_MATERIAL',
     description: 'Cryogenically preserved indigenous alien biological lifeforms harvested from planetary biomes.',
   },
+  COMM_PYRITE_ORE: {
+    id: 'COMM_PYRITE_ORE',
+    name: 'Sulfur Pyrite',
+    basePrice: 78,
+    category: 'RAW_MATERIAL',
+    description: 'Iron-sulfide asteroid ore prized by industrial foundries and blast smelters.',
+  },
+  COMM_CRYO_ICE: {
+    id: 'COMM_CRYO_ICE',
+    name: 'Cryo-Deuterium Ice',
+    basePrice: 90,
+    category: 'RAW_MATERIAL',
+    description: 'Glacial comet-rock rich in trapped deuterium; refines into starship fuel on pickup.',
+  },
+  COMM_TITANIUM_ORE: {
+    id: 'COMM_TITANIUM_ORE',
+    name: 'Titanium-Ferrite',
+    basePrice: 125,
+    category: 'RAW_MATERIAL',
+    description: 'High-density aerospace ferrite lattice alloyed naturally inside hyper-metallic belts.',
+  },
+  COMM_LITHIUM_QUARTZ: {
+    id: 'COMM_LITHIUM_QUARTZ',
+    name: 'Lithium-Quartz Crystal',
+    basePrice: 195,
+    category: 'RAW_MATERIAL',
+    description: 'Resonant piezo-crystalline veins essential for capacitor matrices and beam optics.',
+  },
+  COMM_PHORID_RESIN: {
+    id: 'COMM_PHORID_RESIN',
+    name: 'Bio-Amber Resin',
+    basePrice: 210,
+    category: 'RAW_MATERIAL',
+    description: 'Fossilized mycorrhizal amber nodules grown around carbonaceous drift boulders.',
+  },
+  COMM_OBSIDIAN_MATRIX: {
+    id: 'COMM_OBSIDIAN_MATRIX',
+    name: 'Obsidian Monolith Shard',
+    basePrice: 310,
+    category: 'RAW_MATERIAL',
+    description: 'Vitreous volcanic hyper-dense glass veined with dark matter slag.',
+  },
+  COMM_AETHER_CORE: {
+    id: 'COMM_AETHER_CORE',
+    name: 'Precursor Aether-Core',
+    basePrice: 460,
+    category: 'RAW_MATERIAL',
+    description: 'Ancient Precursor zero-point crystalline lattice radiating exotic containment fields.',
+  },
 };
 
 export interface MarketItem {
@@ -609,6 +658,88 @@ export class TradeService {
     return {
       ports: portDataList,
       arbitrage,
+    };
+  }
+
+  /**
+   * Milestone 1.4: Atomically deposits extracted space ore into player's ship_cargo
+   * respecting ships.cargo_capacity. Cryo-Deuterium Ice also tops up ship fuel (+1 fuel per 2 units).
+   */
+  public async addMinedOreToCargo(
+    playerId: string,
+    commodityId: string,
+    requestedQty: number
+  ): Promise<{
+    added: number;
+    overflow: number;
+    usedCargo: number;
+    cargoCapacity: number;
+    fuelRefined: number;
+    commodityName: string;
+  }> {
+    const def = COMMODITIES[commodityId] || { name: commodityId };
+    if (requestedQty <= 0) {
+      const hold = await this.getPlayerHold(playerId);
+      return {
+        added: 0,
+        overflow: 0,
+        usedCargo: hold?.usedCargo || 0,
+        cargoCapacity: hold?.cargoCapacity || 40,
+        fuelRefined: 0,
+        commodityName: def.name,
+      };
+    }
+
+    const shipRes = await db.query<any>(
+      'SELECT id, cargo_capacity, fuel, max_fuel FROM ships WHERE account_id = $1',
+      [playerId]
+    );
+    if (shipRes.rows.length === 0) {
+      throw new Error('Player vessel not found');
+    }
+    const ship = shipRes.rows[0];
+    const capacity = Number(ship.cargo_capacity || 40);
+
+    const usedRes = await db.query<any>(
+      'SELECT COALESCE(SUM(quantity), 0) AS used FROM ship_cargo WHERE ship_id = $1',
+      [ship.id]
+    );
+    const usedCargo = Number(usedRes.rows[0]?.used || 0);
+    const freeCargo = Math.max(0, capacity - usedCargo);
+    const added = Math.min(requestedQty, freeCargo);
+    const overflow = Math.max(0, requestedQty - added);
+
+    if (added > 0) {
+      await db.query(
+        `INSERT INTO ship_cargo (ship_id, commodity_id, quantity)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (ship_id, commodity_id) DO UPDATE SET quantity = ship_cargo.quantity + $3`,
+        [ship.id, commodityId, added]
+      );
+    }
+
+    let fuelRefined = 0;
+    if (commodityId === 'COMM_CRYO_ICE' && added >= 2) {
+      const curFuel = Number(ship.fuel || 0);
+      const maxFuel = Number(ship.max_fuel || 100);
+      if (curFuel < maxFuel) {
+        fuelRefined = Math.min(Math.floor(added / 2), Math.floor(maxFuel - curFuel));
+        if (fuelRefined > 0) {
+          await db.query(
+            'UPDATE ships SET fuel = LEAST(max_fuel, fuel + $1) WHERE id = $2',
+            [fuelRefined, ship.id]
+          );
+        }
+      }
+    }
+
+    return {
+      added,
+      overflow,
+      usedCargo: usedCargo + added,
+      cargoCapacity: capacity,
+      fuelRefined,
+      commodityName: def.name,
     };
   }
 }

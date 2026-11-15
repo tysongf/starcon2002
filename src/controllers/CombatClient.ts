@@ -13,6 +13,7 @@ import { FACTION_STYLES } from '../procgen/FactionStyles';
 import { ShieldBubble, CombatVfxSystem } from '../vfx/CombatVfxSystem';
 import { ShipFlightController } from '../physics/ShipFlightController';
 import { AudioEngine } from '../audio/AudioEngine';
+import type { AsteroidField } from '../entities/AsteroidField';
 
 export interface CombatClientCallbacks {
   audio: AudioEngine;
@@ -25,6 +26,8 @@ export interface CombatClientCallbacks {
   getCurrentSectorId: () => number;
   setCurrentSectorId: (id: number) => void;
   getShipMesh: () => THREE.Mesh | null;
+  getAsteroidField?: () => AsteroidField | null;
+  refreshCargoHold?: () => void;
   dockShip: () => void;
   refreshFactionStandings: () => Promise<void> | void;
   startTruceCountdown: (seconds: number) => void;
@@ -116,6 +119,21 @@ export class CombatClient {
   public currentTowedWreckId: string | null = null;
   public targetedWreckId: string | null = null;
   public tetheredStationWreck: any | null = null;
+
+  // Milestone 1.4: Space Mining & Thermal Hazard Telemetry
+  public targetedAsteroidId: string | null = null;
+  public asteroidTargets: Map<string, any> = new Map();
+  public activeMiningAsteroidId: string | null = null;
+  public playerMiningHeat: number = 0;
+  public playerScoopRadius: number = 14;
+  public miningBeamMesh: THREE.Group | null = null;
+  private thermalShockwaves: Array<{ mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; age: number; maxAge: number; maxRadius: number }> = [];
+  private elMiningHeatBar: HTMLElement | null = null;
+  private elMiningHeatVal: HTMLElement | null = null;
+  private elMiningCargoBar: HTMLElement | null = null;
+  private elMiningCargoVal: HTMLElement | null = null;
+  private btnHudMineAsteroid: HTMLElement | null = null;
+  private btnStripMineToggle: HTMLElement | null = null;
 
   // Killmail & Bounty
   public activeKillmailData: any | null = null;
@@ -305,6 +323,12 @@ export class CombatClient {
     this.elConvoyCargoItems = document.getElementById('convoy-cargo-items');
 
     this.elTargetQuickActions = document.getElementById('target-quick-actions');
+    this.btnHudMineAsteroid = document.getElementById('btn-hud-mine-asteroid');
+    this.elMiningHeatBar = document.getElementById('hud-mining-heat-bar');
+    this.elMiningHeatVal = document.getElementById('hud-mining-heat-val');
+    this.elMiningCargoBar = document.getElementById('hud-mining-cargo-bar');
+    this.elMiningCargoVal = document.getElementById('hud-mining-cargo-val');
+    this.btnStripMineToggle = document.getElementById('btn-strip-mine-toggle');
     this.btnHudSalvageBeam = document.getElementById('btn-hud-salvage-beam');
     this.btnHudTetherWreck = document.getElementById('btn-hud-tether-wreck');
     this.elTowCableHud = document.getElementById('tow-cable-hud');
@@ -394,6 +418,8 @@ export class CombatClient {
 
     this.btnDismantleWreck?.addEventListener('click', () => this.dismantleTetheredWreck());
     this.btnRefurbishWreck?.addEventListener('click', () => this.refurbishTetheredWreck());
+    this.btnHudMineAsteroid?.addEventListener('click', () => this.toggleAsteroidMiningBeam());
+    this.btnStripMineToggle?.addEventListener('click', () => this.toggleAsteroidMiningBeam());
     this.btnHudSalvageBeam?.addEventListener('click', () => this.toggleSalvageMining());
     this.btnHudTetherWreck?.addEventListener('click', () => this.toggleTowTether());
     this.btnHudReleaseTow?.addEventListener('click', () => this.toggleTowTether());
@@ -494,6 +520,12 @@ export class CombatClient {
           const msg = JSON.parse(event.data);
           if (msg.type === 'TICK_SNAPSHOT') {
             this.handleCombatSnapshot(msg);
+          } else if (msg.type === 'SECTOR_ASTEROIDS') {
+            this.syncSectorAsteroids(msg.asteroids || []);
+          } else if (msg.type === 'S_MINING_BEAM_ACK') {
+            if (!msg.success && msg.error) {
+              this.callbacks.showApNotification(`⚠️ ${msg.error}`, true);
+            }
           } else if (msg.type === 'KILLMAIL_NOTIFICATION') {
             this.audio.playShipExplosionSound();
             this.openKillmailModal(msg.killmail);
@@ -1058,6 +1090,44 @@ export class CombatClient {
       this.hideSalvageBeam();
     }
 
+    // Milestone 1.4: Sync Authoritative Asteroids, Player Mining Heat & Space Mining Beam
+    if (Array.isArray(snapshot.asteroids)) {
+      this.syncSectorAsteroids(snapshot.asteroids);
+    }
+    if (playerEntity) {
+      this.activeMiningAsteroidId = playerEntity.miningAsteroidId || null;
+      this.playerMiningHeat = Number(playerEntity.miningHeat || 0);
+      if (typeof playerEntity.scoopRadius === 'number') {
+        this.playerScoopRadius = playerEntity.scoopRadius;
+      }
+
+      if (this.elMiningHeatBar) {
+        this.elMiningHeatBar.style.width = `${Math.max(0, Math.min(100, this.playerMiningHeat))}%`;
+      }
+      if (this.elMiningHeatVal) {
+        this.elMiningHeatVal.textContent = `${Math.round(this.playerMiningHeat)}%`;
+        this.elMiningHeatVal.style.color = this.playerMiningHeat >= 75 ? '#ef4444' : this.playerMiningHeat >= 50 ? '#fbbf24' : '#e2e8f0';
+      }
+      if (this.btnStripMineToggle) {
+        this.btnStripMineToggle.classList.toggle('active', !!this.activeMiningAsteroidId);
+        this.btnStripMineToggle.textContent = this.activeMiningAsteroidId ? '⛏️ STOP [G]' : '⛏️ [G] MINE';
+      }
+
+      if (this.activeMiningAsteroidId) {
+        const ast = this.asteroidTargets.get(this.activeMiningAsteroidId);
+        if (ast && !ast.depleted) {
+          const pPos = new THREE.Vector3(playerEntity.x, 0.3, playerEntity.z);
+          const aPos = new THREE.Vector3(ast.x, 0.3, ast.z);
+          const beamHex = parseInt((ast.emissiveHex || '#22d3ee').replace('#', ''), 16) || 0x22d3ee;
+          this.updateSpaceMiningBeam(pPos, aPos, beamHex);
+        } else {
+          this.hideSpaceMiningBeam();
+        }
+      } else {
+        this.hideSpaceMiningBeam();
+      }
+    }
+
     // Day 25: 3D Skirmish Beacon & Engage Action
     if (snapshot.skirmishBeacon) {
       this.skirmishBeacon = snapshot.skirmishBeacon;
@@ -1289,6 +1359,39 @@ export class CombatClient {
         } else if (ev.type === 'WINGMAN_DESTROYED') {
           this.audio.playShipExplosionSound();
           this.callbacks.showApNotification(ev.data?.message || '🚨 WINGMAN DESTROYED // Derelict wreck spawned', true);
+        } else if (ev.type === 'MINING_BEAM_TICK') {
+          if (ev.data?.engaged) {
+            this.audio.playMiningLaserSound();
+            this.callbacks.showApNotification(`⛏️ MINING LOCK: ${ev.data?.oreName || 'Asteroid Vein'}`, false);
+          }
+        } else if (ev.type === 'MINING_YIELD') {
+          if (this.elMiningCargoBar && ev.data?.cargoCapacity) {
+            const pct = Math.max(0, Math.min(100, (ev.data.usedCargo / ev.data.cargoCapacity) * 100));
+            this.elMiningCargoBar.style.width = `${pct}%`;
+          }
+          if (this.elMiningCargoVal && typeof ev.data?.usedCargo === 'number') {
+            this.elMiningCargoVal.textContent = `${ev.data.usedCargo}/${ev.data.cargoCapacity}`;
+          }
+          const fuelNote = ev.data?.fuelRefined > 0 ? ` (+${ev.data.fuelRefined} Fuel)` : '';
+          this.callbacks.showApNotification(`⛏️ +${ev.data?.quantity || 1}x ${ev.data?.commodityName || 'Ore'}${fuelNote}`, false);
+          this.callbacks.refreshCargoHold?.();
+        } else if (ev.type === 'CARGO_HOLD_FULL') {
+          this.audio.playApWarningSound();
+          this.callbacks.showApNotification(`📦 CARGO HOLD FULL (${ev.data?.usedCargo}/${ev.data?.cargoCapacity}) — Mining stopped!`, true);
+        } else if (ev.type === 'THERMAL_VENT_WARNING') {
+          this.audio.playApWarningSound();
+          this.callbacks.showApNotification(`🌋 THERMAL VENT CHARGING // Clear 28m blast radius!`, true);
+        } else if (ev.type === 'THERMAL_VENT_ERUPTION') {
+          this.audio.playShieldBreakSound();
+          this.spawnThermalShockwave(new THREE.Vector3(ev.x || 0, 0, ev.z || 0), ev.data?.blastRadius || 28);
+        } else if (ev.type === 'MINING_AMBUSH') {
+          this.audio.playEscortCriticalAlarm();
+          this.callbacks.showApNotification(ev.data?.message || '⚠️ CLAIM-JUMPER PATROL WARPING IN!', true);
+        } else if (ev.type === 'ASTEROID_FRACTURED') {
+          this.audio.playLootPickupSound();
+          this.callbacks.showApNotification(`💥 VEIN FRACTURED: ${ev.data?.oreName} pod ejected!`, false);
+        } else if (ev.type === 'ASTEROID_DEPLETED') {
+          this.callbacks.showApNotification(`✨ ${ev.data?.oreName || 'Asteroid'} vein extracted completely.`, false);
         }
       }
     }
@@ -1538,9 +1641,15 @@ export class CombatClient {
       }
     }
 
-    if (nearestContainer && minContainerDist <= 25.0) {
+    if (nearestContainer && minContainerDist <= Math.max(25.0, this.playerScoopRadius)) {
       this.targetedContainerId = nearestContainer.id;
-      if (this.elLootPromptHud && this.elLootPromptText) {
+      const isOre = Array.isArray(nearestContainer.items) && nearestContainer.items[0]?.type === 'ORE';
+      if (isOre && minContainerDist <= this.playerScoopRadius && this.combatSocket?.readyState === WebSocket.OPEN) {
+        this.combatSocket.send(JSON.stringify({ type: 'LOOT_CONTAINER', containerId: nearestContainer.id }));
+        this.activeLootContainers.delete(nearestContainer.id);
+        this.audio.playLootPickupSound();
+        this.callbacks.refreshCargoHold?.();
+      } else if (this.elLootPromptHud && this.elLootPromptText) {
         this.elLootPromptHud.classList.remove('hidden');
         this.elLootPromptText.textContent = `PRESS [F] TO SECURE ${nearestContainer.rarity} CARGO (${minContainerDist.toFixed(1)}u)`;
       }
@@ -1975,7 +2084,157 @@ export class CombatClient {
     }
   }
 
+  public syncSectorAsteroids(asteroids: any[]): void {
+    this.asteroidTargets.clear();
+    for (const ast of asteroids) {
+      this.asteroidTargets.set(ast.id, ast);
+    }
+    this.callbacks.getAsteroidField?.()?.syncFromServer(asteroids);
+  }
+
+  public targetAsteroid(asteroidId: string): void {
+    const ast = this.asteroidTargets.get(asteroidId);
+    if (!ast || ast.depleted) return;
+    this.targetedAsteroidId = asteroidId;
+    this.primaryDroneTarget = null;
+    this.audio.playUiBlip();
+    this.callbacks.showApNotification(`🪨 TARGET LOCKED: ${ast.oreName} [${ast.tier}] (${ast.remainingYield}u)`, false);
+  }
+
+  public cycleNearestAsteroid(): void {
+    const pPos = this.callbacks.getFlightController().position;
+    const living = Array.from(this.asteroidTargets.values())
+      .filter((a) => !a.depleted && a.remainingYield > 0)
+      .sort((a, b) => Math.hypot(a.x - pPos.x, a.z - pPos.z) - Math.hypot(b.x - pPos.x, b.z - pPos.z));
+
+    if (living.length === 0) {
+      this.callbacks.showApNotification('⚠️ NO ACTIVE ASTEROID VEINS IN SECTOR', true);
+      return;
+    }
+
+    const curIdx = this.targetedAsteroidId ? living.findIndex((a) => a.id === this.targetedAsteroidId) : -1;
+    const nextIdx = curIdx >= 0 ? (curIdx + 1) % Math.min(living.length, 6) : 0;
+    this.targetAsteroid(living[nextIdx].id);
+  }
+
+  public toggleAsteroidMiningBeam(): void {
+    if (this.activeMiningAsteroidId) {
+      if (this.combatSocket && this.combatSocket.readyState === WebSocket.OPEN) {
+        this.combatSocket.send(JSON.stringify({ type: 'STOP_MINING_BEAM' }));
+      }
+      this.activeMiningAsteroidId = null;
+      this.hideSpaceMiningBeam();
+      this.callbacks.showApNotification('⛏️ MINING BEAM DISENGAGED', false);
+      return;
+    }
+
+    if (!this.targetedAsteroidId) {
+      this.cycleNearestAsteroid();
+    }
+    if (!this.targetedAsteroidId) return;
+
+    if (this.combatSocket && this.combatSocket.readyState === WebSocket.OPEN) {
+      this.combatSocket.send(
+        JSON.stringify({
+          type: 'START_MINING_BEAM',
+          asteroidId: this.targetedAsteroidId,
+        })
+      );
+    }
+  }
+
+  public setCargoHudFill(usedCargo: number, cargoCapacity: number): void {
+    if (this.elMiningCargoBar) {
+      const pct = cargoCapacity > 0 ? Math.max(0, Math.min(100, (usedCargo / cargoCapacity) * 100)) : 0;
+      this.elMiningCargoBar.style.width = `${pct}%`;
+    }
+    if (this.elMiningCargoVal) {
+      this.elMiningCargoVal.textContent = `${usedCargo}/${cargoCapacity}`;
+    }
+  }
+
+  public updateSpaceMiningBeam(shipPos: THREE.Vector3, astPos: THREE.Vector3, beamHex: number): void {
+    if (!this.miningBeamMesh) {
+      this.miningBeamMesh = new THREE.Group();
+      const beamGeom = new THREE.CylinderGeometry(0.14, 0.22, 1, 8);
+      const beamMat = new THREE.MeshBasicMaterial({
+        color: beamHex,
+        transparent: true,
+        opacity: 0.85,
+      });
+      const core = new THREE.Mesh(beamGeom, beamMat);
+      core.name = 'core';
+      this.miningBeamMesh.add(core);
+
+      const orbGeom = new THREE.SphereGeometry(0.55, 8, 8);
+      const orbMat = new THREE.MeshBasicMaterial({
+        color: 0xfef08a,
+        wireframe: true,
+      });
+      const spark = new THREE.Mesh(orbGeom, orbMat);
+      spark.name = 'spark';
+      this.miningBeamMesh.add(spark);
+
+      this.callbacks.getScene().add(this.miningBeamMesh);
+    }
+
+    this.miningBeamMesh.visible = true;
+    const dir = new THREE.Vector3().subVectors(astPos, shipPos);
+    const length = Math.max(0.1, dir.length());
+    const midPoint = new THREE.Vector3().addVectors(shipPos, astPos).multiplyScalar(0.5);
+
+    const core = this.miningBeamMesh.getObjectByName('core') as THREE.Mesh;
+    if (core) {
+      (core.material as THREE.MeshBasicMaterial).color.setHex(beamHex);
+      core.scale.set(1 + Math.sin(Date.now() * 0.02) * 0.18, length, 1 + Math.sin(Date.now() * 0.02) * 0.18);
+      core.position.copy(midPoint);
+      core.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize());
+    }
+    const spark = this.miningBeamMesh.getObjectByName('spark') as THREE.Mesh;
+    if (spark) {
+      spark.position.copy(astPos);
+      spark.rotation.y += 0.28;
+      spark.rotation.x += 0.15;
+    }
+  }
+
+  public hideSpaceMiningBeam(): void {
+    if (this.miningBeamMesh) {
+      this.miningBeamMesh.visible = false;
+    }
+  }
+
+  public spawnThermalShockwave(center: THREE.Vector3, maxRadius: number): void {
+    const geom = new THREE.RingGeometry(0.8, 1.4, 32);
+    const mat = new THREE.MeshBasicMaterial({
+      color: 0xf97316,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.9,
+    });
+    const mesh = new THREE.Mesh(geom, mat);
+    mesh.rotation.x = Math.PI / 2;
+    mesh.position.set(center.x, 0.2, center.z);
+    this.callbacks.getScene().add(mesh);
+    this.thermalShockwaves.push({ mesh, mat, age: 0, maxAge: 0.9, maxRadius });
+  }
+
   public updateWrecksAndTether(_deltaSec: number): void {
+    // Animate active thermal vent shockwaves
+    for (let i = this.thermalShockwaves.length - 1; i >= 0; i--) {
+      const sw = this.thermalShockwaves[i];
+      sw.age += _deltaSec;
+      const t = Math.min(1, sw.age / sw.maxAge);
+      sw.mesh.scale.setScalar(1 + t * sw.maxRadius);
+      sw.mat.opacity = 0.9 * (1 - t);
+      if (sw.age >= sw.maxAge) {
+        this.callbacks.getScene().remove(sw.mesh);
+        sw.mesh.geometry.dispose();
+        sw.mat.dispose();
+        this.thermalShockwaves.splice(i, 1);
+      }
+    }
+
     const flightController = this.callbacks.getFlightController();
     const pPos = flightController.position;
     let nearestWreck: any = null;
@@ -2013,6 +2272,9 @@ export class CombatClient {
         // Show target quick actions (Salvage Beam & Tow Tether)
         if (this.elTargetQuickActions) {
           this.elTargetQuickActions.classList.remove('hidden');
+          if (this.btnHudMineAsteroid) this.btnHudMineAsteroid.classList.add('hidden');
+          if (this.btnHudSalvageBeam) this.btnHudSalvageBeam.classList.remove('hidden');
+          if (this.btnHudTetherWreck) this.btnHudTetherWreck.classList.remove('hidden');
 
           if (this.btnHudTetherWreck) {
             const isTowed = this.currentTowedWreckId === nearestWreck.id;
@@ -2026,11 +2288,42 @@ export class CombatClient {
       }
     } else {
       this.targetedWreckId = null;
-      if (!this.primaryDroneTarget && this.elTargetTelemetryHud) {
-        this.elTargetTelemetryHud.classList.add('hidden');
-      }
-      if (this.elTargetQuickActions) {
-        this.elTargetQuickActions.classList.add('hidden');
+
+      // Render Asteroid Vein Telemetry if targeted & no ship target locked
+      const targetAst = this.targetedAsteroidId ? this.asteroidTargets.get(this.targetedAsteroidId) : null;
+      if (!this.primaryDroneTarget && targetAst && !targetAst.depleted) {
+        const aDist = Math.hypot(targetAst.x - pPos.x, targetAst.z - pPos.z);
+        if (this.elTargetTelemetryHud) {
+          this.elTargetTelemetryHud.classList.remove('hidden');
+          if (this.elTargetName) this.elTargetName.textContent = targetAst.oreName.toUpperCase();
+          if (this.elTargetFaction) this.elTargetFaction.textContent = `${targetAst.tier} ASTEROID VEIN`;
+          if (this.elTargetDistance) this.elTargetDistance.textContent = `${aDist.toFixed(1)} u`;
+
+          const yieldPct = targetAst.maxYield > 0 ? Math.round((targetAst.remainingYield / targetAst.maxYield) * 100) : 0;
+          const hpPct = targetAst.maxHp > 0 ? Math.round((targetAst.hp / targetAst.maxHp) * 100) : 0;
+
+          if (this.elTargetShieldBar) this.elTargetShieldBar.style.width = `${yieldPct}%`;
+          if (this.elTargetShieldVal) this.elTargetShieldVal.textContent = `${targetAst.remainingYield}/${targetAst.maxYield} ORE`;
+          if (this.elTargetHullBar) this.elTargetHullBar.style.width = `${hpPct}%`;
+          if (this.elTargetHullVal) this.elTargetHullVal.textContent = `${targetAst.hp}/${targetAst.maxHp} ROCK`;
+        }
+        if (this.elTargetQuickActions) {
+          this.elTargetQuickActions.classList.remove('hidden');
+          if (this.btnHudSalvageBeam) this.btnHudSalvageBeam.classList.add('hidden');
+          if (this.btnHudTetherWreck) this.btnHudTetherWreck.classList.add('hidden');
+          if (this.btnHudMineAsteroid) {
+            this.btnHudMineAsteroid.classList.remove('hidden');
+            const isMiningThis = this.activeMiningAsteroidId === targetAst.id;
+            this.btnHudMineAsteroid.textContent = isMiningThis ? '⛏️ STOP MINING [G]' : '⛏️ ENGAGE MINING BEAM [G]';
+          }
+        }
+      } else {
+        if (!this.primaryDroneTarget && this.elTargetTelemetryHud) {
+          this.elTargetTelemetryHud.classList.add('hidden');
+        }
+        if (this.elTargetQuickActions) {
+          this.elTargetQuickActions.classList.add('hidden');
+        }
       }
     }
   }

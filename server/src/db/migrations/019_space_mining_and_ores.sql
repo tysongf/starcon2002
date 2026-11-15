@@ -1,0 +1,52 @@
+-- Milestone 1.4: 8 Space Mining Ores & Regional Port Markets
+-- Seeds the 7 new spectral- and faction-tied ores across all 5 galactic ports
+-- while preserving all 5 existing core commodities untouched.
+
+INSERT INTO port_inventory (port_id, commodity_id, stock, demand, capacity, buy_price, sell_price)
+VALUES
+  -- PORT_AEGIS_01 (Sol Federation Core — high demand for exotic/rare industrial inputs)
+  ('PORT_AEGIS_01', 'COMM_PYRITE_ORE', 280, 1200, 2200, 82.0, 88.0),
+  ('PORT_AEGIS_01', 'COMM_CRYO_ICE', 420, 950, 2000, 92.0, 98.0),
+  ('PORT_AEGIS_01', 'COMM_TITANIUM_ORE', 260, 1350, 2200, 134.0, 144.0),
+  ('PORT_AEGIS_01', 'COMM_LITHIUM_QUARTZ', 110, 850, 1400, 208.0, 224.0),
+  ('PORT_AEGIS_01', 'COMM_PHORID_RESIN', 95, 780, 1200, 222.0, 240.0),
+  ('PORT_AEGIS_01', 'COMM_OBSIDIAN_MATRIX', 45, 620, 1000, 328.0, 355.0),
+  ('PORT_AEGIS_01', 'COMM_AETHER_CORE', 18, 450, 700, 485.0, 520.0),
+
+  -- PORT_SMELTER_01 (Obsidian Foundry 3 / Lithos — cheap local quartz & pyrite, pays premium for ice/aether)
+  ('PORT_SMELTER_01', 'COMM_PYRITE_ORE', 1450, 500, 3200, 62.0, 68.0),
+  ('PORT_SMELTER_01', 'COMM_CRYO_ICE', 180, 1400, 2400, 104.0, 114.0),
+  ('PORT_SMELTER_01', 'COMM_TITANIUM_ORE', 980, 750, 2500, 108.0, 118.0),
+  ('PORT_SMELTER_01', 'COMM_LITHIUM_QUARTZ', 580, 450, 1600, 172.0, 186.0),
+  ('PORT_SMELTER_01', 'COMM_PHORID_RESIN', 65, 920, 1200, 228.0, 246.0),
+  ('PORT_SMELTER_01', 'COMM_OBSIDIAN_MATRIX', 310, 400, 1200, 285.0, 305.0),
+  ('PORT_SMELTER_01', 'COMM_AETHER_CORE', 24, 520, 800, 490.0, 530.0),
+
+  -- PORT_WARDEN_01 (Chronicle Reliquary Station — high Aether supply, pays well for Titanium & Bio-Amber)
+  ('PORT_WARDEN_01', 'COMM_PYRITE_ORE', 310, 900, 2000, 84.0, 90.0),
+  ('PORT_WARDEN_01', 'COMM_CRYO_ICE', 640, 650, 2000, 80.0, 86.0),
+  ('PORT_WARDEN_01', 'COMM_TITANIUM_ORE', 220, 1180, 2000, 136.0, 148.0),
+  ('PORT_WARDEN_01', 'COMM_LITHIUM_QUARTZ', 240, 720, 1400, 192.0, 208.0),
+  ('PORT_WARDEN_01', 'COMM_PHORID_RESIN', 85, 860, 1200, 224.0, 242.0),
+  ('PORT_WARDEN_01', 'COMM_OBSIDIAN_MATRIX', 140, 580, 1000, 315.0, 338.0),
+  ('PORT_WARDEN_01', 'COMM_AETHER_CORE', 190, 280, 900, 415.0, 445.0),
+
+  -- PORT_MINERS_01 (Deep-Core Foundry Rig 7 — Guild Mineral Exchange & Smelter Hub)
+  ('PORT_MINERS_01', 'COMM_PYRITE_ORE', 1950, 400, 4000, 58.0, 64.0),
+  ('PORT_MINERS_01', 'COMM_CRYO_ICE', 350, 1250, 2400, 98.0, 108.0),
+  ('PORT_MINERS_01', 'COMM_TITANIUM_ORE', 1120, 600, 3000, 104.0, 114.0),
+  ('PORT_MINERS_01', 'COMM_LITHIUM_QUARTZ', 420, 550, 1800, 178.0, 194.0),
+  ('PORT_MINERS_01', 'COMM_PHORID_RESIN', 50, 1050, 1400, 232.0, 254.0),
+  ('PORT_MINERS_01', 'COMM_OBSIDIAN_MATRIX', 260, 520, 1400, 294.0, 318.0),
+  ('PORT_MINERS_01', 'COMM_AETHER_CORE', 20, 640, 900, 510.0, 555.0),
+
+  -- PORT_FREEBOOTER_01 (Cutthroat Cove Black-Dock — pays top black-market prices for Obsidian & Resin)
+  ('PORT_FREEBOOTER_01', 'COMM_PYRITE_ORE', 520, 780, 2000, 76.0, 82.0),
+  ('PORT_FREEBOOTER_01', 'COMM_CRYO_ICE', 780, 620, 2200, 78.0, 85.0),
+  ('PORT_FREEBOOTER_01', 'COMM_TITANIUM_ORE', 410, 940, 2000, 128.0, 138.0),
+  ('PORT_FREEBOOTER_01', 'COMM_LITHIUM_QUARTZ', 160, 890, 1400, 205.0, 222.0),
+  ('PORT_FREEBOOTER_01', 'COMM_PHORID_RESIN', 190, 820, 1400, 212.0, 230.0),
+  ('PORT_FREEBOOTER_01', 'COMM_OBSIDIAN_MATRIX', 95, 760, 1200, 336.0, 368.0),
+  ('PORT_FREEBOOTER_01', 'COMM_AETHER_CORE', 32, 590, 850, 495.0, 540.0)
+ON CONFLICT (port_id, commodity_id) DO NOTHING;
+
