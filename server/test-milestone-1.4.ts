@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import WebSocket from 'ws';
+import { AuthedWebSocket as WebSocket } from './test-utils/authHelper';
 import {
   SPACE_ORES,
   computeMiningCapabilities,

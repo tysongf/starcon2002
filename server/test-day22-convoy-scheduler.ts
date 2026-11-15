@@ -1,3 +1,4 @@
+import './test-utils/authHelper';
 import { strict as assert } from 'node:assert';
 
 const BASE_URL = 'http://localhost:3000';

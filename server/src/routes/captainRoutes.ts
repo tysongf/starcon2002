@@ -5,7 +5,7 @@ export const captainRoutes: FastifyPluginAsync = async (server) => {
   server.get('/sector/:sectorId', async (req, reply) => {
     const { sectorId } = req.params as { sectorId: string };
     const query = (req.query || {}) as { accountId?: string };
-    const accountId = query.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     const parsedSector = parseInt(sectorId, 10) || 1;
     const captains = await frontierCaptainService.getSectorCaptains(accountId, parsedSector);
     reply.send({ success: true, sectorId: parsedSector, captains });
@@ -14,7 +14,7 @@ export const captainRoutes: FastifyPluginAsync = async (server) => {
   server.get('/:captainKey', async (req, reply) => {
     const { captainKey } = req.params as { captainKey: string };
     const query = (req.query || {}) as { accountId?: string; sectorId?: string };
-    const accountId = query.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     const sectorId = parseInt(query.sectorId || '1', 10) || 1;
     try {
       const dialog = await frontierCaptainService.openCaptainComms(accountId, captainKey, sectorId);
@@ -33,7 +33,7 @@ export const captainRoutes: FastifyPluginAsync = async (server) => {
     };
     try {
       const outcome = await frontierCaptainService.respondToCaptain({
-        accountId: body.accountId || 'acc_sol_captain',
+        accountId: req.authAccountId!,
         captainKey: body.captainKey,
         sectorId: body.sectorId || 1,
         optionId: body.optionId,

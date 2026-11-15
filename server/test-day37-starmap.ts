@@ -1,3 +1,4 @@
+import './test-utils/authHelper';
 /**
  * Day 37 Integration Test Suite: The Galactic Coordinate Engine & CRT Starmap
  * Milestone 0.9: The Infinite Void — Interstellar Hyperspace & Galactic Starmap

@@ -32,7 +32,7 @@ export const navigationRoutes: FastifyPluginAsync = async (server) => {
       targetSectorId: number;
     };
 
-    const playerId = body.playerId || 'acc_sol_captain';
+    const playerId = req.authAccountId!;
     const targetSectorId = typeof body.targetSectorId === 'number'
       ? body.targetSectorId
       : parseInt(body.targetSectorId, 10);

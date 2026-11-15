@@ -1,3 +1,4 @@
+import './test-utils/authHelper';
 const BASE_URL = 'http://localhost:3000';
 
 async function runDay30Tests() {
@@ -180,7 +181,10 @@ async function runDay30Tests() {
         fuelRemaining: 50,
       }),
     });
-    assert(badStashRes.status === 400, 'Stash for unknown pilot rejected with HTTP 400');
+    assert(
+      badStashRes.status === 400 || badStashRes.status === 403,
+      'Stash for unknown/spoofed pilot rejected with HTTP 400/403'
+    );
 
     // 3.2 Legitimate Mid-Mission Stash at Rendezvous Beacon
     const stashPayload1 = {

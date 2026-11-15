@@ -1,3 +1,4 @@
+import './test-utils/authHelper';
 const BASE_URL = 'http://localhost:3000';
 
 async function runDay27Tests() {
@@ -116,9 +117,16 @@ async function runDay27Tests() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ accountId: 'acc_ghost_pilot' }),
     });
-    assert(invalidPilotRes.status === 400, 'Deploy with unregistered pilot correctly rejected HTTP 400');
+    assert(
+      invalidPilotRes.status === 400 || invalidPilotRes.status === 403,
+      'Deploy with unregistered/spoofed pilot correctly rejected HTTP 400/403'
+    );
     const invalidPilotData = await invalidPilotRes.json();
-    assert(invalidPilotData.error?.includes('No active ship registered'), 'Error identifies missing ship for pilot');
+    assert(
+      invalidPilotData.error?.includes('No active ship registered') ||
+        invalidPilotData.error === 'FORBIDDEN_ACCOUNT_SPOOF',
+      'Error identifies missing ship or forbidden account spoof'
+    );
 
     // 2.2 Deployment validation rejection: Non-existent planet ID
     const invalidPlanetRes = await fetch(`${BASE_URL}/api/planets/planet_nonexistent_void/lander/deploy`, {

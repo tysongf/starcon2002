@@ -24,7 +24,7 @@ export const crewRoutes: FastifyPluginAsync = async (server) => {
 
   server.get('/roster', async (req, reply) => {
     const query = (req.query || {}) as { accountId?: string };
-    const accountId = query.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     const summary = await crewService.getRosterSummary(accountId);
     reply.send(summary);
   });
@@ -35,7 +35,7 @@ export const crewRoutes: FastifyPluginAsync = async (server) => {
       sourceType?: 'STARPORT' | 'COLONY';
       sourceId?: string;
     };
-    const accountId = query.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     const sourceType = query.sourceType === 'COLONY' ? 'COLONY' : 'STARPORT';
     const sourceId = query.sourceId || (sourceType === 'STARPORT' ? 'PORT_AEGIS_01' : '');
     const data = await crewService.getHiringMarket(accountId, sourceType, sourceId);
@@ -45,7 +45,7 @@ export const crewRoutes: FastifyPluginAsync = async (server) => {
   server.post('/market/refresh', async (req, reply) => {
     const body = (req.body || {}) as { accountId?: string };
     try {
-      const res = await crewService.refreshHiringMarket(body.accountId || 'acc_sol_captain');
+      const res = await crewService.refreshHiringMarket(req.authAccountId!);
       reply.send(res);
     } catch (err: any) {
       reply.status(400).send({ success: false, error: err.message });
@@ -61,7 +61,7 @@ export const crewRoutes: FastifyPluginAsync = async (server) => {
     };
     try {
       const res = await crewService.hireFromMarket(
-        body.accountId || 'acc_sol_captain',
+        req.authAccountId!,
         body.listingId,
         body.sourceType === 'COLONY' ? 'COLONY' : 'STARPORT',
         body.sourceId || 'PORT_AEGIS_01'
@@ -82,7 +82,7 @@ export const crewRoutes: FastifyPluginAsync = async (server) => {
       moduleKey?: string;
     };
     try {
-      const overview = await crewService.assignCrew(body.accountId || 'acc_sol_captain', body.crewId, {
+      const overview = await crewService.assignCrew(req.authAccountId!, body.crewId, {
         assignmentType: body.assignmentType,
         baySlotKey: body.baySlotKey,
         colonyId: body.colonyId,
@@ -97,7 +97,7 @@ export const crewRoutes: FastifyPluginAsync = async (server) => {
   server.post('/broker', async (req, reply) => {
     const body = (req.body || {}) as { accountId?: string; crewId: string };
     try {
-      const res = await crewService.brokerCrewContract(body.accountId || 'acc_sol_captain', body.crewId);
+      const res = await crewService.brokerCrewContract(req.authAccountId!, body.crewId);
       reply.send(res);
     } catch (err: any) {
       reply.status(400).send({ success: false, error: err.message });
@@ -107,7 +107,7 @@ export const crewRoutes: FastifyPluginAsync = async (server) => {
   server.post('/settle-cycle', async (req, reply) => {
     const body = (req.body || {}) as { accountId?: string };
     try {
-      const res = await crewService.settleSalaryCycle(body.accountId || 'acc_sol_captain');
+      const res = await crewService.settleSalaryCycle(req.authAccountId!);
       reply.send(res);
     } catch (err: any) {
       reply.status(400).send({ success: false, error: err.message });
@@ -116,7 +116,7 @@ export const crewRoutes: FastifyPluginAsync = async (server) => {
 
   server.get('/casualties', async (req, reply) => {
     const query = (req.query || {}) as { accountId?: string };
-    const accountId = query.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     const casualties = await crewService.getCrewCasualties(accountId);
     reply.send({ success: true, casualties });
   });
@@ -133,7 +133,7 @@ export const crewRoutes: FastifyPluginAsync = async (server) => {
       name?: string;
     };
     try {
-      const member = await crewService.debugSeedOfficer(body.accountId || 'acc_sol_captain', {
+      const member = await crewService.debugSeedOfficer(req.authAccountId!, {
         specialties: body.specialties,
         rarity: body.rarity,
         aptitude: body.aptitude,
@@ -150,7 +150,7 @@ export const crewRoutes: FastifyPluginAsync = async (server) => {
 
   server.post('/debug-clear', async (req, reply) => {
     const body = (req.body || {}) as { accountId?: string };
-    await crewService.debugClearCrew(body.accountId || 'acc_sol_captain');
+    await crewService.debugClearCrew(req.authAccountId!);
     reply.send({ success: true });
   });
 };

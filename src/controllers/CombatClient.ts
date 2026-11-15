@@ -14,6 +14,7 @@ import { ShieldBubble, CombatVfxSystem } from '../vfx/CombatVfxSystem';
 import { ShipFlightController } from '../physics/ShipFlightController';
 import { AudioEngine } from '../audio/AudioEngine';
 import type { AsteroidField } from '../entities/AsteroidField';
+import { apiClient } from '../network/ApiClient';
 
 export interface CombatClientCallbacks {
   audio: AudioEngine;
@@ -94,6 +95,9 @@ export class CombatClient {
   // Day 34: Wingman Squadron Meshes & Shield Bubbles
   public wingmanMeshes: Map<string, THREE.Group | THREE.Mesh> = new Map();
   public wingmanShieldBubbles: Map<string, ShieldBubble> = new Map();
+  // Milestone 1.8: Remote Player Ships & Shield Bubbles
+  public remotePlayerMeshes: Map<string, THREE.Mesh> = new Map();
+  public remotePlayerShieldBubbles: Map<string, ShieldBubble> = new Map();
   public targetedEntityId: string | null = null;
   public activeSquadronOrder: string = 'FORMATION_FOLLOW';
 
@@ -490,6 +494,18 @@ export class CombatClient {
     }
     this.wingmanShieldBubbles.clear();
 
+    // Milestone 1.8: Clean up remote player meshes & shield bubbles
+    for (const rMesh of this.remotePlayerMeshes.values()) {
+      scene.remove(rMesh);
+      rMesh.geometry.dispose();
+    }
+    this.remotePlayerMeshes.clear();
+    for (const sb of this.remotePlayerShieldBubbles.values()) {
+      scene.remove(sb.mesh);
+      sb.dispose();
+    }
+    this.remotePlayerShieldBubbles.clear();
+
     for (const pMesh of this.projectileMeshes.values()) {
       scene.remove(pMesh);
     }
@@ -501,8 +517,7 @@ export class CombatClient {
     }
     this.skirmishBeacon = null;
 
-    const host = window.location.hostname || 'localhost';
-    const wsUrl = `ws://${host}:3000/ws/combat?playerId=acc_sol_captain&sectorId=${sectorId}`;
+    const wsUrl = apiClient.wsUrl(`/ws/combat?sectorId=${sectorId}`);
 
     try {
       this.combatSocket = new WebSocket(wsUrl);
@@ -602,7 +617,10 @@ export class CombatClient {
     const shipMesh = this.callbacks.getShipMesh();
 
     // 1. Player Telemetry & Stacked Vitals Update
-    const playerEntity = snapshot.entities.find((e: any) => e.type === 'PLAYER');
+    const selfPlayerId = `player_${apiClient.getAccountId()}`;
+    const playerEntity =
+      snapshot.entities.find((e: any) => e.type === 'PLAYER' && e.id === selfPlayerId) ||
+      snapshot.entities.find((e: any) => e.type === 'PLAYER');
     if (playerEntity) {
       this.lastPlayerShields = playerEntity.shields;
       this.lastPlayerMaxShields = playerEntity.maxShields;
@@ -834,8 +852,67 @@ export class CombatClient {
       }
     }
 
-    // Combined target selection (drones and haulers)
-    const combatTargets = [...drones, ...haulers];
+    // 2c. Milestone 1.8: Live Remote Player Vessels in Same Sector
+    const localPlayerId = `player_${apiClient.getAccountId()}`;
+    const remotePlayers = snapshot.entities.filter(
+      (e: any) => e.type === 'PLAYER' && e.id !== localPlayerId && e.state !== 'DESTROYED',
+    );
+    const remoteIds = new Set(remotePlayers.map((rp: any) => rp.id));
+
+    for (const [id, rMesh] of this.remotePlayerMeshes.entries()) {
+      if (!remoteIds.has(id)) {
+        scene.remove(rMesh);
+        rMesh.geometry.dispose();
+        this.remotePlayerMeshes.delete(id);
+      }
+    }
+    for (const [id, sb] of this.remotePlayerShieldBubbles.entries()) {
+      if (!remoteIds.has(id)) {
+        scene.remove(sb.mesh);
+        sb.dispose();
+        this.remotePlayerShieldBubbles.delete(id);
+      }
+    }
+
+    for (const rp of remotePlayers) {
+      let rMesh = this.remotePlayerMeshes.get(rp.id);
+      if (!rMesh) {
+        const styleKey = (rp.factionId && (FACTION_STYLES as any)[rp.factionId]) ? rp.factionId : 'FACTION_SOL';
+        const rpStyle = (FACTION_STYLES as any)[styleKey] || FACTION_STYLES.FACTION_SOL;
+        const seed = rp.hullSeed || Math.abs(rp.id.split('').reduce((a: number, ch: string) => a * 31 + ch.charCodeAt(0), 7));
+        const res = ProceduralHullGenerator.generate({
+          seed,
+          faction: rpStyle,
+        });
+        const mat = new THREE.MeshStandardMaterial({
+          color: rpStyle.palette.primary,
+          roughness: 0.35,
+          metalness: 0.85,
+          flatShading: true,
+          emissive: rpStyle.palette.engineGlow,
+          emissiveIntensity: 0.45,
+        });
+        rMesh = new THREE.Mesh(res.geometry, mat);
+        rMesh.scale.set(1.0, 1.0, 1.0);
+        scene.add(rMesh);
+        this.remotePlayerMeshes.set(rp.id, rMesh);
+      }
+
+      rMesh.position.x = rMesh.position.x + (rp.x - rMesh.position.x) * 0.5;
+      rMesh.position.z = rMesh.position.z + (rp.z - rMesh.position.z) * 0.5;
+      rMesh.rotation.y = rp.yaw;
+
+      let sb = this.remotePlayerShieldBubbles.get(rp.id);
+      if (!sb) {
+        sb = new ShieldBubble(4.6, false);
+        scene.add(sb.mesh);
+        this.remotePlayerShieldBubbles.set(rp.id, sb);
+      }
+      sb.update(0.05, rMesh.position, rp.shields, rp.maxShields);
+    }
+
+    // Combined target selection (drones, haulers, and remote captains)
+    const combatTargets = [...drones, ...haulers, ...remotePlayers];
     this.availableDrones = combatTargets;
 
     if (combatTargets.length > 0) {
@@ -2419,7 +2496,7 @@ export class CombatClient {
           });
         }
 
-        const towed = wrecks.find((w: any) => w.isTowed && w.towedByAccountId === 'acc_sol_captain') || 
+        const towed = wrecks.find((w: any) => w.isTowed && w.towedByAccountId === apiClient.getAccountId()) || 
                       (this.currentTowedWreckId ? wrecks.find((w: any) => w.id === this.currentTowedWreckId) : null);
 
         if (towed) {

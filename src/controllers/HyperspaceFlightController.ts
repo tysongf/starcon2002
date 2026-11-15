@@ -10,6 +10,7 @@ export interface HyperspaceContext {
   onExitHyperspace: (newSectorId: number) => void;
   onInterception?: (handshake: any) => void;
   onCombatDrop?: (combatSetup: any) => void;
+  onHyperspaceSync?: (coords: [number, number], heading: number) => void;
 }
 
 export interface HyperspaceRadarBlip {
@@ -73,6 +74,8 @@ export class HyperspaceFlightController {
   private blipMeshes: Map<string, THREE.Group> = new Map();
   private decoyMeshes: Map<string, THREE.Group> = new Map();
   private stealthShieldMesh: THREE.Mesh | null = null;
+  private remoteHyperspacePlayers: Map<string, { accountId: string; callsign: string; factionId: string; x: number; y: number; heading: number; updatedAt: number }> = new Map();
+  private remoteHyperspaceMeshes: Map<string, THREE.Group> = new Map();
 
   // Day 40: Precursor Quasi-Space & Emergency SOS Transponder
   public isInQuasiSpace: boolean = false;
@@ -666,6 +669,7 @@ export class HyperspaceFlightController {
         const data = await res.json();
         this.currentFuel = Number(data.remainingFuel);
       }
+      this.ctx.onHyperspaceSync?.(this.coordinates, this.heading);
     } catch {}
   }
 
@@ -740,6 +744,7 @@ export class HyperspaceFlightController {
     if (this.isInQuasiSpace) {
       this.blipMeshes.forEach((grp) => (grp.visible = false));
       this.decoyMeshes.forEach((grp) => (grp.visible = false));
+      this.remoteHyperspaceMeshes.forEach((grp) => (grp.visible = false));
       if (this.starPoints) this.starPoints.visible = false;
 
       // Render Quasi-Space Portals
@@ -852,6 +857,51 @@ export class HyperspaceFlightController {
         const relZ = (decoy.y - this.coordinates[1]) * 4.0;
         grp.position.set(relX, 0, relZ);
       }
+
+      // Milestone 1.8: Render Live Remote Captains in Hyperspace
+      const nowMs = Date.now();
+      for (const [accId, rp] of this.remoteHyperspacePlayers.entries()) {
+        if (nowMs - rp.updatedAt > 15000) {
+          this.remoteHyperspacePlayers.delete(accId);
+          const oldGrp = this.remoteHyperspaceMeshes.get(accId);
+          if (oldGrp) {
+            this.hyperspaceGroup.remove(oldGrp);
+            this.remoteHyperspaceMeshes.delete(accId);
+          }
+          continue;
+        }
+        let rpGrp = this.remoteHyperspaceMeshes.get(accId);
+        if (!rpGrp) {
+          rpGrp = new THREE.Group();
+          const shipGeo = new THREE.ConeGeometry(2.6, 8.0, 6);
+          shipGeo.rotateX(Math.PI / 2);
+          const shipMat = new THREE.MeshBasicMaterial({
+            color: 0x38bdf8,
+            transparent: true,
+            opacity: 0.95,
+          });
+          rpGrp.add(new THREE.Mesh(shipGeo, shipMat));
+
+          const auraGeo = new THREE.RingGeometry(4.2, 5.4, 16);
+          const auraMat = new THREE.MeshBasicMaterial({
+            color: 0x10b981,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.75,
+          });
+          const aura = new THREE.Mesh(auraGeo, auraMat);
+          aura.rotation.x = Math.PI / 2;
+          rpGrp.add(aura);
+
+          this.hyperspaceGroup.add(rpGrp);
+          this.remoteHyperspaceMeshes.set(accId, rpGrp);
+        }
+        rpGrp.visible = true;
+        const relX = (rp.x - this.coordinates[0]) * 4.0;
+        const relZ = (rp.y - this.coordinates[1]) * 4.0;
+        rpGrp.position.set(relX, 0, relZ);
+        rpGrp.rotation.y = -rp.heading + Math.PI / 2;
+      }
     }
 
     // Day 39: Render Warp Stealth Shield
@@ -871,6 +921,35 @@ export class HyperspaceFlightController {
       this.stealthShieldMesh.rotation.y += delta * 1.5;
     } else if (this.stealthShieldMesh) {
       this.stealthShieldMesh.visible = false;
+    }
+  }
+
+  public syncRemoteHyperspacePlayer(pos: {
+    accountId: string;
+    callsign?: string;
+    factionId?: string;
+    x: number;
+    y: number;
+    heading?: number;
+  }): void {
+    if (!pos.accountId) return;
+    this.remoteHyperspacePlayers.set(pos.accountId, {
+      accountId: pos.accountId,
+      callsign: pos.callsign || pos.accountId,
+      factionId: pos.factionId || 'FACTION_SOL',
+      x: Number(pos.x) || 0,
+      y: Number(pos.y) || 0,
+      heading: Number(pos.heading) || 0,
+      updatedAt: Date.now(),
+    });
+  }
+
+  public removeRemoteHyperspacePlayer(accountId: string): void {
+    this.remoteHyperspacePlayers.delete(accountId);
+    const grp = this.remoteHyperspaceMeshes.get(accountId);
+    if (grp) {
+      this.hyperspaceGroup.remove(grp);
+      this.remoteHyperspaceMeshes.delete(accountId);
     }
   }
 

@@ -25,6 +25,11 @@ import { starmapRoutes } from './routes/starmapRoutes';
 import { missionRoutes } from './routes/missionRoutes';
 import { captainRoutes } from './routes/captainRoutes';
 import { crewRoutes } from './routes/crewRoutes';
+import { authRoutes } from './routes/authRoutes';
+import { socialRoutes } from './routes/socialRoutes';
+import { multiplayerRoutes } from './routes/multiplayerRoutes';
+import { authService } from './services/AuthService';
+import { requireAuthHook, enforceAuthenticatedIdentity } from './middleware/authMiddleware';
 import { galacticMissionService } from './services/GalacticMissionService';
 
 export async function buildApp(options: FastifyServerOptions = {}): Promise<FastifyInstance> {
@@ -40,17 +45,21 @@ export async function buildApp(options: FastifyServerOptions = {}): Promise<Fast
     ...options,
   });
 
-  // 1. Initialize Database & Cache
+  // 1. Initialize Database, Auth & Cache
   await db.initialize();
+  await authService.initialize();
   await cache.initialize();
 
-  // 2. Register Global Fastify Plugins
+  // 2. Register Global Fastify Plugins & Strict Bearer Auth Middleware
   await server.register(cors, {
     origin: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
   });
 
   await server.register(websocket);
+
+  server.addHook('onRequest', requireAuthHook);
+  server.addHook('preHandler', enforceAuthenticatedIdentity);
 
   // 3. Centralized Fastify Error Handler
   server.setErrorHandler((error: FastifyError, _request, reply) => {
@@ -99,7 +108,10 @@ export async function buildApp(options: FastifyServerOptions = {}): Promise<Fast
     combatManager.spawnBountyTarget(sectorId, missionId, callsign, factionId, hullClass);
   });
 
-  // 6. Register 10 Service-Aligned Domain Route Plugins
+  // 6. Register Domain Route Plugins
+  await server.register(authRoutes);
+  await server.register(socialRoutes);
+  await server.register(multiplayerRoutes);
   await server.register(playerRoutes, { prefix: '/api/player' });
   await server.register(navigationRoutes);
   await server.register(marketRoutes);

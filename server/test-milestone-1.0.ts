@@ -1,3 +1,4 @@
+import './test-utils/authHelper';
 import assert from 'node:assert/strict';
 import { getAllPlanetSubtypes, getDistinctMainClasses } from './src/procgen/PlanetTaxonomyCatalog';
 import { generatePlanetEcosystem } from './src/procgen/XenobiologyEngine';

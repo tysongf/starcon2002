@@ -14,7 +14,7 @@
  * Phase 7: Tactical After-Action Report (AAR) Debriefing & Economic Dividend Audit
  */
 
-import WebSocket from 'ws';
+import { AuthedWebSocket as WebSocket } from './test-utils/authHelper';
 
 const BASE_URL = 'http://localhost:3000';
 const WS_URL = 'ws://localhost:3000';

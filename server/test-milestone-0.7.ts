@@ -1,3 +1,4 @@
+import './test-utils/authHelper';
 const BASE_URL = 'http://localhost:3000';
 
 async function runMilestone07GrandCapstone() {

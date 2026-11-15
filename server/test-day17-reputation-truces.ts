@@ -1,3 +1,4 @@
+import './test-utils/authHelper';
 /**
  * Automated Test Suite for Day 17: Faction Reputation Matrix, Diplomatic Bribes, Truces & Station Tariffs
  * Run: npm exec tsx server/test-day17-reputation-truces.ts

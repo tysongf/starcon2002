@@ -1,3 +1,4 @@
+import './test-utils/authHelper';
 /**
  * Day 32 Integration Test Suite: Fleet Hangar Bay, Command Bridge Scaling & Upkeep Logistics
  * Milestone 0.8: Fleet Command & Task Force Operations

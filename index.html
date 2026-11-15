@@ -22,6 +22,9 @@
           <span class="brand-title">WAYWARD VOID</span>
           <span class="brand-badge">DEV BUILD 0.1.0</span>
           <span class="brand-badge" id="backend-status-badge">API: CONNECTING</span>
+          <span class="hud-captain-pill" id="hud-captain-callsign">UNAUTHENTICATED</span>
+          <button id="btn-open-multiplayer-hub" class="hud-btn-tiny" title="Open Squadron, Peer Allies & Social Hub">COMMS &amp; ALLIES</button>
+          <button id="btn-captain-logout" class="hud-btn-tiny" title="Sign out of current Captain session">LOGOUT</button>
         </div>
         <div class="hud-sector-status">
           <span class="label">SECTOR:</span>
@@ -2352,6 +2355,104 @@
 
           <div class="sos-actions-container" id="sos-actions-container">
             <!-- Dynamic rescue action buttons -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Milestone 1.8: Live Subspace Comms & Presence Dock -->
+    <aside id="multiplayer-comms-dock" class="mp-comms-dock">
+      <div class="mp-comms-header">
+        <span class="mp-comms-title">📡 SUBSPACE COMMS &amp; ROSTER</span>
+        <button id="btn-comms-toggle-collapse" class="hud-btn-tiny">_</button>
+      </div>
+      <div class="mp-comms-body">
+        <div class="mp-comms-tabs">
+          <button class="comms-chan-btn active" data-channel="GALAXY">GALAXY</button>
+          <button class="comms-chan-btn" data-channel="SECTOR">SECTOR</button>
+          <button class="comms-chan-btn" data-channel="SQUAD">SQUAD</button>
+          <button class="comms-chan-btn" data-channel="ALLIES">ALLIES</button>
+          <button class="comms-chan-btn" data-channel="WHISPER">WHISPER</button>
+        </div>
+        <div class="mp-comms-split">
+          <div id="comms-chat-feed" class="mp-chat-feed"></div>
+          <div class="mp-roster-pane">
+            <div class="mp-roster-header">ONLINE PILOTS</div>
+            <div id="comms-roster-list" class="mp-roster-list"></div>
+          </div>
+        </div>
+        <div class="mp-comms-input-row">
+          <input id="input-comms-chat" type="text" maxlength="400" placeholder="Broadcast on subspace..." />
+          <button id="btn-comms-send" class="hud-btn-tiny">SEND</button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Milestone 1.8: Hail, 12-Pilot Squadron, P2P Alliances & Escrow Trade Modal -->
+    <div id="multiplayer-social-modal" class="dock-modal-overlay hidden">
+      <div class="dock-modal-card mp-social-card">
+        <header class="dock-modal-header">
+          <div class="dock-title-group">
+            <span class="dock-badge">MULTIPLAYER COMMAND LINK</span>
+            <h2 class="dock-station-name">GALACTIC COMMS, SQUADRON &amp; PEER ALLIANCES</h2>
+            <span class="dock-subtext">Up to 12-pilot Squadrons // Peer-to-Peer Mutual Alliances // Atomic Escrow Trade</span>
+          </div>
+          <button id="btn-close-social-modal" class="hud-btn-tiny">CLOSE [ESC]</button>
+        </header>
+        <div class="mp-modal-tabs">
+          <button class="mp-tab-btn active" data-tab="HAIL">HAIL CAPTAIN</button>
+          <button class="mp-tab-btn" data-tab="SQUADRON">SQUADRON (MAX 12)</button>
+          <button class="mp-tab-btn" data-tab="ALLIES">PEER ALLIES</button>
+          <button class="mp-tab-btn" data-tab="TRADE">ESCROW TRADE</button>
+        </div>
+        <div id="mp-modal-body" class="mp-modal-body"></div>
+      </div>
+    </div>
+
+    <!-- Milestone 1.8: Mandatory Captain Authentication Gate -->
+    <div id="captain-auth-modal" class="dock-modal-overlay hidden">
+      <div class="dock-modal-card mp-auth-card">
+        <header class="dock-modal-header">
+          <div class="dock-title-group">
+            <span class="dock-badge">SECURE STARPORT AUTHENTICATION</span>
+            <h2 class="dock-station-name">WAYWARD VOID // CAPTAIN LINK</h2>
+            <span class="dock-subtext">Strict Bearer Session // Choose Faction Homeworld on Enlistment</span>
+          </div>
+        </header>
+        <div class="mp-auth-tabs">
+          <button id="tab-auth-login" class="mp-auth-tab active">SIGN IN</button>
+          <button id="tab-auth-register" class="mp-auth-tab">NEW CAPTAIN</button>
+        </div>
+        <div id="auth-error-msg" class="mp-auth-error hidden"></div>
+        <div id="auth-login-pane" class="mp-auth-pane">
+          <label class="mp-field-label">Username
+            <input id="auth-login-user" type="text" autocomplete="username" placeholder="cmdr_vance" />
+          </label>
+          <label class="mp-field-label">Passphrase
+            <input id="auth-login-pass" type="password" autocomplete="current-password" placeholder="••••••••" />
+          </label>
+          <div class="mp-auth-actions">
+            <button id="btn-auth-submit-login" class="hud-btn large-btn">ENGAGE CAPTAIN LINK</button>
+            <button id="btn-auth-fill-default" class="hud-btn-tiny" type="button">Fill Demo Captain (cmdr_vance)</button>
+          </div>
+        </div>
+        <div id="auth-register-pane" class="mp-auth-pane hidden">
+          <label class="mp-field-label">Username (3-24 chars)
+            <input id="auth-reg-user" type="text" autocomplete="username" placeholder="nova_pilot" />
+          </label>
+          <label class="mp-field-label">Callsign
+            <input id="auth-reg-callsign" type="text" placeholder="Cmdr. Nova" />
+          </label>
+          <label class="mp-field-label">Passphrase (6+ chars)
+            <input id="auth-reg-pass" type="password" autocomplete="new-password" placeholder="Minimum 6 characters" />
+          </label>
+          <label class="mp-field-label">Allegiance &amp; Home Sector
+            <select id="auth-reg-faction">
+              <option value="FACTION_SOL">Sol Alliance — Sector 1 (Sol Perimeter)</option>
+            </select>
+          </label>
+          <div class="mp-auth-actions">
+            <button id="btn-auth-submit-register" class="hud-btn large-btn">COMMISSION FLAGSHIP</button>
           </div>
         </div>
       </div>

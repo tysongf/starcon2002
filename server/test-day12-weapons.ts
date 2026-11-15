@@ -1,11 +1,11 @@
-import WebSocket from 'ws';
+import { AuthedWebSocket as WebSocket } from './test-utils/authHelper';
 
 async function runDay12WeaponsSuite() {
   console.log('================================================================');
   console.log('🚀 RUNNING DAY 12: BALLISTICS, AFTERBURNER & SHIELD BREAK SUITE');
   console.log('================================================================\n');
 
-  const wsUrl = 'ws://localhost:3000/ws/combat?playerId=acc_sol_test12&sectorId=2';
+  const wsUrl = 'ws://localhost:3000/ws/combat?playerId=acc_sol_captain&sectorId=2';
   console.log(`[1/6] Connecting to WebSocket combat room: ${wsUrl}...`);
 
   const ws = new WebSocket(wsUrl);

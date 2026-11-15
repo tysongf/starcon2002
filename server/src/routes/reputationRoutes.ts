@@ -4,7 +4,7 @@ import { reputationService, FACTION_METADATA } from '../services/ReputationServi
 export const reputationRoutes: FastifyPluginAsync = async (server) => {
   server.get('/standings', async (req, reply) => {
     const query = (req.query || {}) as { accountId?: string };
-    const accountId = query.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     try {
       const standings = await reputationService.getStandings(accountId);
       reply.send({ success: true, standings, metadata: FACTION_METADATA });
@@ -20,7 +20,7 @@ export const reputationRoutes: FastifyPluginAsync = async (server) => {
       amount: number;
       reason?: string;
     };
-    const accountId = body.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     try {
       const result = await reputationService.modifyStanding(
         accountId,
@@ -41,7 +41,7 @@ export const reputationRoutes: FastifyPluginAsync = async (server) => {
       standing?: number;
       score?: number;
     };
-    const accountId = body.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     const targetStanding = body.standing !== undefined ? body.standing : (body.score !== undefined ? body.score : 0);
     try {
       const updatedStandings = await reputationService.debugSetStanding(
@@ -62,7 +62,7 @@ export const reputationRoutes: FastifyPluginAsync = async (server) => {
       factionId: any;
       tributeType?: 'CREDITS' | 'ALLOYS';
     };
-    const accountId = body.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     try {
       const result = await reputationService.requestCeasefireTruce(
         accountId,
@@ -78,7 +78,7 @@ export const reputationRoutes: FastifyPluginAsync = async (server) => {
 
   server.post('/debug-expire-truce', async (req, reply) => {
     const body = (req.body || {}) as { accountId?: string; sectorId?: number; factionId?: string };
-    const accountId = body.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     try {
       const expired = await reputationService.debugExpireTruces(accountId, body.sectorId, body.factionId);
       reply.send({ success: true, expired });
@@ -92,7 +92,7 @@ export const reputationRoutes: FastifyPluginAsync = async (server) => {
       accountId?: string;
       factionId?: string;
     };
-    const accountId = query.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     const factionId = query.factionId || 'FACTION_SOL';
     try {
       const result = await reputationService.canDockAtStation(accountId, factionId);

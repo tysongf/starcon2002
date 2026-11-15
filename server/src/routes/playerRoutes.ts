@@ -13,7 +13,7 @@ export const playerRoutes: FastifyPluginAsync = async (server) => {
   // Hold telemetry
   server.get('/hold', async (req, reply) => {
     const query = req.query as { playerId?: string };
-    const playerId = query?.playerId || 'acc_sol_captain';
+    const playerId = req.authAccountId!;
 
     const hold = await tradeService.getPlayerHold(playerId);
     if (!hold) {
@@ -25,7 +25,7 @@ export const playerRoutes: FastifyPluginAsync = async (server) => {
   // Action Point (AP) System
   server.get('/ap', async (req, reply) => {
     const query = req.query as { playerId?: string };
-    const playerId = query?.playerId || 'acc_sol_captain';
+    const playerId = req.authAccountId!;
     const state = await apService.getAP(playerId);
     reply.send({
       ...state,
@@ -40,7 +40,7 @@ export const playerRoutes: FastifyPluginAsync = async (server) => {
       cost?: number;
     };
 
-    const playerId = body.playerId || 'acc_sol_captain';
+    const playerId = req.authAccountId!;
     const action = body.action || 'SECTOR_WARP';
 
     const result = await apService.spendAP(playerId, action, body.cost);
@@ -55,7 +55,7 @@ export const playerRoutes: FastifyPluginAsync = async (server) => {
       playerId?: string;
       amount?: number;
     };
-    const playerId = body.playerId || 'acc_sol_captain';
+    const playerId = req.authAccountId!;
     const amount = typeof body.amount === 'number' ? body.amount : 600;
 
     const state = await apService.debugSetAP(playerId, amount);
@@ -65,7 +65,7 @@ export const playerRoutes: FastifyPluginAsync = async (server) => {
   // Ship Status & Refuel
   server.get('/ship', async (req, reply) => {
     const query = req.query as { playerId?: string };
-    const playerId = query?.playerId || 'acc_sol_captain';
+    const playerId = req.authAccountId!;
     const ship = await navigationService.getPlayerShip(playerId);
     if (!ship) {
       return reply.status(404).send({ error: 'Ship not found' });
@@ -98,7 +98,7 @@ export const playerRoutes: FastifyPluginAsync = async (server) => {
       playerId?: string;
       amount?: number;
     };
-    const playerId = body.playerId || 'acc_sol_captain';
+    const playerId = req.authAccountId!;
     const updatedShip = await navigationService.refuelShip(playerId, body.amount);
     reply.send({
       success: true,
@@ -112,7 +112,7 @@ export const playerRoutes: FastifyPluginAsync = async (server) => {
       sectorId?: number;
       fuel?: number;
     };
-    const playerId = body.playerId || 'acc_sol_captain';
+    const playerId = req.authAccountId!;
     const sectorId = body.sectorId || 1;
     const fuel = typeof body.fuel === 'number' ? body.fuel : 100;
     const res = await db.query(
@@ -125,7 +125,7 @@ export const playerRoutes: FastifyPluginAsync = async (server) => {
   // Debug Credits
   server.post('/debug-credits', async (req, reply) => {
     const body = (req.body || {}) as { accountId?: string; credits?: number };
-    const accountId = body.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     const credits = typeof body.credits === 'number' ? body.credits : 2500;
     await db.query('UPDATE accounts SET credits = $1 WHERE id = $2', [credits, accountId]);
     reply.send({ success: true, credits });
@@ -134,7 +134,7 @@ export const playerRoutes: FastifyPluginAsync = async (server) => {
   // Debug Cargo Helper
   server.post('/debug-cargo', async (req, reply) => {
     const body = (req.body || {}) as { accountId?: string; commodityId?: string; quantity?: number };
-    const accountId = body.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     const commodityId = body.commodityId || 'COMM_BIO_SPECIMENS';
     const quantity = typeof body.quantity === 'number' ? body.quantity : 10;
     const sRes = await db.query<{ id: string }>('SELECT id FROM ships WHERE account_id = $1 LIMIT 1', [accountId]);
@@ -157,16 +157,20 @@ export const playerRoutes: FastifyPluginAsync = async (server) => {
   // Debug Reset Survey / Colony / Precursor
   server.post('/debug-reset-survey', async (req, reply) => {
     const body = (req.body || {}) as { accountId?: string; planetId?: string };
-    const accountId = body.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     if (body.planetId) {
       await db.query('DELETE FROM planet_surveys WHERE account_id = $1 AND planet_id = $2', [accountId, body.planetId]);
       await db.query('DELETE FROM planet_beacons WHERE account_id = $1 AND planet_id = $2', [accountId, body.planetId]);
       await db.query('DELETE FROM colonies WHERE account_id = $1 AND planet_id = $2', [accountId, body.planetId]);
       await db.query('UPDATE precursor_sites SET is_deciphered = FALSE WHERE planet_id = $1', [body.planetId]);
+      if (body.planetId === 'planet_sec1_aegis') {
+        await db.query(`UPDATE planets SET habitability_rating = 18 WHERE id = 'planet_sec1_aegis'`);
+      }
     } else {
       await db.query('DELETE FROM planet_surveys WHERE account_id = $1', [accountId]);
       await db.query('DELETE FROM planet_beacons WHERE account_id = $1', [accountId]);
       await db.query('DELETE FROM colonies WHERE account_id = $1', [accountId]);
+      await db.query(`UPDATE planets SET habitability_rating = 18 WHERE id = 'planet_sec1_aegis'`);
       await db.query('UPDATE player_fleet SET deployment_slot = NULL WHERE account_id = $1', [accountId]);
       await db.query('DELETE FROM crew_roster WHERE account_id = $1', [accountId]);
       await db.query('DELETE FROM crew_market_claims WHERE account_id = $1', [accountId]);
@@ -182,7 +186,7 @@ export const playerRoutes: FastifyPluginAsync = async (server) => {
   // Fresh-Pilot Baseline Reset (Day 21 / Milestone 0.4 baseline)
   server.post('/debug-baseline', async (req, reply) => {
     const body = (req.body || {}) as { accountId?: string };
-    const accountId = body.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     try {
       await db.query('UPDATE accounts SET credits = 2500, tech_components = 25, crew_arrears_cycles = 0, crew_refresh_nonce = 0 WHERE id = $1', [accountId]);
       await db.query(

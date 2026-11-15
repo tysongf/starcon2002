@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { db } from '../db/Database';
 import { colonyService } from '../services/ColonyService';
 import { outpostGridService } from '../services/OutpostGridService';
+import { allianceService } from '../services/AllianceService';
 import { OUTPOST_BUILDINGS, type BuildingTypeId, type OutpostLayer } from '../procgen/OutpostCatalog';
 import { shipyardService } from '../services/ShipyardService';
 import { COLONY_MODULES, COLONY_FACILITY_CREW_REQUIREMENTS, type ColonyModuleKey } from '../procgen/CrewCatalog';
@@ -15,7 +16,7 @@ export const colonyRoutes: FastifyPluginAsync = async (server) => {
       beaconId: string;
       name?: string;
     };
-    const accountId = body.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     try {
       const colony = await colonyService.foundColony(accountId, body.planetId, body.beaconId, body.name);
       reply.send({ success: true, colony });
@@ -24,14 +25,16 @@ export const colonyRoutes: FastifyPluginAsync = async (server) => {
     }
   });
 
-  // Planet Colonies List
+  // Planet Colonies List (includes own colonies + visible foreign colonies with grant flags)
   server.get('/api/colonies/planet/:planetId', async (req, reply) => {
     const { planetId } = req.params as { planetId: string };
-    const query = (req.query || {}) as { accountId?: string };
-    const accountId = query.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     try {
-      const colonies = await colonyService.getPlanetColonies(planetId, accountId);
-      reply.send({ success: true, colonies });
+      const [colonies, foreignColonies] = await Promise.all([
+        colonyService.getPlanetColonies(planetId, accountId),
+        colonyService.getForeignPlanetColonies(planetId, accountId),
+      ]);
+      reply.send({ success: true, colonies, foreignColonies });
     } catch (err: any) {
       reply.status(400).send({ success: false, error: err.message });
     }
@@ -41,12 +44,12 @@ export const colonyRoutes: FastifyPluginAsync = async (server) => {
   server.get('/api/colonies/:colonyId', async (req, reply) => {
     const { colonyId } = req.params as { colonyId: string };
     const query = (req.query || {}) as { accountId?: string };
-    const accountId = query.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     try {
       const colony = await colonyService.getColonyDetail(colonyId, accountId);
       reply.send({ success: true, colony });
     } catch (err: any) {
-      reply.status(400).send({ success: false, error: err.message });
+      reply.status(err.statusCode || 400).send({ success: false, error: err.message });
     }
   });
 
@@ -57,7 +60,7 @@ export const colonyRoutes: FastifyPluginAsync = async (server) => {
       accountId?: string;
       facilityType: 'DERRICK' | 'HABITATION' | 'TERRAFORMER' | 'SILO' | 'SHIPYARD';
     };
-    const accountId = body.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     try {
       const result = await colonyService.upgradeFacility(colonyId, accountId, body.facilityType);
       reply.send(result);
@@ -79,7 +82,7 @@ export const colonyRoutes: FastifyPluginAsync = async (server) => {
   server.post('/api/colonies/:colonyId/modules/upgrade', async (req, reply) => {
     const { colonyId } = req.params as { colonyId: string };
     const body = (req.body || {}) as { accountId?: string; moduleKey: ColonyModuleKey };
-    const accountId = body.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     try {
       const result = await colonyService.upgradeColonyModule(colonyId, accountId, body.moduleKey);
       reply.send(result);
@@ -92,7 +95,7 @@ export const colonyRoutes: FastifyPluginAsync = async (server) => {
   server.post('/api/colonies/:colonyId/shipyard/upgrade', async (req, reply) => {
     const { colonyId } = req.params as { colonyId: string };
     const body = (req.body || {}) as { accountId?: string };
-    const accountId = body.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     try {
       const result = await colonyService.upgradeFacility(colonyId, accountId, 'SHIPYARD');
       reply.send(result);
@@ -104,20 +107,26 @@ export const colonyRoutes: FastifyPluginAsync = async (server) => {
   // Harvest Stockpiled Cargo
   server.post('/api/colonies/:colonyId/harvest', async (req, reply) => {
     const { colonyId } = req.params as { colonyId: string };
-    const body = (req.body || {}) as { accountId?: string };
-    const accountId = body.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     try {
+      const perm = await allianceService.checkColonyPermission(colonyId, accountId, 'HARVEST');
+      if (!perm.allowed) {
+        return reply.status(403).send({
+          success: false,
+          error: 'FORBIDDEN: Harvesting this colony silo requires ownership or an active Peer Alliance Harvest grant.',
+        });
+      }
       const result = await colonyService.harvestColonyCargo(colonyId, accountId);
       reply.send(result);
     } catch (err: any) {
-      reply.status(400).send({ success: false, error: err.message });
+      reply.status(err.statusCode || 400).send({ success: false, error: err.message });
     }
   });
 
   // Fast-Forward Debug Hook (Supports both /api/colony and /api/colonies)
   const handleFastForward = async (req: any, reply: any) => {
     const body = (req.body || {}) as { accountId?: string; colonyId?: string; seconds?: number };
-    const accountId = body.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     const seconds = Math.max(0, Math.floor(Number(body.seconds) || 0));
     try {
       const params: unknown[] = [accountId, seconds];
@@ -143,7 +152,7 @@ export const colonyRoutes: FastifyPluginAsync = async (server) => {
   const handleFleetResupply = async (req: any, reply: any) => {
     const { id } = req.params as { id: string };
     const body = (req.body || {}) as { accountId?: string };
-    const accountId = body.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     const result = await shipyardService.resupplyFleetAtColony(accountId, id);
     if (!result.success) {
       return reply.status(400).send(result);
@@ -161,8 +170,7 @@ export const colonyRoutes: FastifyPluginAsync = async (server) => {
 
   server.get('/api/colonies/:colonyId/grid', async (req, reply) => {
     const { colonyId } = req.params as { colonyId: string };
-    const query = (req.query || {}) as { accountId?: string };
-    const accountId = query.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     try {
       const colony = await colonyService.getColonyDetail(colonyId, accountId);
       const { tiles, telemetry } = await outpostGridService.evaluateGridSimulation(colonyId, colony.population);
@@ -174,22 +182,28 @@ export const colonyRoutes: FastifyPluginAsync = async (server) => {
         catalog: OUTPOST_BUILDINGS,
       });
     } catch (err: any) {
-      reply.status(400).send({ success: false, error: err.message });
+      reply.status(err.statusCode || 400).send({ success: false, error: err.message });
     }
   });
 
   server.post('/api/colonies/:colonyId/grid/build', async (req, reply) => {
     const { colonyId } = req.params as { colonyId: string };
     const body = (req.body || {}) as {
-      accountId?: string;
       layer: number;
       x: number;
       y: number;
       buildingType: BuildingTypeId;
       instant?: boolean;
     };
-    const accountId = body.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     try {
+      const perm = await allianceService.checkColonyPermission(colonyId, accountId, 'BUILD');
+      if (!perm.allowed) {
+        return reply.status(403).send({
+          success: false,
+          error: 'FORBIDDEN: Building on this colony requires ownership or an active Peer Alliance Build grant.',
+        });
+      }
       const placed = await outpostGridService.placeBuilding(
         accountId,
         colonyId,
@@ -211,15 +225,22 @@ export const colonyRoutes: FastifyPluginAsync = async (server) => {
         tiles,
       });
     } catch (err: any) {
-      reply.status(400).send({ success: false, error: err.message });
+      reply.status(err.statusCode || 400).send({ success: false, error: err.message });
     }
   });
 
   server.post('/api/colonies/:colonyId/grid/toggle', async (req, reply) => {
     const { colonyId } = req.params as { colonyId: string };
-    const body = (req.body || {}) as { accountId?: string; layer: number; x: number; y: number };
-    const accountId = body.accountId || 'acc_sol_captain';
+    const body = (req.body || {}) as { layer: number; x: number; y: number };
+    const accountId = req.authAccountId!;
     try {
+      const perm = await allianceService.checkColonyPermission(colonyId, accountId, 'BUILD');
+      if (!perm.allowed) {
+        return reply.status(403).send({
+          success: false,
+          error: 'FORBIDDEN: Toggling structures requires ownership or an active Peer Alliance Build grant.',
+        });
+      }
       const toggled = await outpostGridService.toggleBuildingPower(
         colonyId,
         Number(body.layer) as OutpostLayer,
@@ -230,15 +251,22 @@ export const colonyRoutes: FastifyPluginAsync = async (server) => {
       const { tiles, telemetry } = await outpostGridService.evaluateGridSimulation(colonyId, colony.population);
       reply.send({ success: true, tile: toggled.tile, colony, telemetry, tiles });
     } catch (err: any) {
-      reply.status(400).send({ success: false, error: err.message });
+      reply.status(err.statusCode || 400).send({ success: false, error: err.message });
     }
   });
 
   server.post('/api/colonies/:colonyId/grid/demolish', async (req, reply) => {
     const { colonyId } = req.params as { colonyId: string };
-    const body = (req.body || {}) as { accountId?: string; layer: number; x: number; y: number };
-    const accountId = body.accountId || 'acc_sol_captain';
+    const body = (req.body || {}) as { layer: number; x: number; y: number };
+    const accountId = req.authAccountId!;
     try {
+      const perm = await allianceService.checkColonyPermission(colonyId, accountId, 'BUILD');
+      if (!perm.allowed) {
+        return reply.status(403).send({
+          success: false,
+          error: 'FORBIDDEN: Demolishing structures requires ownership or an active Peer Alliance Build grant.',
+        });
+      }
       const res = await outpostGridService.demolishBuilding(
         accountId,
         colonyId,
@@ -250,21 +278,27 @@ export const colonyRoutes: FastifyPluginAsync = async (server) => {
       const { tiles, telemetry } = await outpostGridService.evaluateGridSimulation(colonyId, colony.population);
       reply.send({ success: true, refundCredits: res.refundCredits, colony, telemetry, tiles });
     } catch (err: any) {
-      reply.status(400).send({ success: false, error: err.message });
+      reply.status(err.statusCode || 400).send({ success: false, error: err.message });
     }
   });
 
   server.post('/api/colonies/:colonyId/grid/complete-now', async (req, reply) => {
     const { colonyId } = req.params as { colonyId: string };
-    const body = (req.body || {}) as { accountId?: string };
-    const accountId = body.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     try {
+      const perm = await allianceService.checkColonyPermission(colonyId, accountId, 'BUILD');
+      if (!perm.allowed) {
+        return reply.status(403).send({
+          success: false,
+          error: 'FORBIDDEN: Queue operations require ownership or an active Peer Alliance Build grant.',
+        });
+      }
       const completedCount = await outpostGridService.completePendingNow(colonyId);
       const colony = await colonyService.getColonyDetail(colonyId, accountId);
       const { tiles, telemetry } = await outpostGridService.evaluateGridSimulation(colonyId, colony.population);
       reply.send({ success: true, completedCount, colony, telemetry, tiles });
     } catch (err: any) {
-      reply.status(400).send({ success: false, error: err.message });
+      reply.status(err.statusCode || 400).send({ success: false, error: err.message });
     }
   });
 };

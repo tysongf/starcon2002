@@ -7,7 +7,7 @@ export const precursorRoutes: FastifyPluginAsync = async (server) => {
   // Planet Precursor Sites
   server.get('/planet/:planetId', async (req, reply) => {
     const { planetId } = req.params as { planetId: string };
-    const accountId = ((req.query as any)?.accountId as string) || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     try {
       const view = await precursorService.getPlanetPrecursorSitesForPlayer(planetId, accountId);
       const relicRes = await db.query<any>(
@@ -30,7 +30,7 @@ export const precursorRoutes: FastifyPluginAsync = async (server) => {
       accountId?: string;
       solution: { freq: number; phase: number; damping: number };
     };
-    const accountId = body.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     try {
       const result = await precursorService.decipherPrecursorSite(siteId, accountId, body.solution);
       reply.send(result);
@@ -42,7 +42,7 @@ export const precursorRoutes: FastifyPluginAsync = async (server) => {
   // Proto-Tech Research Grid Catalog
   server.get('/research', async (req, reply) => {
     const query = (req.query || {}) as { accountId?: string };
-    const accountId = query.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     try {
       const catalog = await precursorService.getResearchCatalog(accountId);
       const relicRes = await db.query<any>(
@@ -65,7 +65,7 @@ export const precursorRoutes: FastifyPluginAsync = async (server) => {
   // Synthesize Prototype Tech Module
   server.post('/synthesize', async (req, reply) => {
     const body = (req.body || {}) as { accountId?: string; techId: string };
-    const accountId = body.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     try {
       const result = await precursorService.synthesizePrototypeTech(accountId, body.techId);
       reply.send(result);
@@ -77,7 +77,7 @@ export const precursorRoutes: FastifyPluginAsync = async (server) => {
   // Remit Relic to Faction Ambassador
   server.post('/remit', async (req, reply) => {
     const body = (req.body || {}) as { accountId?: string; factionId?: string };
-    const accountId = body.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     const factionId = (body.factionId || 'FACTION_SOL') as any;
     try {
       const result = await precursorService.remitRelic(accountId, factionId);

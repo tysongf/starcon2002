@@ -1,3 +1,4 @@
+import './test-utils/authHelper';
 /**
  * Day 38 Integration Test Suite: Authoritative Real-Time Hyperspace Flight & Fuel Logistics
  * Milestone 0.9: The Infinite Void — Interstellar Hyperspace & Galactic Starmap

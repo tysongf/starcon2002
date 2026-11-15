@@ -6,6 +6,10 @@ export default defineConfig({
     proxy: {
       '/health': 'http://localhost:3000',
       '/api': 'http://localhost:3000',
+      '/ws': {
+        target: 'http://localhost:3000',
+        ws: true,
+      },
     },
   },
 });

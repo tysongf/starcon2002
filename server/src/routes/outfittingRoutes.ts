@@ -30,7 +30,7 @@ export const outfittingRoutes: FastifyPluginAsync = async (server) => {
       slotIndex?: number;
       epoch?: number;
     };
-    const playerId = body.playerId || 'acc_sol_captain';
+    const playerId = req.authAccountId!;
     const sectorId = Number(body.sectorId || 1);
     const slotIndex = Number(body.slotIndex ?? 0);
     const epoch = Number(body.epoch || 1);
@@ -44,7 +44,7 @@ export const outfittingRoutes: FastifyPluginAsync = async (server) => {
 
   server.get('/player', async (req, reply) => {
     const query = (req.query || {}) as { playerId?: string };
-    const playerId = query.playerId || 'acc_sol_captain';
+    const playerId = req.authAccountId!;
     const loadout = await outfittingService.getPlayerLoadout(playerId);
     reply.send(loadout);
   });
@@ -57,7 +57,7 @@ export const outfittingRoutes: FastifyPluginAsync = async (server) => {
       targetSlot?: FitSlotId;
       slot?: FitSlotId;
     };
-    const playerId = body.playerId || 'acc_sol_captain';
+    const playerId = req.authAccountId!;
     const itemId = body.itemId || body.inventoryId;
     const targetSlot = body.targetSlot || body.slot;
 
@@ -79,7 +79,7 @@ export const outfittingRoutes: FastifyPluginAsync = async (server) => {
       itemId?: string;
       slot?: string;
     };
-    const playerId = body.playerId || 'acc_sol_captain';
+    const playerId = req.authAccountId!;
     try {
       const loadout = await outfittingService.unfitModule(playerId, body.itemId, body.slot);
       reply.send({ success: true, loadout });
@@ -93,7 +93,7 @@ export const outfittingRoutes: FastifyPluginAsync = async (server) => {
       playerId?: string;
       blueprintId: string;
     };
-    const playerId = body.playerId || 'acc_sol_captain';
+    const playerId = req.authAccountId!;
     try {
       const result = await outfittingService.buyModule(playerId, body.blueprintId);
       reply.send(result);
@@ -116,7 +116,7 @@ export const outfittingRoutes: FastifyPluginAsync = async (server) => {
       accountId?: string;
       itemId?: string;
     };
-    const playerId = body.playerId || body.accountId || 'acc_sol_captain';
+    const playerId = req.authAccountId!;
     if (!body.itemId) {
       return reply.status(400).send({ success: false, error: 'Missing itemId' });
     }
@@ -135,7 +135,7 @@ export const outfittingRoutes: FastifyPluginAsync = async (server) => {
       itemId?: string;
       lockedAffixIndex?: number | null;
     };
-    const playerId = body.playerId || body.accountId || 'acc_sol_captain';
+    const playerId = req.authAccountId!;
     if (!body.itemId) {
       return reply.status(400).send({ success: false, error: 'Missing itemId' });
     }
@@ -157,7 +157,7 @@ export const outfittingRoutes: FastifyPluginAsync = async (server) => {
       accountId?: string;
       itemId?: string;
     };
-    const playerId = body.playerId || body.accountId || 'acc_sol_captain';
+    const playerId = req.authAccountId!;
     if (!body.itemId) {
       return reply.status(400).send({ success: false, error: 'Missing itemId' });
     }

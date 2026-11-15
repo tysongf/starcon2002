@@ -1,3 +1,4 @@
+import './test-utils/authHelper';
 /**
  * Concurrency & Mutex Safety Verification Script for Action Point (AP) Engine
  *
@@ -10,7 +11,7 @@
  */
 
 const BASE_URL = 'http://localhost:3000';
-const PLAYER_ID = 'test_concurrency_pilot';
+const PLAYER_ID = 'acc_sol_captain';
 
 async function runConcurrencyTest() {
   console.log('====================================================');
@@ -100,6 +101,11 @@ async function runConcurrencyTest() {
     console.error('\n❌ Concurrency verification failed!');
     process.exit(1);
   } else {
+    await fetch(`${BASE_URL}/api/player/ap/debug-set`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playerId: PLAYER_ID, amount: 600 }),
+    });
     console.log('\n🚀 ALL CONCURRENCY & ATOMIC MUTEX ASSERTIONS PASSED!');
     process.exit(0);
   }

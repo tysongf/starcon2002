@@ -1,3 +1,4 @@
+import './test-utils/authHelper';
 async function runDay16Tests() {
   console.log('====================================================');
   console.log('  RUNNING DAY 16 INTEGRATION TESTS: STAR CONTROL II');

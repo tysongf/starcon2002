@@ -19,7 +19,7 @@ export const xenobiologyRoutes: FastifyPluginAsync = async (server) => {
   // 1. Get Xenobiology Lab Status & Catalogs
   server.get('/lab', async (req, reply) => {
     const query = req.query as { accountId?: string };
-    const accountId = query?.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     const status = await xenobiologyService.getLabStatus(accountId);
     reply.send(status);
   });
@@ -97,7 +97,7 @@ export const xenobiologyRoutes: FastifyPluginAsync = async (server) => {
   // 6.1 Galactic Xenodex Catalog
   server.get('/xenodex', async (req, reply) => {
     const query = req.query as { accountId?: string };
-    const accountId = query?.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     const xenodex = await xenobiologyService.getXenodex(accountId);
     reply.send(xenodex);
   });
@@ -107,7 +107,7 @@ export const xenobiologyRoutes: FastifyPluginAsync = async (server) => {
     '/debug-reset',
     { schema: { body: DebugResetBodySchema } },
     async (req, reply) => {
-      const accountId = req.body?.accountId || 'acc_sol_captain';
+      const accountId = req.authAccountId!;
       await xenobiologyService.debugReset(accountId);
       reply.send({ success: true, message: 'Reset biotech research state.' });
     }

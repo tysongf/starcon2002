@@ -24,6 +24,8 @@ import { StarmapController } from './controllers/StarmapController';
 import { HyperspaceFlightController } from './controllers/HyperspaceFlightController';
 import { MissionBoardController } from './controllers/MissionBoardController';
 import { CrewController } from './controllers/CrewController';
+import { MultiplayerController } from './controllers/MultiplayerController';
+import { apiClient } from './network/ApiClient';
 
 class GameEngine {
   private canvas: HTMLCanvasElement;
@@ -55,6 +57,7 @@ class GameEngine {
   public hyperspaceFlightController!: HyperspaceFlightController;
   public missionBoardController!: MissionBoardController;
   public crewController!: CrewController;
+  public multiplayerController!: MultiplayerController;
 
   // Navigation & Sector Jump System (Day 8)
   private currentSectorId: number = 1;
@@ -857,10 +860,19 @@ class GameEngine {
         }).catch(err => console.error('[Contract URL] Error:', err));
     }
 
-    // Check backend health & initial AP / Sector balances
+    // Check backend health & enforce mandatory Captain Bearer Session before loading galaxy state
     this.checkBackendHealth();
-    this.fetchPlayerAP();
-    this.loadShipAndSector();
+    void this.bootstrapAuthenticatedSession();
+  }
+
+  private async bootstrapAuthenticatedSession(): Promise<void> {
+    const profile = await this.multiplayerController.ensureAuthenticated();
+    if (profile?.account?.id) {
+      this.playerAP.playerId = profile.account.id;
+    }
+    this.multiplayerController.connectSocialSocket();
+    await this.fetchPlayerAP();
+    await this.loadShipAndSector();
   }
 
   private async checkBackendHealth(): Promise<void> {
@@ -1845,7 +1857,7 @@ class GameEngine {
 
     this.crewController = new CrewController({
       audio: this.audio,
-      getAccountId: () => 'acc_sol_captain',
+      getAccountId: () => apiClient.getAccountId(),
       getActivePortId: () => this.activePortId,
       getCurrentSectorId: () => this.currentSectorId,
       showApNotification: (msg, isErr) => this.showApNotification(msg, !!isErr),
@@ -1901,12 +1913,12 @@ class GameEngine {
     });
 
     this.xenobiologyController = new XenobiologyController({
-      getAccountId: () => 'acc_sol_captain',
+      getAccountId: () => apiClient.getAccountId(),
       onCargoUpdated: () => this.refreshPlayerHold(),
     });
 
     this.fleetController = new FleetController({
-      getAccountId: () => 'acc_sol_captain',
+      getAccountId: () => apiClient.getAccountId(),
       showNotification: (msg, isErr) => this.showApNotification(msg, isErr ?? false),
       playUiBlip: () => this.audio.playUiBlip(),
       onFleetUpdated: async () => {
@@ -1937,7 +1949,7 @@ class GameEngine {
     });
 
     this.starmapController = new StarmapController({
-      getAccountId: () => 'acc_sol_captain',
+      getAccountId: () => apiClient.getAccountId(),
       showNotification: (msg, isErr) => this.showApNotification(msg, isErr ?? false),
       playUiBlip: () => this.audio.playUiBlip(),
       playNavPlotTone: () => this.audio.playNavPlotTone(),
@@ -1945,12 +1957,53 @@ class GameEngine {
       getMissionTargetSectorIds: () => this.missionBoardController?.getActiveMissionSectorIds() || [],
     });
 
+    this.multiplayerController = new MultiplayerController({
+      audio: this.audio,
+      showApNotification: (msg, isErr) => this.showApNotification(msg, !!isErr),
+      onAuthenticated: async (profile) => {
+        if (profile?.account?.id) {
+          this.playerAP.playerId = profile.account.id;
+        }
+        this.multiplayerController.connectSocialSocket();
+        await this.fetchPlayerAP();
+        await this.loadShipAndSector();
+      },
+      onLoggedOut: () => {
+        if (this.combatClient?.combatSocket) {
+          try {
+            this.combatClient.combatSocket.close();
+          } catch {}
+          this.combatClient.combatSocket = null;
+        }
+      },
+      onRemoteHyperspacePos: (pos) => {
+        if (pos.isInHyperspace) {
+          this.hyperspaceFlightController.syncRemoteHyperspacePlayer({
+            accountId: pos.accountId,
+            callsign: pos.callsign,
+            factionId: pos.factionId,
+            x: pos.hyperspaceX,
+            y: pos.hyperspaceY,
+          });
+        } else {
+          this.hyperspaceFlightController.removeRemoteHyperspacePlayer(pos.accountId);
+        }
+      },
+      onRefreshShipState: async () => {
+        await this.loadShipAndSector();
+        await this.refreshPlayerHold();
+      },
+    });
+
     this.hyperspaceFlightController = new HyperspaceFlightController(
       {
-        getAccountId: () => 'acc_sol_captain',
+        getAccountId: () => apiClient.getAccountId(),
         showNotification: (msg, isErr) => this.showApNotification(msg, isErr ?? false),
         playUiBlip: () => this.audio.playUiBlip(),
         audio: this.audio,
+        onHyperspaceSync: () => {
+          this.multiplayerController?.notifyHyperspaceMoved();
+        },
         onExitHyperspace: (newSectorId) => {
           this.currentSectorId = newSectorId;
           this.loadSectorScene(newSectorId, 101 * newSectorId);
@@ -2136,6 +2189,15 @@ class GameEngine {
 
     // Keydown Controls
     window.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (this.multiplayerController?.isAuthModalOpen()) {
+        return;
+      }
+      if (this.multiplayerController?.isSocialModalOpen()) {
+        if (e.code === 'Escape') {
+          this.multiplayerController.closeSocialModal();
+        }
+        return;
+      }
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) {
         return;
       }
@@ -4085,5 +4147,6 @@ class GameEngine {
 
 // Instantiate engine when DOM is ready
 window.addEventListener('DOMContentLoaded', () => {
+  apiClient.installGlobalFetchInterceptor();
   (window as any).gameEngine = new GameEngine();
 });

@@ -21,7 +21,7 @@ export const marketRoutes: FastifyPluginAsync = async (server) => {
   server.get('/api/ports/:id/market', async (req, reply) => {
     const { id } = req.params as { id: string };
     const query = req.query as { playerId?: string };
-    const playerId = query?.playerId || 'acc_sol_captain';
+    const playerId = req.authAccountId!;
 
     const market = await tradeService.getMarketInventory(id, playerId);
     if (!market) {
@@ -53,7 +53,7 @@ export const marketRoutes: FastifyPluginAsync = async (server) => {
       type: 'BUY' | 'SELL';
     };
 
-    const playerId = body.playerId || 'acc_sol_captain';
+    const playerId = req.authAccountId!;
     const result = await tradeService.executeTrade(
       playerId,
       id,

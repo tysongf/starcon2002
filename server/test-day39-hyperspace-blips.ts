@@ -1,3 +1,4 @@
+import './test-utils/authHelper';
 /**
  * Day 39 Integration Test Suite: Hyperspace Alien Radar Blips, Hunter AI & Tactical Interceptions
  * Milestone 0.9: The Infinite Void — Interstellar Hyperspace & Galactic Starmap

@@ -1,3 +1,4 @@
+import './test-utils/authHelper';
 /**
  * Verification Script for Sector Graph Jump System & Authoritative Topology
  *

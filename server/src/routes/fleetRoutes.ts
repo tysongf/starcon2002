@@ -7,7 +7,7 @@ export const fleetRoutes: FastifyPluginAsync = async (server) => {
   // 1. Get Fleet Roster & Command Bridge Status
   server.get('/roster', async (req, reply) => {
     const query = (req.query || {}) as { accountId?: string };
-    const accountId = query.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     const roster = await fleetService.getFleetRoster(accountId);
     reply.send(roster);
   });
@@ -19,7 +19,7 @@ export const fleetRoutes: FastifyPluginAsync = async (server) => {
       fleetShipId: string;
       slot: number | null;
     };
-    const accountId = body.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     if (!body.fleetShipId) {
       return reply.status(400).send({ success: false, error: 'fleetShipId is required.' });
     }
@@ -38,7 +38,7 @@ export const fleetRoutes: FastifyPluginAsync = async (server) => {
       fleetShipId: string;
       name: string;
     };
-    const accountId = body.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     if (!body.fleetShipId || !body.name) {
       return reply.status(400).send({ success: false, error: 'fleetShipId and name are required.' });
     }
@@ -56,7 +56,7 @@ export const fleetRoutes: FastifyPluginAsync = async (server) => {
       accountId?: string;
       fleetShipId: string;
     };
-    const accountId = body.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     if (!body.fleetShipId) {
       return reply.status(400).send({ success: false, error: 'fleetShipId is required.' });
     }
@@ -71,7 +71,7 @@ export const fleetRoutes: FastifyPluginAsync = async (server) => {
   // 5. Process Fleet Upkeep
   server.post('/upkeep', async (req, reply) => {
     const body = (req.body || {}) as { accountId?: string };
-    const accountId = body.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     const result = await fleetService.processFleetUpkeep(accountId);
     reply.send(result);
   });
@@ -82,7 +82,7 @@ export const fleetRoutes: FastifyPluginAsync = async (server) => {
       accountId?: string;
       fleetShipId: string;
     };
-    const accountId = body.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     if (!body.fleetShipId) {
       return reply.status(400).send({ success: false, error: 'fleetShipId is required.' });
     }
@@ -96,7 +96,7 @@ export const fleetRoutes: FastifyPluginAsync = async (server) => {
   // 7. Debug Reset
   server.post('/debug-reset', async (req, reply) => {
     const body = (req.body || {}) as { accountId?: string };
-    const accountId = body.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     await fleetService.debugReset(accountId);
     reply.send({ success: true, message: 'Fleet reset to baseline starter escorts.' });
   });
@@ -109,7 +109,7 @@ export const fleetRoutes: FastifyPluginAsync = async (server) => {
       order: 'FORMATION_FOLLOW' | 'FOCUS_TARGET' | 'ESCORT_FLAGSHIP' | 'FLANK_HARASS' | 'REGROUP_HOLD';
       targetEntityId?: string;
     };
-    const accountId = body.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     const sectorId = body.sectorId || 1;
     const result = combatManager.setTacticalOrder(sectorId, accountId, body.order, body.targetEntityId);
     reply.send(result);
@@ -118,7 +118,7 @@ export const fleetRoutes: FastifyPluginAsync = async (server) => {
   // 8. Day 34: Tactical State Query
   server.get('/tactical-state', async (req, reply) => {
     const query = (req.query || {}) as { accountId?: string; sectorId?: string };
-    const accountId = query.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     const sectorId = parseInt(query.sectorId || '1', 10);
     const result = combatManager.getTacticalState(sectorId, accountId);
     reply.send(result);
@@ -127,7 +127,7 @@ export const fleetRoutes: FastifyPluginAsync = async (server) => {
   // 9. Day 34: Headless Spawn Combat Wingmen (Debug)
   server.post('/debug-spawn-combat-wing', async (req, reply) => {
     const body = (req.body || {}) as { accountId?: string; sectorId?: number; overrideWingmen?: any[] };
-    const accountId = body.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     const sectorId = body.sectorId || 1;
     const wingmen = await combatManager.spawnWingmenForPlayer(sectorId, accountId, body.overrideWingmen);
     reply.send({ success: true, count: wingmen.length, wingmen });
@@ -140,7 +140,7 @@ export const fleetRoutes: FastifyPluginAsync = async (server) => {
       wreckId: string;
       colonyId?: string;
     };
-    const accountId = body.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     if (!body.wreckId) {
       return reply.status(400).send({ success: false, error: 'wreckId is required.' });
     }
@@ -164,7 +164,7 @@ export const fleetRoutes: FastifyPluginAsync = async (server) => {
       slot: number;
       targetEntityId?: string;
     };
-    const accountId = body.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     const sectorId = body.sectorId || 1;
     const slot = Number(body.slot || 1);
     const result = combatManager.triggerWingmanAbility(sectorId, accountId, slot, body.targetEntityId);
@@ -174,7 +174,7 @@ export const fleetRoutes: FastifyPluginAsync = async (server) => {
   // 12. Day 36: Get Latest Tactical Combat After-Action Report (AAR)
   server.get('/aar/last', async (req, reply) => {
     const query = (req.query || {}) as { accountId?: string };
-    const accountId = query.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     let aar = SectorCombatManager.getLatestAAR(accountId);
     if (!aar) {
       aar = {

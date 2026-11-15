@@ -530,7 +530,9 @@ export class OutpostGridService {
       const nextCount = Number(modCntRes.rows[0]?.cnt || 0) + 1;
       const req = getColonyModuleUpgradeRequirement(def.mappedModuleKey, nextCount);
       if (req) {
-        const { count } = await crewService.getMatchingColonyCrewCount(accountId, colonyId, req.acceptedSpecialties);
+        const colOwnerRes = await db.query<{ account_id: string }>('SELECT account_id FROM colonies WHERE id = $1', [colonyId]);
+        const crewOwnerId = colOwnerRes.rows[0]?.account_id || accountId;
+        const { count } = await crewService.getMatchingColonyCrewCount(crewOwnerId, colonyId, req.acceptedSpecialties);
         if (count < req.requiredCount) {
           throw new Error(
             `CREW_SPECIALTY_REQUIRED: Constructing ${def.name} (#${nextCount}) requires ${req.label} stationed at colony (Current: ${count}/${req.requiredCount}).`

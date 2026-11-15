@@ -1,3 +1,4 @@
+import './test-utils/authHelper';
 /**
  * Verification Script for Dynamic Supply/Demand Curve & Atomic Buy/Sell Trading Mechanics
  *

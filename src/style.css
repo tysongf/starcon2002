@@ -10265,4 +10265,302 @@ kbd {
   line-height: 1.45;
 }
 
+/* ========================================================================= */
+/* Milestone 1.8: Captain Auth Gate, Subspace Comms Dock & Social Modal       */
+/* ========================================================================= */
+
+.hud-captain-pill {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  background: rgba(16, 185, 129, 0.16);
+  border: 1px solid rgba(16, 185, 129, 0.5);
+  color: #34d399;
+}
+
+.mp-auth-card {
+  max-width: 460px;
+  width: 92vw;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mp-auth-tabs,
+.mp-modal-tabs,
+.mp-comms-tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.mp-auth-tab,
+.mp-tab-btn,
+.comms-chan-btn {
+  background: rgba(15, 23, 42, 0.85);
+  color: #94a3b8;
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  padding: 5px 10px;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mp-auth-tab.active,
+.mp-tab-btn.active,
+.comms-chan-btn.active {
+  background: rgba(56, 189, 248, 0.2);
+  color: #38bdf8;
+  border-color: #38bdf8;
+}
+
+.mp-auth-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mp-field-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.76rem;
+  color: #cbd5e1;
+}
+
+.mp-field-label input,
+.mp-field-label select,
+.mp-inline-input,
+.mp-comms-input-row input {
+  background: rgba(2, 6, 23, 0.9);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: 4px;
+  color: #f8fafc;
+  padding: 7px 9px;
+  font-size: 0.8rem;
+}
+
+.mp-auth-error {
+  padding: 8px 10px;
+  border-radius: 4px;
+  background: rgba(239, 68, 68, 0.16);
+  border: 1px solid rgba(239, 68, 68, 0.55);
+  color: #fca5a5;
+  font-size: 0.78rem;
+}
+
+.mp-auth-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.mp-comms-dock {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  width: 440px;
+  max-width: calc(100vw - 32px);
+  background: rgba(8, 13, 28, 0.88);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: 8px;
+  backdrop-filter: blur(8px);
+  z-index: 45;
+  pointer-events: auto;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.mp-comms-dock.collapsed .mp-comms-body {
+  display: none;
+}
+
+.mp-comms-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 10px;
+  background: rgba(15, 23, 42, 0.9);
+  border-bottom: 1px solid rgba(56, 189, 248, 0.25);
+}
+
+.mp-comms-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #38bdf8;
+  letter-spacing: 0.06em;
+}
+
+.mp-comms-body {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mp-comms-split {
+  display: grid;
+  grid-template-columns: 1fr 145px;
+  gap: 8px;
+  height: 155px;
+}
+
+.mp-chat-feed,
+.mp-roster-list {
+  background: rgba(2, 6, 23, 0.72);
+  border: 1px solid rgba(51, 65, 85, 0.6);
+  border-radius: 4px;
+  padding: 6px;
+  overflow-y: auto;
+  font-size: 0.72rem;
+}
+
+.comms-line {
+  margin-bottom: 4px;
+  line-height: 1.35;
+  color: #e2e8f0;
+  word-break: break-word;
+}
+
+.comms-chan-tag {
+  color: #38bdf8;
+  font-weight: 700;
+  margin-right: 4px;
+}
+
+.comms-sender {
+  color: #34d399;
+  font-weight: 700;
+}
+
+.mp-roster-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 0;
+}
+
+.mp-roster-header {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #94a3b8;
+  letter-spacing: 0.06em;
+}
+
+.mp-roster-list {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.roster-pilot-btn {
+  text-align: left;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  color: #e2e8f0;
+  border-radius: 4px;
+  padding: 4px 6px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  font-size: 0.68rem;
+}
+
+.roster-pilot-btn:hover {
+  border-color: #38bdf8;
+}
+
+.roster-callsign {
+  font-weight: 700;
+  color: #38bdf8;
+}
+
+.roster-meta {
+  color: #94a3b8;
+  font-size: 0.62rem;
+}
+
+.mp-comms-input-row {
+  display: flex;
+  gap: 6px;
+}
+
+.mp-comms-input-row input {
+  flex: 1;
+}
+
+.mp-social-card {
+  max-width: 760px;
+  width: 92vw;
+  max-height: 85vh;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mp-modal-body {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mp-card {
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  border-radius: 6px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mp-section-title {
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: #38bdf8;
+  letter-spacing: 0.06em;
+}
+
+.mp-btn-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.mp-member-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: rgba(2, 6, 23, 0.55);
+  border: 1px solid rgba(51, 65, 85, 0.5);
+  font-size: 0.76rem;
+  flex-wrap: wrap;
+}
+
+.mp-badge {
+  color: #fbbf24;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.mp-check-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.72rem;
+  color: #cbd5e1;
+}
+
+
 

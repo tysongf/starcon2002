@@ -17,7 +17,7 @@ export const dialogRoutes: FastifyPluginAsync = async (server) => {
   server.get('/:npcId', async (req, reply) => {
     const params = req.params as { npcId: string };
     const query = (req.query || {}) as { accountId?: string };
-    const accountId = query.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
 
     try {
       const dialog = await dialogService.getDialogState(accountId, params.npcId);
@@ -33,7 +33,7 @@ export const dialogRoutes: FastifyPluginAsync = async (server) => {
       npcId: string;
       optionIndex: number;
     };
-    const accountId = body.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
 
     try {
       const result = await dialogService.respondDialog(accountId, body.npcId, body.optionIndex);
@@ -48,7 +48,7 @@ export const dialogRoutes: FastifyPluginAsync = async (server) => {
       accountId?: string;
       npcId: string;
     };
-    const accountId = body.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
 
     try {
       await dialogService.resetDialog(accountId, body.npcId);
@@ -63,7 +63,7 @@ export const dialogRoutes: FastifyPluginAsync = async (server) => {
   server.get('/convoy/:convoyId', async (req, reply) => {
     const params = req.params as { convoyId: string };
     const query = (req.query || {}) as { accountId?: string; sectorId?: string };
-    const accountId = query.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     const sectorId = parseInt(query.sectorId || '2', 10);
 
     try {
@@ -82,7 +82,7 @@ export const dialogRoutes: FastifyPluginAsync = async (server) => {
       optionIndex: number;
       actionPayload?: any;
     };
-    const accountId = body.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     const sectorId = body.sectorId || 2;
 
     try {

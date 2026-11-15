@@ -1,3 +1,4 @@
+import './test-utils/authHelper';
 /**
  * Day 40 Integration Test Suite: Precursor Quasi-Space Slipstream & Emergency SOS Transponder
  * Milestone 0.9: The Infinite Void — Interstellar Hyperspace & Galactic Starmap

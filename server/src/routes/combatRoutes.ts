@@ -5,12 +5,15 @@ import { wreckService } from '../services/WreckService';
 import { combatManager } from '../services/SectorCombatManager';
 import { navigationService } from '../services/NavigationService';
 import { outfittingService } from '../services/OutfittingService';
+import { squadronService } from '../services/SquadronService';
+import { allianceService } from '../services/AllianceService';
+import { duelService } from '../services/DuelService';
 
 export const combatRoutes: FastifyPluginAsync = async (server) => {
   // Killmails
   server.get('/api/combat/killmails', async (req, reply) => {
     const query = (req.query || {}) as { accountId?: string };
-    const accountId = query.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     const killmails = await contractService.getKillmails(accountId);
     reply.send({ killmails });
   });
@@ -19,7 +22,7 @@ export const combatRoutes: FastifyPluginAsync = async (server) => {
   server.get('/api/combat/contracts', async (req, reply) => {
     const query = (req.query || {}) as { publicOnly?: string; accountId?: string };
     const publicOnly = query.publicOnly === 'true';
-    const accountId = query.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     const contracts = await contractService.getContracts(publicOnly, accountId);
     reply.send({ contracts });
   });
@@ -41,7 +44,7 @@ export const combatRoutes: FastifyPluginAsync = async (server) => {
       rewardCredits?: number;
       isPublic?: boolean;
     };
-    const creatorAccountId = body.creatorAccountId || 'acc_sol_captain';
+    const creatorAccountId = body.creatorAccountId || req.authAccountId!;
     const targetName = body.targetName || 'Hostile Combatant';
     const rewardCredits = typeof body.rewardCredits === 'number' ? body.rewardCredits : 2500;
     const isPublic = body.isPublic !== false;
@@ -63,7 +66,7 @@ export const combatRoutes: FastifyPluginAsync = async (server) => {
   // Replacement Frigate & Clinic Rescue
   server.post('/api/combat/claim-frigate', async (req, reply) => {
     const body = (req.body || {}) as { playerId?: string; sectorId?: number };
-    const playerId = body.playerId || 'acc_sol_captain';
+    const playerId = req.authAccountId!;
     const sectorId = body.sectorId || 1;
 
     try {
@@ -77,7 +80,7 @@ export const combatRoutes: FastifyPluginAsync = async (server) => {
 
   server.post('/api/combat/emergency-recall', async (req, reply) => {
     const body = (req.body || {}) as { playerId?: string };
-    const playerId = body.playerId || 'acc_sol_captain';
+    const playerId = req.authAccountId!;
 
     // Deduct clone medical insurance fee (500 CR) if available
     await db.query('UPDATE accounts SET credits = GREATEST(0, credits - 500) WHERE id = $1', [playerId]);
@@ -103,7 +106,7 @@ export const combatRoutes: FastifyPluginAsync = async (server) => {
   server.post('/api/combat/destroy-entity', async (req, reply) => {
     const body = (req.body || {}) as { sectorId?: number; entityId: string; killerId?: string };
     const sectorId = body.sectorId || 2;
-    const ok = combatManager.destroyEntity(sectorId, body.entityId, body.killerId || 'player_acc_sol_captain');
+    const ok = combatManager.destroyEntity(sectorId, body.entityId, body.killerId || `player_${req.authAccountId!}`);
     if (!ok) {
       return reply.status(404).send({ success: false, error: 'Entity or room not found.' });
     }
@@ -139,7 +142,7 @@ export const combatRoutes: FastifyPluginAsync = async (server) => {
       fillCargo?: boolean;
     };
     const sectorId = body.sectorId || 2;
-    const playerId = body.playerId || 'acc_sol_captain';
+    const playerId = req.authAccountId!;
     const room = combatManager.getOrCreateRoom(sectorId);
     const pEntity = room.entities.get(`player_${playerId}`);
     if (pEntity) {
@@ -197,7 +200,7 @@ export const combatRoutes: FastifyPluginAsync = async (server) => {
   // Deterministic Ship-to-Ship Castaway Pod Encounter setup for debugging & regression verification
   server.post('/api/combat/debug/castaway-setup', async (req, reply) => {
     const body = (req.body || {}) as { playerId?: string; sectorId?: number; factionId?: string };
-    const playerId = body.playerId || 'acc_sol_captain';
+    const playerId = req.authAccountId!;
     const sectorId = Number(body.sectorId || 2);
     const room = combatManager.getOrCreateRoom(sectorId);
     const pEntity = room.entities.get(`player_${playerId}`);
@@ -276,7 +279,7 @@ export const combatRoutes: FastifyPluginAsync = async (server) => {
 
   server.post('/api/combat/wrecks/salvage-mine', async (req, reply) => {
     const body = (req.body || {}) as { wreckId: string; accountId?: string; extractUnits?: number };
-    const accountId = body.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     const extractUnits = typeof body.extractUnits === 'number' ? body.extractUnits : 10;
 
     try {
@@ -289,7 +292,7 @@ export const combatRoutes: FastifyPluginAsync = async (server) => {
 
   server.post('/api/combat/wrecks/tow', async (req, reply) => {
     const body = (req.body || {}) as { wreckId: string; accountId?: string; isTowed?: boolean };
-    const accountId = body.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     const attach = body.isTowed !== false;
 
     try {
@@ -302,7 +305,7 @@ export const combatRoutes: FastifyPluginAsync = async (server) => {
 
   server.post('/api/combat/wrecks/dismantle', async (req, reply) => {
     const body = (req.body || {}) as { wreckId: string; accountId?: string };
-    const accountId = body.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
 
     try {
       const result = await wreckService.dismantleWreck(body.wreckId, accountId);
@@ -314,7 +317,7 @@ export const combatRoutes: FastifyPluginAsync = async (server) => {
 
   server.post('/api/combat/wrecks/refurbish', async (req, reply) => {
     const body = (req.body || {}) as { wreckId: string; accountId?: string };
-    const accountId = body.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
 
     try {
       const result = await wreckService.refurbishWreck(body.wreckId, accountId);
@@ -326,8 +329,12 @@ export const combatRoutes: FastifyPluginAsync = async (server) => {
 
   // Authoritative 20Hz WebSocket Combat Room
   server.get('/ws/combat', { websocket: true }, async (socket, req) => {
-    const query = (req.query || {}) as { playerId?: string; sectorId?: string };
-    const playerId = query.playerId || 'acc_sol_captain';
+    const query = (req.query || {}) as { sectorId?: string };
+    const playerId = req.authAccountId;
+    if (!playerId) {
+      socket.close(1008, 'UNAUTHORIZED');
+      return;
+    }
     const sectorId = parseInt(query.sectorId || '1', 10);
 
     // Buffer early WebSocket frames until async DB/loadout lookups complete and handleConnection binds handlers.
@@ -344,9 +351,22 @@ export const combatRoutes: FastifyPluginAsync = async (server) => {
 
     let shipData: any;
     try {
-      const ship = await navigationService.getPlayerShip(playerId);
-      const loadout = await outfittingService.getPlayerLoadout(playerId);
-      shipData = { ...ship, loadout };
+      const [ship, loadout, accRes, squadronId, ffAllies, activeDuel] = await Promise.all([
+        navigationService.getPlayerShip(playerId),
+        outfittingService.getPlayerLoadout(playerId),
+        db.query<{ callsign: string }>(`SELECT callsign FROM accounts WHERE id = $1`, [playerId]),
+        squadronService.getAccountSquadronId(playerId),
+        allianceService.getFriendlyFireShieldedAllyIds(playerId),
+        duelService.getActiveDuelForPlayer(playerId),
+      ]);
+      shipData = {
+        ...ship,
+        loadout,
+        callsign: accRes.rows[0]?.callsign || playerId,
+        squadronId,
+        friendlyFireAllyIds: Array.from(ffAllies),
+        activeDuelId: activeDuel?.id || null,
+      };
     } catch {
       shipData = undefined;
     }

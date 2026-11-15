@@ -18,6 +18,8 @@ import {
   type CrewComputedBonuses,
 } from '../procgen/CrewCatalog';
 import { crewService } from './CrewService';
+import { duelService } from './DuelService';
+import { socialHubService } from './SocialHubService';
 import { db } from '../db/Database';
 
 export const contractService = new ContractService();
@@ -176,6 +178,12 @@ export interface SectorEntity {
   isDecoy?: boolean;
   decoyOwnerId?: string;
   decoyTtl?: number;
+  // Milestone 1.8 Multiplayer Player & Social State
+  accountId?: string;
+  callsign?: string;
+  squadronId?: string | null;
+  activeDuelId?: string | null;
+  friendlyFireAllyIds?: Set<string>;
 }
 
 export interface SporeCloud {
@@ -210,7 +218,7 @@ export interface Projectile {
 }
 
 export interface CombatEvent {
-  type: 'HIT' | 'SHIELD_BREAK' | 'DESTROYED' | 'LOOT_SPAWNED' | 'LOOT_COLLECTED' | 'POD_EJECTED' | 'CONTAINER_SCOOPED' | 'WRECK_SPAWNED' | 'TOW_ATTACHED' | 'TOW_RELEASED' | 'SALVAGE_BEAM_TICK' | 'WRECK_DISINTEGRATED' | 'TRUCE_DECLARED' | 'TRUCE_BROKEN' | 'LIFE_SUPPORT_EXHAUSTED' | 'WARP_SPOOL_STARTED' | 'WARP_SPOOL_INTERRUPTED' | 'WARP_JUMP_SUCCESS' | 'CONVOY_SURRENDERED' | 'COMMS_ABORTED' | 'AMBUSH_TRIGGERED' | 'AMBUSH_CLEARED' | 'ESCORT_FAILED' | 'ALLEGIANCE_DECLARED' | 'COMBAT_BOND_AWARDED' | 'SKIRMISH_VICTORY' | 'TACTICAL_ORDER_ISSUED' | 'WINGMAN_DESTROYED' | 'ABILITY_TRIGGERED' | 'MINING_BEAM_TICK' | 'MINING_YIELD' | 'CARGO_HOLD_FULL' | 'THERMAL_VENT_WARNING' | 'THERMAL_VENT_ERUPTION' | 'MINING_AMBUSH' | 'ASTEROID_FRACTURED' | 'ASTEROID_DEPLETED' | 'CASTAWAY_RESCUED';
+  type: 'HIT' | 'SHIELD_BREAK' | 'DESTROYED' | 'LOOT_SPAWNED' | 'LOOT_COLLECTED' | 'POD_EJECTED' | 'CONTAINER_SCOOPED' | 'WRECK_SPAWNED' | 'TOW_ATTACHED' | 'TOW_RELEASED' | 'SALVAGE_BEAM_TICK' | 'WRECK_DISINTEGRATED' | 'TRUCE_DECLARED' | 'TRUCE_BROKEN' | 'LIFE_SUPPORT_EXHAUSTED' | 'WARP_SPOOL_STARTED' | 'WARP_SPOOL_INTERRUPTED' | 'WARP_JUMP_SUCCESS' | 'CONVOY_SURRENDERED' | 'COMMS_ABORTED' | 'AMBUSH_TRIGGERED' | 'AMBUSH_CLEARED' | 'ESCORT_FAILED' | 'ALLEGIANCE_DECLARED' | 'COMBAT_BOND_AWARDED' | 'SKIRMISH_VICTORY' | 'TACTICAL_ORDER_ISSUED' | 'WINGMAN_DESTROYED' | 'ABILITY_TRIGGERED' | 'MINING_BEAM_TICK' | 'MINING_YIELD' | 'CARGO_HOLD_FULL' | 'THERMAL_VENT_WARNING' | 'THERMAL_VENT_ERUPTION' | 'MINING_AMBUSH' | 'ASTEROID_FRACTURED' | 'ASTEROID_DEPLETED' | 'CASTAWAY_RESCUED' | 'PVP_SAFE_ZONE_BLOCKED' | 'DUEL_COMPLETED';
 
   sourceId?: string;
   targetId?: string;
@@ -287,6 +295,11 @@ export interface SnapshotPayload {
     miningHeat?: number;
     scoopRadius?: number;
     beamRange?: number;
+    // Milestone 1.8 Multiplayer Player Telemetry
+    accountId?: string;
+    callsign?: string;
+    squadronId?: string | null;
+    activeDuelId?: string | null;
   }>;
   asteroids?: Array<{
     id: string;
@@ -1266,16 +1279,22 @@ export class SectorRoom {
       fittedMods
     );
 
+    const existingPlayerCount = Array.from(this.entities.values()).filter((e) => e.type === 'PLAYER').length;
+    const spawnAngle = existingPlayerCount * 1.3;
+    const spawnDist = existingPlayerCount === 0 ? 0 : 28 + existingPlayerCount * 8;
+    const spawnX = existingPlayerCount === 0 ? 0 : Math.round(Math.cos(spawnAngle) * spawnDist * 10) / 10;
+    const spawnZ = existingPlayerCount === 0 ? 0 : Math.round(Math.sin(spawnAngle) * spawnDist * 10) / 10;
+
     if (!this.entities.has(entityId)) {
       this.entities.set(entityId, {
         id: entityId,
         type: 'PLAYER',
         factionId: shipData?.faction_id || 'FACTION_SOL',
-        name: shipData?.flagship_name || 'Cmdr. Vance',
+        name: shipData?.flagship_name || shipData?.callsign || 'Cmdr. Vance',
         hullClass: shipData?.main_hull_class || shipData?.hull_class || 'CORVETTE',
         hullSeed: Number(shipData?.hull_seed || 12345),
-        x: 0,
-        z: 0,
+        x: spawnX,
+        z: spawnZ,
         vx: 0,
         vz: 0,
         yaw: 0,
@@ -1304,11 +1323,23 @@ export class SectorRoom {
         fireCooldown: 0,
         miningHeat: 0,
         miningProfile,
+        accountId: playerId,
+        callsign: shipData?.callsign || playerId,
+        squadronId: shipData?.squadronId || null,
+        activeDuelId: shipData?.activeDuelId || null,
+        friendlyFireAllyIds: new Set(shipData?.friendlyFireAllyIds || []),
       });
     } else {
       const existing = this.entities.get(entityId)!;
       existing.hullClass = shipData?.main_hull_class || shipData?.hull_class || existing.hullClass;
       existing.miningProfile = miningProfile;
+      existing.accountId = playerId;
+      existing.callsign = shipData?.callsign || existing.callsign || playerId;
+      existing.squadronId = shipData?.squadronId ?? existing.squadronId ?? null;
+      existing.activeDuelId = shipData?.activeDuelId ?? existing.activeDuelId ?? null;
+      if (Array.isArray(shipData?.friendlyFireAllyIds)) {
+        existing.friendlyFireAllyIds = new Set(shipData.friendlyFireAllyIds);
+      }
     }
 
     try {
@@ -3780,6 +3811,46 @@ export class SectorRoom {
 
         if (isFriendlySquadron) continue;
 
+        // Milestone 1.8 Multiplayer PvP / Safe Sector / Squadron / Peer-Ally / Duel Check
+        const atkAccountId =
+          projOwner?.type === 'PLAYER'
+            ? projOwner.accountId || projOwner.id.replace('player_', '')
+            : projOwner?.type === 'WINGMAN'
+              ? projOwner.ownerPlayerId
+              : undefined;
+        const tgtAccountId =
+          entity.type === 'PLAYER'
+            ? entity.accountId || entity.id.replace('player_', '')
+            : entity.type === 'WINGMAN'
+              ? entity.ownerPlayerId
+              : undefined;
+
+        if (atkAccountId && tgtAccountId) {
+          if (atkAccountId === tgtAccountId) continue;
+          const atkPlayer = this.entities.get(`player_${atkAccountId}`);
+          const tgtPlayer = this.entities.get(`player_${tgtAccountId}`);
+          const sharedDuel =
+            atkPlayer?.activeDuelId &&
+            tgtPlayer?.activeDuelId &&
+            atkPlayer.activeDuelId === tgtPlayer.activeDuelId;
+
+          if (!sharedDuel) {
+            if (this.sectorId <= 3) {
+              // High-Sec Sectors 1-3 block non-duel PvP damage completely
+              continue;
+            }
+            if (atkPlayer?.squadronId && atkPlayer.squadronId === tgtPlayer?.squadronId) {
+              continue;
+            }
+            if (
+              atkPlayer?.friendlyFireAllyIds?.has(tgtAccountId) ||
+              tgtPlayer?.friendlyFireAllyIds?.has(atkAccountId)
+            ) {
+              continue;
+            }
+          }
+        }
+
         const dx = entity.x - proj.x;
         const dz = entity.z - proj.z;
         const distSq = dx * dx + dz * dz;
@@ -4016,6 +4087,45 @@ export class SectorRoom {
         });
       }
       target.state = 'ENGAGE';
+    }
+
+    // Milestone 1.8: Consensual Duel Termination at <= 15% hull (risk-free auto-repair)
+    if (target.type === 'PLAYER' && proj.ownerId) {
+      const attacker = this.entities.get(proj.ownerId);
+      const atkAcc = attacker?.accountId || proj.ownerId.replace('player_', '');
+      const tgtAcc = target.accountId || target.id.replace('player_', '');
+      if (
+        attacker?.type === 'PLAYER' &&
+        attacker.activeDuelId &&
+        attacker.activeDuelId === target.activeDuelId &&
+        target.hp <= Math.max(1, target.maxHp * 0.15)
+      ) {
+        const duelId = target.activeDuelId;
+        target.activeDuelId = null;
+        attacker.activeDuelId = null;
+        target.hp = target.maxHp;
+        target.shields = target.maxShields;
+        attacker.hp = attacker.maxHp;
+        attacker.shields = attacker.maxShields;
+
+        this.pendingEvents.push({
+          type: 'DUEL_COMPLETED',
+          sourceId: attacker.id,
+          targetId: target.id,
+          x: target.x,
+          z: target.z,
+          data: { duelId, winnerAccountId: atkAcc, loserAccountId: tgtAcc },
+        });
+
+        duelService
+          .completeDuel(duelId, atkAcc, tgtAcc, 'COMPLETED')
+          .then((result) => {
+            socialHubService.pushToAccount(atkAcc, 'DUEL_COMPLETED', result);
+            socialHubService.pushToAccount(tgtAcc, 'DUEL_COMPLETED', result);
+          })
+          .catch(() => {});
+        return;
+      }
     }
 
     // Check Destruction
@@ -4543,6 +4653,11 @@ export class SectorRoom {
         ownerPlayerId: e.ownerPlayerId,
         wingmanSlot: e.wingmanSlot,
         tacticalOrder: e.tacticalOrder,
+        // Milestone 1.8 Multiplayer Player Telemetry
+        accountId: e.accountId,
+        callsign: e.callsign,
+        squadronId: e.squadronId ?? null,
+        activeDuelId: e.activeDuelId ?? null,
         shipId: e.shipId,
         // Day 35 Ability Telemetry
         specialAbility: e.specialAbility,
@@ -4893,6 +5008,26 @@ export class SectorCombatManager {
 
   public static setLatestAAR(accountId: string, aar: CombatAAR): void {
     SectorCombatManager.latestAARByAccount.set(accountId, aar);
+  }
+
+  public syncPlayerSocialContext(
+    accountId: string,
+    updates: {
+      squadronId?: string | null;
+      activeDuelId?: string | null;
+      friendlyFireAllyIds?: string[];
+    }
+  ): void {
+    const entityId = `player_${accountId}`;
+    for (const room of this.rooms.values()) {
+      const entity = (room as any).entities?.get(entityId) as SectorEntity | undefined;
+      if (!entity) continue;
+      if (updates.squadronId !== undefined) entity.squadronId = updates.squadronId;
+      if (updates.activeDuelId !== undefined) entity.activeDuelId = updates.activeDuelId;
+      if (updates.friendlyFireAllyIds !== undefined) {
+        entity.friendlyFireAllyIds = new Set(updates.friendlyFireAllyIds);
+      }
+    }
   }
 }
 

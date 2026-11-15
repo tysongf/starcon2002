@@ -12,6 +12,7 @@ import {
 } from '../procgen/CrewCatalog';
 import { crewService } from './CrewService';
 import { outpostGridService } from './OutpostGridService';
+import { allianceService } from './AllianceService';
 import {
   mapFacilityToOutpostBuilding,
   mapModuleKeyToOutpostBuilding,
@@ -58,6 +59,13 @@ export interface ColonyDetail {
   morale?: number;
   powerGeneratedMW?: number;
   powerConsumedMW?: number;
+  ownerCallsign?: string;
+  isOwner?: boolean;
+  accessGrants?: {
+    canInspectGrid: boolean;
+    canHarvestSilo: boolean;
+    canBuildOutpost: boolean;
+  };
   o2Generated?: number;
   o2Consumed?: number;
   gridEfficiency?: number;
@@ -208,11 +216,12 @@ export class ColonyService {
    */
   public async getColonyDetail(colonyId: string, accountId: string = 'acc_sol_captain'): Promise<ColonyDetail> {
     const res = await db.query<any>(
-      `SELECT c.*, p.habitability_rating, p.id as p_id
+      `SELECT c.*, p.habitability_rating, p.id as p_id, a.callsign AS owner_callsign
        FROM colonies c
        JOIN planets p ON c.planet_id = p.id
-       WHERE c.id = $1 AND c.account_id = $2`,
-      [colonyId, accountId]
+       LEFT JOIN accounts a ON a.id = c.account_id
+       WHERE c.id = $1`,
+      [colonyId]
     );
 
     if (res.rows.length === 0) {
@@ -220,6 +229,28 @@ export class ColonyService {
     }
 
     const c = res.rows[0];
+    const ownerAccountId = c.account_id;
+    const isOwner = ownerAccountId === accountId;
+
+    let accessGrants = { canInspectGrid: isOwner, canHarvestSilo: isOwner, canBuildOutpost: isOwner };
+    if (!isOwner) {
+      const [insp, harv, bld] = await Promise.all([
+        allianceService.checkColonyPermission(colonyId, accountId, 'INSPECT'),
+        allianceService.checkColonyPermission(colonyId, accountId, 'HARVEST'),
+        allianceService.checkColonyPermission(colonyId, accountId, 'BUILD'),
+      ]);
+      if (!insp.allowed) {
+        const err: any = new Error('FORBIDDEN: Colony inspection requires ownership or an active Peer Alliance grant.');
+        err.statusCode = 403;
+        throw err;
+      }
+      accessGrants = {
+        canInspectGrid: insp.allowed,
+        canHarvestSilo: harv.allowed,
+        canBuildOutpost: bld.allowed,
+      };
+    }
+
     const now = Date.now();
     const lastHarvest = new Date(c.last_harvest_at).getTime();
     const elapsedSeconds = Math.max(0, Math.floor((now - lastHarvest) / 1000));
@@ -227,10 +258,10 @@ export class ColonyService {
     // Evaluate 4-layer Outpost grid connectivity, build timers, MW/O2/Worker simulation
     const { telemetry } = await outpostGridService.evaluateGridSimulation(colonyId, Number(c.population || 120));
 
-    // Query player biotech research
+    // Query colony owner biotech research
     const bioRes = await db.query<any>(
       `SELECT biosphere_tier, unlocked_projects FROM player_biotech_research WHERE account_id = $1`,
-      [accountId]
+      [ownerAccountId]
     );
     const bioRow = bioRes.rows[0];
     const bioTierNum = bioRow?.biosphere_tier || 1;
@@ -247,7 +278,7 @@ export class ColonyService {
        FROM crew_roster
        WHERE account_id = $1 AND assignment_type = 'COLONY' AND assigned_colony_id = $2
        ORDER BY aptitude DESC`,
-      [accountId, colonyId]
+      [ownerAccountId, colonyId]
     );
     const stationedCrew = crewRows.map((cr) => ({
       id: cr.id,
@@ -396,7 +427,48 @@ export class ColonyService {
       activeBuildingsCount: telemetry.activeBuildingsCount,
       constructingCount: telemetry.constructingCount,
       unlinkedCount: telemetry.unlinkedCount,
+      ownerCallsign: c.owner_callsign || c.account_id,
+      isOwner,
+      accessGrants,
     };
+  }
+
+  /**
+   * Lists other captains' colonies on a planet with caller's granular access permissions.
+   */
+  public async getForeignPlanetColonies(planetId: string, viewerAccountId: string) {
+    const res = await db.query<any>(
+      `SELECT c.id, c.account_id, c.name, c.surface_lat, c.surface_lng, c.commodity_id, c.population, a.callsign AS owner_callsign
+       FROM colonies c
+       LEFT JOIN accounts a ON a.id = c.account_id
+       WHERE c.planet_id = $1 AND c.account_id <> $2
+       ORDER BY c.created_at ASC`,
+      [planetId, viewerAccountId]
+    );
+    const out: any[] = [];
+    for (const r of res.rows) {
+      const [insp, harv, bld] = await Promise.all([
+        allianceService.checkColonyPermission(r.id, viewerAccountId, 'INSPECT'),
+        allianceService.checkColonyPermission(r.id, viewerAccountId, 'HARVEST'),
+        allianceService.checkColonyPermission(r.id, viewerAccountId, 'BUILD'),
+      ]);
+      out.push({
+        id: r.id,
+        ownerAccountId: r.account_id,
+        ownerCallsign: r.owner_callsign || r.account_id,
+        name: r.name,
+        surfaceLat: Number(r.surface_lat),
+        surfaceLng: Number(r.surface_lng),
+        commodityId: r.commodity_id,
+        population: Number(r.population),
+        accessGrants: {
+          canInspectGrid: insp.allowed,
+          canHarvestSilo: harv.allowed,
+          canBuildOutpost: bld.allowed,
+        },
+      });
+    }
+    return out;
   }
 
   /**
@@ -425,6 +497,13 @@ export class ColonyService {
     accountId: string = 'acc_sol_captain',
     facilityType: 'DERRICK' | 'HABITATION' | 'TERRAFORMER' | 'SILO' | 'SHIPYARD'
   ): Promise<{ success: boolean; colony: ColonyDetail; message: string }> {
+    const perm = await allianceService.checkColonyPermission(colonyId, accountId, 'HARVEST');
+    if (!perm.allowed) {
+      const err: any = new Error('FORBIDDEN: Harvesting this colony silo requires ownership or owner Silo Harvest grant.');
+      err.statusCode = 403;
+      throw err;
+    }
+
     const colony = await this.getColonyDetail(colonyId, accountId);
 
     let currentTier = 1;
@@ -507,6 +586,13 @@ export class ColonyService {
       throw new Error(`UNKNOWN_COLONY_MODULE: ${moduleKey} is not a valid Colony Specialty Module.`);
     }
 
+    const perm = await allianceService.checkColonyPermission(colonyId, accountId, 'HARVEST');
+    if (!perm.allowed) {
+      const err: any = new Error('FORBIDDEN: Harvesting this colony silo requires ownership or owner Silo Harvest grant.');
+      err.statusCode = 403;
+      throw err;
+    }
+
     const colony = await this.getColonyDetail(colonyId, accountId);
     const currentMods = { ...(colony.colonyModules || {}) } as Record<ColonyModuleKey, number>;
     const currentTier = Number(currentMods[moduleKey] || 0);
@@ -568,6 +654,13 @@ export class ColonyService {
     colony: ColonyDetail;
     message: string;
   }> {
+    const perm = await allianceService.checkColonyPermission(colonyId, accountId, 'HARVEST');
+    if (!perm.allowed) {
+      const err: any = new Error('FORBIDDEN: Harvesting this colony silo requires ownership or owner Silo Harvest grant.');
+      err.statusCode = 403;
+      throw err;
+    }
+
     const colony = await this.getColonyDetail(colonyId, accountId);
     if (colony.stockpiledAmount <= 0) {
       throw new Error('NO_STOCKPILED_CARGO: Silo is currently empty. Allow mining derricks time to extract ore.');

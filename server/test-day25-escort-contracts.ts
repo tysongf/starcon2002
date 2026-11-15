@@ -1,4 +1,4 @@
-import { WebSocket } from 'ws';
+import { AuthedWebSocket as WebSocket } from './test-utils/authHelper';
 import { combatManager } from './src/services/SectorCombatManager';
 
 const BASE_URL = 'http://localhost:3000';

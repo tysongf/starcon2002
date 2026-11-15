@@ -1,3 +1,4 @@
+import './test-utils/authHelper';
 /**
  * Day 33 Integration Test Suite: Orbital Shipyard Manufacturing & Colony Industrial Gantry
  * Milestone 0.8: Fleet Command & Task Force Operations

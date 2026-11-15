@@ -1,3 +1,4 @@
+import './test-utils/authHelper';
 /**
  * Milestone 1.2 Integration Test:
  * - 6 Main Classes x 4 Subtypes = 24 Playable Hulls (/api/shipyard/hulls)

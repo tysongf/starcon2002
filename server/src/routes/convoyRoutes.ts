@@ -61,7 +61,7 @@ export const convoyRoutes: FastifyPluginAsync = async (server) => {
     '/contracts',
     { schema: { querystring: EscortContractQuerySchema } },
     async (req, reply) => {
-      const accountId = req.query.accountId || 'acc_sol_captain';
+      const accountId = req.authAccountId!;
       const contracts = await convoyService.getEscortContracts(accountId);
       reply.send({
         success: true,

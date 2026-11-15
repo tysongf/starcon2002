@@ -33,7 +33,7 @@ export const shipyardRoutes: FastifyPluginAsync = async (server) => {
   // 2. Query Current Lander Status
   server.get('/lander/status', async (req, reply) => {
     const query = req.query as { accountId?: string };
-    const accountId = query?.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     const lander = await planetaryFaunaService.getActiveLander(accountId);
     if (!lander) {
       return reply.send({
@@ -95,7 +95,7 @@ export const shipyardRoutes: FastifyPluginAsync = async (server) => {
   // 6. Get Starship Fleet Blueprints Catalog (Day 33)
   server.get('/fleet/blueprints', async (req, reply) => {
     const query = (req.query || {}) as { accountId?: string; colonyId?: string };
-    const accountId = query.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     const result = await shipyardService.getFleetBlueprints(accountId, query.colonyId);
     reply.send(result);
   });
@@ -108,7 +108,7 @@ export const shipyardRoutes: FastifyPluginAsync = async (server) => {
       customName?: string;
       colonyId?: string;
     };
-    const accountId = body.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     if (!body.blueprintId) {
       return reply.status(400).send({ success: false, error: 'blueprintId is required.' });
     }
@@ -133,7 +133,7 @@ export const shipyardRoutes: FastifyPluginAsync = async (server) => {
       mainClass?: string;
       factionId?: string;
     };
-    const accountId = query.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     const result = await shipyardService.getHullCatalog(
       accountId,
       query.colonyId,
@@ -152,7 +152,7 @@ export const shipyardRoutes: FastifyPluginAsync = async (server) => {
       colonyId?: string;
       promoteImmediately?: boolean;
     };
-    const accountId = body.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     if (!body.hullClass) {
       return reply.status(400).send({ success: false, error: 'hullClass is required.' });
     }
@@ -176,7 +176,7 @@ export const shipyardRoutes: FastifyPluginAsync = async (server) => {
       wreckId: string;
       colonyId?: string;
     };
-    const accountId = body.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     if (!body.wreckId) {
       return reply.status(400).send({ success: false, error: 'wreckId is required.' });
     }
@@ -196,7 +196,7 @@ export const shipyardRoutes: FastifyPluginAsync = async (server) => {
   server.post('/colonies/:id/resupply-fleet', async (req, reply) => {
     const { id } = req.params as { id: string };
     const body = (req.body || {}) as { accountId?: string };
-    const accountId = body.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     const result = await shipyardService.resupplyFleetAtColony(accountId, id);
     if (!result.success) {
       return reply.status(400).send(result);
@@ -206,7 +206,7 @@ export const shipyardRoutes: FastifyPluginAsync = async (server) => {
 
   server.post('/fleet/resupply', async (req, reply) => {
     const body = (req.body || {}) as { accountId?: string; colonyId: string };
-    const accountId = body.accountId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     if (!body.colonyId) {
       return reply.status(400).send({ success: false, error: 'colonyId is required.' });
     }

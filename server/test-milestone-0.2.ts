@@ -1,3 +1,4 @@
+import './test-utils/authHelper';
 /**
  * Milestone 0.2 Integration Test Suite: The Playable Persistent Economic Loop
  *

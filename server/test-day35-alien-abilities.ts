@@ -1,4 +1,4 @@
-import { WebSocket } from 'ws';
+import { AuthedWebSocket as WebSocket } from './test-utils/authHelper';
 
 async function runDay35Tests() {
   console.log('================================================================');

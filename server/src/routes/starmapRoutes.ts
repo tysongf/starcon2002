@@ -76,7 +76,7 @@ export const starmapRoutes: FastifyPluginAsync = async (server) => {
       lockCourse?: boolean;
     };
 
-    const accountId = body.accountId || body.playerId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     const targetSectorId = Number(body.targetSectorId);
     const lockCourse = body.lockCourse !== undefined ? Boolean(body.lockCourse) : true;
 
@@ -98,7 +98,7 @@ export const starmapRoutes: FastifyPluginAsync = async (server) => {
       accountId?: string;
       playerId?: string;
     };
-    const accountId = body.accountId || body.playerId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
 
     const result = await starmapService.clearCourse(accountId);
     reply.send(result);
@@ -110,7 +110,7 @@ export const starmapRoutes: FastifyPluginAsync = async (server) => {
       accountId?: string;
       playerId?: string;
     };
-    const accountId = body.accountId || body.playerId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
 
     const result = await starmapService.enterHyperspace(accountId);
     if (!result.success) {
@@ -127,7 +127,7 @@ export const starmapRoutes: FastifyPluginAsync = async (server) => {
       currentCoords: [number, number];
       fuelBurned: number;
     };
-    const accountId = body.accountId || body.playerId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
 
     if (!body.currentCoords || !Array.isArray(body.currentCoords) || body.currentCoords.length < 2) {
       return reply.status(400).send({ success: false, error: 'currentCoords [x, y] is required.' });
@@ -153,7 +153,7 @@ export const starmapRoutes: FastifyPluginAsync = async (server) => {
       finalCoords?: [number, number];
       remainingFuel?: number;
     };
-    const accountId = body.accountId || body.playerId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     const targetSectorId = Number(body.targetSectorId);
 
     if (isNaN(targetSectorId)) {
@@ -184,7 +184,7 @@ export const starmapRoutes: FastifyPluginAsync = async (server) => {
       currentCoords: [number, number];
       isBoosting?: boolean;
     };
-    const accountId = body.accountId || body.playerId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
 
     if (!body.currentCoords || !Array.isArray(body.currentCoords) || body.currentCoords.length < 2) {
       return reply.status(400).send({ success: false, error: 'currentCoords [x, y] is required.' });
@@ -205,7 +205,7 @@ export const starmapRoutes: FastifyPluginAsync = async (server) => {
       playerId?: string;
       currentCoords: [number, number];
     };
-    const accountId = body.accountId || body.playerId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
 
     if (!body.currentCoords || !Array.isArray(body.currentCoords) || body.currentCoords.length < 2) {
       return reply.status(400).send({ success: false, error: 'currentCoords [x, y] is required.' });
@@ -229,7 +229,7 @@ export const starmapRoutes: FastifyPluginAsync = async (server) => {
       blipId: string;
       currentCoords?: [number, number];
     };
-    const accountId = body.accountId || body.playerId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
 
     if (!body.blipId) {
       return reply.status(400).send({ success: false, error: 'blipId is required.' });
@@ -254,7 +254,7 @@ export const starmapRoutes: FastifyPluginAsync = async (server) => {
       blipId: string;
       actionId: string;
     };
-    const accountId = body.accountId || body.playerId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
 
     if (!body.blipId || !body.actionId) {
       return reply.status(400).send({ success: false, error: 'blipId and actionId are required.' });
@@ -278,7 +278,7 @@ export const starmapRoutes: FastifyPluginAsync = async (server) => {
       playerId?: string;
       combatOutcome?: 'VICTORY' | 'FLED';
     };
-    const accountId = body.accountId || body.playerId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
 
     const result = await starmapService.resumeHyperspaceFlight(
       accountId,
@@ -306,7 +306,7 @@ export const starmapRoutes: FastifyPluginAsync = async (server) => {
       accountId?: string;
       playerId?: string;
     };
-    const accountId = body.accountId || body.playerId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
 
     const result = await starmapService.enterQuasiSpace(accountId);
     if (!result.success) {
@@ -322,7 +322,7 @@ export const starmapRoutes: FastifyPluginAsync = async (server) => {
       playerId?: string;
       currentCoords: [number, number];
     };
-    const accountId = body.accountId || body.playerId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
 
     if (!body.currentCoords || !Array.isArray(body.currentCoords) || body.currentCoords.length < 2) {
       return reply.status(400).send({ success: false, error: 'currentCoords [x, y] is required.' });
@@ -345,7 +345,7 @@ export const starmapRoutes: FastifyPluginAsync = async (server) => {
       playerId?: string;
       portalId: string;
     };
-    const accountId = body.accountId || body.playerId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
 
     if (!body.portalId) {
       return reply.status(400).send({ success: false, error: 'portalId is required.' });
@@ -364,7 +364,7 @@ export const starmapRoutes: FastifyPluginAsync = async (server) => {
       accountId?: string;
       playerId?: string;
     };
-    const accountId = body.accountId || body.playerId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
 
     const result = await starmapService.triggerEmergencySOS(accountId);
     if (!result.success) {
@@ -380,7 +380,7 @@ export const starmapRoutes: FastifyPluginAsync = async (server) => {
       playerId?: string;
       choice: 'BUY_FUEL' | 'BARTER_ORE' | 'BARTER_BIO' | 'SURRENDER' | 'FIGHT';
     };
-    const accountId = body.accountId || body.playerId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
 
     if (!body.choice) {
       return reply.status(400).send({ success: false, error: 'choice is required.' });
@@ -396,7 +396,7 @@ export const starmapRoutes: FastifyPluginAsync = async (server) => {
   // 20. Get Galactic Expedition Summary & Telemetry
   server.get('/expedition/summary', async (req, reply) => {
     const query = (req.query || {}) as { accountId?: string; playerId?: string };
-    const accountId = query.accountId || query.playerId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     const summary = await starmapService.getExpeditionSummary(accountId);
     reply.send({
       success: true,
@@ -407,7 +407,7 @@ export const starmapRoutes: FastifyPluginAsync = async (server) => {
   // 21. Record System Visit in Expedition Ledger
   server.post('/expedition/visit', async (req, reply) => {
     const body = (req.body || {}) as { accountId?: string; playerId?: string; systemId: string | number };
-    const accountId = body.accountId || body.playerId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     if (!body.systemId) {
       return reply.status(400).send({ success: false, error: 'systemId is required.' });
     }
@@ -427,7 +427,7 @@ export const starmapRoutes: FastifyPluginAsync = async (server) => {
       metric: 'blipsEvaded' | 'portalsTransited' | 'sosBeaconsBroadcast' | 'interceptionsSurvived';
       delta?: number;
     };
-    const accountId = body.accountId || body.playerId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     if (!body.metric) {
       return reply.status(400).send({ success: false, error: 'metric is required.' });
     }
@@ -442,7 +442,7 @@ export const starmapRoutes: FastifyPluginAsync = async (server) => {
   // 23. Reset Expedition Ledger (Debug / Baseline)
   server.post('/expedition/reset', async (req, reply) => {
     const body = (req.body || {}) as { accountId?: string; playerId?: string };
-    const accountId = body.accountId || body.playerId || 'acc_sol_captain';
+    const accountId = req.authAccountId!;
     starmapService.resetExpedition(accountId);
     const summary = await starmapService.getExpeditionSummary(accountId);
     reply.send({
