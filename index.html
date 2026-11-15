@@ -20,56 +20,53 @@
         <div class="hud-brand">
           <div class="brand-status-dot"></div>
           <span class="brand-title">WAYWARD VOID</span>
-          <span class="brand-badge">DEV BUILD 0.1.0</span>
           <span class="brand-badge" id="backend-status-badge">API: CONNECTING</span>
           <span class="hud-captain-pill" id="hud-captain-callsign">UNAUTHENTICATED</span>
-          <button id="btn-open-multiplayer-hub" class="hud-btn-tiny" title="Open Squadron, Peer Allies & Social Hub">COMMS &amp; ALLIES</button>
+          <button id="btn-open-multiplayer-hub" class="hud-btn-tiny" title="Open Squadron, Peer Allies &amp; Social Hub">COMMS &amp; ALLIES</button>
           <button id="btn-captain-logout" class="hud-btn-tiny" title="Sign out of current Captain session">LOGOUT</button>
         </div>
-        <div class="hud-sector-status">
-          <span class="label">SECTOR:</span>
-          <span class="value" id="hud-sector">SEC-01 // SOL-PERIMETER</span>
-        </div>
-        <!-- Dynamic Faction Allegiance & Truce HUD Badge (Day 17) -->
-        <div class="hud-faction-badge" id="hud-faction-badge">
-          <span class="faction-crest" id="hud-faction-crest">🚀</span>
-          <div class="faction-info">
-            <span class="faction-name" id="hud-faction-name">SOL ALLIANCE</span>
-            <span class="standing-tier-pill tier-friendly" id="hud-faction-standing-tier">FRIENDLY (+35)</span>
+
+        <div class="hud-nav-cluster">
+          <div class="hud-sector-status" id="hud-sector-pill">
+            <span class="label">SECTOR</span>
+            <span class="value" id="hud-sector">SEC-01 // SOL-PERIMETER</span>
           </div>
-          <span class="truce-timer-pill hidden" id="hud-truce-timer-pill">🕊️ TRUCE: 05:00</span>
+          <!-- Dynamic Faction Allegiance & Truce HUD Badge (Day 17) -->
+          <div class="hud-faction-badge" id="hud-faction-badge">
+            <span class="faction-crest" id="hud-faction-crest">🚀</span>
+            <div class="faction-info">
+              <span class="faction-name" id="hud-faction-name">SOL ALLIANCE</span>
+              <span class="standing-tier-pill tier-friendly" id="hud-faction-standing-tier">FRIENDLY (+35)</span>
+            </div>
+            <span class="truce-timer-pill hidden" id="hud-truce-timer-pill">🕊️ TRUCE: 05:00</span>
+          </div>
         </div>
 
-        <!-- Action Point (AP) Energy Gauge Cluster -->
-        <div class="hud-ap-gauge" id="hud-ap-gauge">
-          <div class="ap-top-row">
-            <span class="ap-icon">⚡</span>
-            <span class="ap-title">AP ENERGY</span>
-            <span class="ap-counter" id="hud-ap-counter">600 / 600</span>
-            <span class="ap-timer" id="hud-ap-timer">+1 in 00s</span>
+        <div class="hud-utility-cluster">
+          <!-- Action Point (AP) Energy Gauge Cluster -->
+          <div class="hud-ap-gauge" id="hud-ap-gauge">
+            <div class="ap-top-row">
+              <span class="ap-icon">⚡</span>
+              <span class="ap-title">AP</span>
+              <span class="ap-counter" id="hud-ap-counter">600 / 600</span>
+              <span class="ap-timer" id="hud-ap-timer">+1 in 00s</span>
+            </div>
+            <div class="ap-track">
+              <div class="ap-fill" id="hud-ap-fill" style="width: 100%;"></div>
+            </div>
           </div>
-          <div class="ap-track">
-            <div class="ap-fill" id="hud-ap-fill" style="width: 100%;"></div>
-          </div>
-          <div class="ap-quick-actions">
-            <button id="btn-ap-warp" class="hud-btn-tiny" title="Spend 5 AP (Simulated Sector Warp)">WARP (-5)</button>
-            <button id="btn-ap-scan" class="hud-btn-tiny" title="Spend 3 AP (Simulated Deep Scan)">SCAN (-3)</button>
-            <button id="btn-ap-extract" class="hud-btn-tiny" title="Spend 8 AP (Simulated Extraction)">EXTRACT (-8)</button>
-          </div>
-        </div>
-        <!-- Docking Guidance Banner -->
-        <div class="hud-docking-banner" id="hud-docking-banner">
-          <div class="docking-pulse-dot"></div>
-          <span class="docking-text" id="docking-msg">DOCKING BEACON // DIST: 0.0m</span>
-        </div>
-        <!-- Planetary Orbital Guidance Banner (Day 18) -->
-        <div class="hud-orbital-banner hidden" id="hud-orbital-banner">
-          <div class="orbital-pulse-dot"></div>
-          <span class="orbital-text" id="orbital-msg">SYNCHRONOUS ORBIT BEACON // DIST: 0.0u [O]</span>
-        </div>
 
-        <!-- Day 38: Hyperspace Flight HUD Overlay -->
-        <div class="hyperspace-flight-hud hidden" id="hyperspace-hud" style="display: none;">
+          <!-- Minimal Cockpit Drawer Toggles -->
+          <div class="hud-drawer-toggles">
+            <button id="btn-toggle-telemetry" class="hud-btn-tiny" title="Toggle Telemetry Drawer [T]">📊 Telemetry [T]</button>
+            <button id="btn-toggle-controls" class="hud-btn-tiny" title="Toggle Flight Controls [F1]">⌨️ Controls [F1]</button>
+            <button id="btn-toggle-hull-lab" class="hud-btn-tiny" title="Toggle Hull &amp; Race Style Studio [B]">🛸 Hull Lab [B]</button>
+          </div>
+        </div>
+      </header>
+
+      <!-- Day 38: Hyperspace Flight HUD Overlay -->
+      <div class="hyperspace-flight-hud hidden" id="hyperspace-hud" style="display: none;">
           <div class="hyper-hud-left">
             <div class="hyper-telemetry-badge">
               <span class="hyper-badge-label">SUBSPACE REALM // REAL-TIME KINEMATICS</span>
@@ -137,15 +134,62 @@
             </div>
           </div>
         </div>
-      </header>
+
+      <!-- Stacked Top-Center Context Banners (Zero Overlap Flow) -->
+      <div id="hud-top-banners" class="hud-top-banners">
+        <!-- Docking Guidance Banner -->
+        <div class="hud-docking-banner" id="hud-docking-banner">
+          <div class="docking-pulse-dot"></div>
+          <span class="docking-text" id="docking-msg">DOCKING BEACON // DIST: 0.0m</span>
+        </div>
+        <!-- Planetary Orbital Guidance Banner (Day 18) -->
+        <div class="hud-orbital-banner hidden" id="hud-orbital-banner">
+          <div class="orbital-pulse-dot"></div>
+          <span class="orbital-text" id="orbital-msg">SYNCHRONOUS ORBIT BEACON // DIST: 0.0u [O]</span>
+        </div>
+        <!-- Day 34: Tactical Order HUD Notification Banner -->
+        <div id="tactical-order-banner" class="tactical-order-banner hidden">
+          <span class="banner-icon">📡</span>
+          <div class="banner-text">
+            <span class="banner-title" id="tactical-banner-title">SQUADRON DIRECTIVE ISSUED</span>
+            <span class="banner-order" id="tactical-banner-order">FOCUS TARGET</span>
+          </div>
+        </div>
+        <!-- Milestone 1.9: Frontier Dreadnought World Boss Telemetry HUD -->
+        <div id="raid-boss-hud" class="raid-boss-hud hidden">
+          <div class="raid-boss-head">
+            <span id="raid-boss-name" class="raid-boss-name">UR-QUAN VAELIC DREAD-ARK</span>
+            <span id="raid-boss-phase-badge" class="raid-phase-badge">PHASE 1 // AEGIS -90%</span>
+            <span id="raid-boss-pylons-badge" class="raid-pylons-badge">PYLONS: 4</span>
+            <span id="raid-boss-enrage-badge" class="raid-enrage-badge hidden">ENRAGE 3x</span>
+          </div>
+          <div class="raid-boss-bars">
+            <div class="raid-bar-row">
+              <span class="raid-bar-lbl">SHLD</span>
+              <div class="raid-bar-track"><div id="raid-boss-shield-fill" class="raid-bar-fill shield"></div></div>
+              <span id="raid-boss-shield-val" class="raid-bar-val">12000/12000</span>
+            </div>
+            <div class="raid-bar-row">
+              <span class="raid-bar-lbl">HULL</span>
+              <div class="raid-bar-track"><div id="raid-boss-hull-fill" class="raid-bar-fill hull"></div></div>
+              <span id="raid-boss-hull-val" class="raid-bar-val">18000/18000</span>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <div class="hud-panels">
-        <!-- Telemetry Panel -->
-        <aside class="hud-panel telemetry-panel" id="telemetry-panel">
-          <div class="panel-header">
-            <h3>FLIGHT & DIAGNOSTICS</h3>
-            <span class="live-indicator">LIVE</span>
-          </div>
+        <!-- Left Collapsible Rail (Minimal Flight Cockpit leaves Left clear unless opened) -->
+        <div id="hud-left-rail" class="hud-side-rail left-rail">
+          <!-- Telemetry Panel (Toggled by [T]) -->
+          <aside class="hud-panel telemetry-panel hidden" id="telemetry-panel">
+            <div class="panel-header">
+              <h3>FLIGHT &amp; DIAGNOSTICS</h3>
+              <div class="panel-header-actions">
+                <span class="live-indicator">LIVE</span>
+                <button id="btn-close-telemetry" class="hud-btn-tiny" title="Close Telemetry">×</button>
+              </div>
+            </div>
           <div class="telemetry-grid">
             <div class="telemetry-item">
               <span class="telemetry-label">SPEED</span>
@@ -223,14 +267,22 @@
               <span class="telemetry-label">SHIP POSITION (X / Z)</span>
               <span class="telemetry-val mono" id="val-ship-pos">X: 0.0  Z: 0.0</span>
             </div>
+            <div class="telemetry-item full-width ap-quick-actions" style="display:flex;gap:0.4rem;margin-top:0.35rem;">
+              <button id="btn-ap-warp" class="hud-btn-tiny" title="Spend 5 AP (Simulated Sector Warp)">WARP (-5 AP)</button>
+              <button id="btn-ap-scan" class="hud-btn-tiny" title="Spend 3 AP (Simulated Deep Scan)">SCAN (-3 AP)</button>
+              <button id="btn-ap-extract" class="hud-btn-tiny" title="Spend 8 AP (Simulated Extraction)">EXTRACT (-8 AP)</button>
+            </div>
           </div>
         </aside>
 
-        <!-- Parametric Hull Generator & Faction Style Panel -->
-        <aside class="hud-panel generator-panel">
+        <!-- Parametric Hull Generator & Faction Style Studio (Toggled by [B]) -->
+        <aside class="hud-panel generator-panel hidden" id="hull-generator-panel">
           <div class="panel-header">
-            <h3>PARAMETRIC HULL & RACE STYLE</h3>
-            <span class="live-indicator">ACTIVE</span>
+            <h3>PARAMETRIC HULL STUDIO</h3>
+            <div class="panel-header-actions">
+              <span class="live-indicator">LAB</span>
+              <button id="btn-close-hull-lab" class="hud-btn-tiny" title="Close Hull Studio">×</button>
+            </div>
           </div>
           <div class="generator-controls">
             <!-- Faction Selector -->
@@ -289,160 +341,199 @@
             </div>
           </div>
         </aside>
-
-        <!-- Instructions / Flight Controls Panel -->
-        <aside class="hud-panel instructions-panel">
-          <div class="panel-header">
-            <h3>FLIGHT & COMBAT CONTROLS</h3>
-          </div>
-          <ul class="control-list">
-            <li><kbd>W / S</kbd> Forward Thrust / Reverse Brake</li>
-            <li><kbd>A / D</kbd> Turn Left / Right</li>
-            <li><kbd>M1 / 1</kbd> High Slot 1: Light Pulse Cannon</li>
-            <li><kbd>M2 / 2</kbd> High Slot 2: Plasma Accelerator</li>
-            <li><kbd>SHIFT / 3</kbd> Mid Slot 1: Afterburner Overdrive</li>
-            <li><kbd>4</kbd> Mid Slot 2: Flak Scatter Blaster</li>
-            <li><kbd>E</kbd> Laser Salvage Mining Beam (on targeted wreck)</li>
-            <li><kbd>R</kbd> Target / Cycle Nearest Asteroid Vein</li>
-            <li><kbd>G</kbd> Engage Precision Mining Laser / Drones</li>
-            <li><kbd>T</kbd> Deploy / Release Magnetic Tow Tether</li>
-            <li><kbd>SPACE</kbd> Fire Active Weapon</li>
-            <li><kbd>Q</kbd> Cycle Active Primary Preset</li>
-            <li><kbd>TAB</kbd> Cycle Nearest Target Lock</li>
-            <li><kbd>X</kbd> All-Stop Emergency Brake</li>
-            <li><kbd>Z</kbd> Inertia Dampeners Toggle</li>
-            <li><kbd>J</kbd> Hyperspace Warp Nav</li>
-          </ul>
-        </aside>
-      </div>
-
-      <!-- Milestone 1.1: Galactic Mission Tracker & Frontier Patrol Hail Pill -->
-      <div id="hud-mission-tracker" class="hud-mission-tracker">
-        <div class="tracker-header">
-          <span>📜 GALACTIC MISSIONS (<span id="hud-mission-tracker-count">0/5</span>)</span>
-          <button id="btn-tracker-toggle" class="hud-btn-mini" title="Collapse/Expand Tracker">▾</button>
         </div>
-        <div id="hud-mission-tracker-body" class="tracker-body"></div>
-      </div>
 
-      <div id="hud-frontier-hail-pill" class="hud-frontier-hail-pill hidden"></div>
-
-      <!-- Top-Center Target Telemetry Box (MMO Style) -->
-      <div id="target-telemetry-hud" class="target-telemetry-hud hidden">
-        <div class="target-header">
-          <span class="target-faction-badge" id="target-faction">HEGEMONY</span>
-          <h4 class="target-name" id="target-name">VAELIC PATROL DRONE // MK-IV</h4>
-          <span class="target-dist" id="target-distance">42.5 u</span>
-        </div>
-        <div class="target-status-bars">
-          <div class="target-bar-row">
-            <span class="bar-lbl">SHD</span>
-            <div class="target-bar-wrap"><div class="target-bar-fill target-shield" id="target-shield-bar" style="width: 100%;"></div></div>
-            <span class="bar-val" id="target-shield-val">60/60</span>
-          </div>
-          <div class="target-bar-row">
-            <span class="bar-lbl">HUL</span>
-            <div class="target-bar-wrap"><div class="target-bar-fill target-hull" id="target-hull-bar" style="width: 100%;"></div></div>
-            <span class="bar-val" id="target-hull-val">50/50</span>
-          </div>
-        </div>
-        <!-- Day 23: Convoy Telemetry (Warp Spooling & Cargo Scan Preview) -->
-        <div id="target-convoy-hud" class="target-convoy-hud hidden">
-          <div class="convoy-warp-row">
-            <span class="convoy-warp-badge" id="convoy-warp-badge">⚡ WARP DRIVE: STANDBY</span>
-            <div class="convoy-warp-bar-wrap">
-              <div class="convoy-warp-bar-fill" id="convoy-warp-bar-fill" style="width: 100%;"></div>
+        <!-- Center Stage Kept 100% Open Over Player Vessel; Only Dynamic Target/Skirmish HUDs Appear Here -->
+        <div id="hud-center-stage" class="hud-center-stage">
+          <!-- Top-Center Target Telemetry Box (MMO Style) -->
+          <div id="target-telemetry-hud" class="target-telemetry-hud hidden">
+            <div class="target-header">
+              <span class="target-faction-badge" id="target-faction">HEGEMONY</span>
+              <h4 class="target-name" id="target-name">VAELIC PATROL DRONE // MK-IV</h4>
+              <span class="target-dist" id="target-distance">42.5 u</span>
             </div>
-          </div>
-          <div class="convoy-cargo-scan" id="convoy-cargo-scan">
-            <div class="cargo-scan-header">📦 CARGO MANIFEST PREVIEW:</div>
-            <div class="cargo-scan-items" id="convoy-cargo-items">SCANNING...</div>
-          </div>
-        </div>
-        <!-- Target Interaction Quick-Actions (Day 15 Wrecks, Day 16 Comms, Day 25 Skirmishes, Milestone 1.4 Mining) -->
-        <div id="target-quick-actions" class="target-quick-actions hidden">
-          <button id="btn-hud-mine-asteroid" class="target-action-btn mine-btn hidden">⛏️ ENGAGE MINING BEAM [G]</button>
-          <button id="btn-hud-salvage-beam" class="target-action-btn beam-btn">⚡ SALVAGE BEAM [E]</button>
-          <button id="btn-hud-tether-wreck" class="target-action-btn tow-btn">🪝 TETHER WRECK [T]</button>
-          <button id="btn-hud-hail-target" class="target-action-btn hail-btn">📡 HAIL [H]</button>
-          <button id="btn-hud-engage-skirmish" class="target-action-btn skirmish-btn hidden">⚔️ ENGAGE SKIRMISH [E]</button>
-        </div>
-      </div>
-
-      <!-- Day 25: Skirmish Arena Reinforcement Score HUD -->
-      <div id="skirmish-score-hud" class="skirmish-score-hud hidden">
-        <div class="skirmish-hud-title">⚔️ CONTESTED FRONT: CHARYBDIS // FLEET ENGAGEMENT</div>
-        <div class="skirmish-scores-container">
-          <div class="skirmish-faction hegemony-score">
-            <span class="skirmish-faction-name">VAELIC HEGEMONY</span>
-            <div class="skirmish-bar-track">
-              <div class="skirmish-bar-fill hegemony-fill" id="skirmish-hegemony-bar" style="width: 100%;"></div>
-            </div>
-            <span class="skirmish-ticket-num" id="skirmish-hegemony-tickets">100 / 100</span>
-          </div>
-          <div class="skirmish-vs">VS</div>
-          <div class="skirmish-faction kryll-score">
-            <span class="skirmish-faction-name">KRYLL CARTEL</span>
-            <div class="skirmish-bar-track">
-              <div class="skirmish-bar-fill kryll-fill" id="skirmish-kryll-bar" style="width: 100%;"></div>
-            </div>
-            <span class="skirmish-ticket-num" id="skirmish-kryll-tickets">100 / 100</span>
-          </div>
-        </div>
-        <div class="skirmish-player-telemetry">
-          <span class="skirmish-allegiance-badge" id="skirmish-player-allegiance">ALLEGIANCE: UNDECLARED</span>
-          <span class="skirmish-bonds-badge" id="skirmish-player-bonds">COMBAT BONDS: 0 CR</span>
-        </div>
-      </div>
-
-      <!-- Day 25: Mercenary Escort Telemetry HUD Widget -->
-      <div id="escort-telemetry-hud" class="escort-telemetry-hud hidden">
-        <div class="escort-hud-header">
-          <span class="escort-badge">🛡️ VIP ESCORT ACTIVE</span>
-          <span class="escort-tether-badge" id="escort-tether-status">TETHER: NOMINAL (22.5 u)</span>
-        </div>
-        <div class="escort-hauler-details">
-          <div class="escort-hauler-name" id="escort-hauler-name">Vaelic Bulk Hauler Omega</div>
-          <div class="escort-hauler-vitals">
-            <div class="escort-vital-row">
-              <span class="escort-vital-lbl">SHD</span>
-              <div class="escort-bar-track">
-                <div class="escort-bar-fill escort-shield-fill" id="escort-shield-bar" style="width: 100%;"></div>
+            <div class="target-status-bars">
+              <div class="target-bar-row">
+                <span class="bar-lbl">SHD</span>
+                <div class="target-bar-wrap"><div class="target-bar-fill target-shield" id="target-shield-bar" style="width: 100%;"></div></div>
+                <span class="bar-val" id="target-shield-val">60/60</span>
               </div>
-              <span class="escort-vital-val" id="escort-shield-val">300/300</span>
-            </div>
-            <div class="escort-vital-row">
-              <span class="escort-vital-lbl">HULL</span>
-              <div class="escort-bar-track">
-                <div class="escort-bar-fill escort-hull-fill" id="escort-hull-bar" style="width: 100%;"></div>
+              <div class="target-bar-row">
+                <span class="bar-lbl">HUL</span>
+                <div class="target-bar-wrap"><div class="target-bar-fill target-hull" id="target-hull-bar" style="width: 100%;"></div></div>
+                <span class="bar-val" id="target-hull-val">50/50</span>
               </div>
-              <span class="escort-vital-val" id="escort-hull-val">450/450</span>
+            </div>
+            <!-- Day 23: Convoy Telemetry (Warp Spooling & Cargo Scan Preview) -->
+            <div id="target-convoy-hud" class="target-convoy-hud hidden">
+              <div class="convoy-warp-row">
+                <span class="convoy-warp-badge" id="convoy-warp-badge">⚡ WARP DRIVE: STANDBY</span>
+                <div class="convoy-warp-bar-wrap">
+                  <div class="convoy-warp-bar-fill" id="convoy-warp-bar-fill" style="width: 100%;"></div>
+                </div>
+              </div>
+              <div class="convoy-cargo-scan" id="convoy-cargo-scan">
+                <div class="cargo-scan-header">📦 CARGO MANIFEST PREVIEW:</div>
+                <div class="cargo-scan-items" id="convoy-cargo-items">SCANNING...</div>
+              </div>
+            </div>
+            <!-- Target Interaction Quick-Actions -->
+            <div id="target-quick-actions" class="target-quick-actions hidden">
+              <button id="btn-hud-mine-asteroid" class="target-action-btn mine-btn hidden">⛏️ ENGAGE MINING BEAM [G]</button>
+              <button id="btn-hud-salvage-beam" class="target-action-btn beam-btn">⚡ SALVAGE BEAM [E]</button>
+              <button id="btn-hud-tether-wreck" class="target-action-btn tow-btn">🪝 TETHER WRECK [T]</button>
+              <button id="btn-hud-hail-target" class="target-action-btn hail-btn">📡 HAIL [H]</button>
+              <button id="btn-hud-engage-skirmish" class="target-action-btn skirmish-btn hidden">⚔️ ENGAGE SKIRMISH [E]</button>
+            </div>
+          </div>
+
+          <!-- Day 25: Skirmish Arena Reinforcement Score HUD -->
+          <div id="skirmish-score-hud" class="skirmish-score-hud hidden">
+            <div class="skirmish-hud-title">⚔️ CONTESTED FRONT: CHARYBDIS // FLEET ENGAGEMENT</div>
+            <div class="skirmish-scores-container">
+              <div class="skirmish-faction hegemony-score">
+                <span class="skirmish-faction-name">VAELIC HEGEMONY</span>
+                <div class="skirmish-bar-track">
+                  <div class="skirmish-bar-fill hegemony-fill" id="skirmish-hegemony-bar" style="width: 100%;"></div>
+                </div>
+                <span class="skirmish-ticket-num" id="skirmish-hegemony-tickets">100 / 100</span>
+              </div>
+              <div class="skirmish-vs">VS</div>
+              <div class="skirmish-faction kryll-score">
+                <span class="skirmish-faction-name">KRYLL CARTEL</span>
+                <div class="skirmish-bar-track">
+                  <div class="skirmish-bar-fill kryll-fill" id="skirmish-kryll-bar" style="width: 100%;"></div>
+                </div>
+                <span class="skirmish-ticket-num" id="skirmish-kryll-tickets">100 / 100</span>
+              </div>
+            </div>
+            <div class="skirmish-player-telemetry">
+              <span class="skirmish-allegiance-badge" id="skirmish-player-allegiance">ALLEGIANCE: UNDECLARED</span>
+              <span class="skirmish-bonds-badge" id="skirmish-player-bonds">COMBAT BONDS: 0 CR</span>
+            </div>
+          </div>
+
+          <!-- Day 25: Mercenary Escort Telemetry HUD Widget -->
+          <div id="escort-telemetry-hud" class="escort-telemetry-hud hidden">
+            <div class="escort-hud-header">
+              <span class="escort-badge">🛡️ VIP ESCORT ACTIVE</span>
+              <span class="escort-tether-badge" id="escort-tether-status">TETHER: NOMINAL (22.5 u)</span>
+            </div>
+            <div class="escort-hauler-details">
+              <div class="escort-hauler-name" id="escort-hauler-name">Vaelic Bulk Hauler Omega</div>
+              <div class="escort-hauler-vitals">
+                <div class="escort-vital-row">
+                  <span class="escort-vital-lbl">SHD</span>
+                  <div class="escort-bar-track">
+                    <div class="escort-bar-fill escort-shield-fill" id="escort-shield-bar" style="width: 100%;"></div>
+                  </div>
+                  <span class="escort-vital-val" id="escort-shield-val">300/300</span>
+                </div>
+                <div class="escort-vital-row">
+                  <span class="escort-vital-lbl">HULL</span>
+                  <div class="escort-bar-track">
+                    <div class="escort-bar-fill escort-hull-fill" id="escort-hull-bar" style="width: 100%;"></div>
+                  </div>
+                  <span class="escort-vital-val" id="escort-hull-val">450/450</span>
+                </div>
+              </div>
+            </div>
+            <button id="btn-escort-claim-bounty" class="escort-claim-btn hidden">💰 CLAIM ESCORT BOUNTY</button>
+          </div>
+        </div>
+
+        <!-- Right Collapsible Rail (Missions + Squadron + [F1] Controls Overlay) -->
+        <div id="hud-right-rail" class="hud-side-rail right-rail">
+          <!-- Milestone 1.1: Galactic Mission Tracker -->
+          <div id="hud-mission-tracker" class="hud-mission-tracker">
+            <div class="tracker-header">
+              <span>📜 MISSIONS (<span id="hud-mission-tracker-count">0/5</span>)</span>
+              <button id="btn-tracker-toggle" class="hud-btn-mini" title="Collapse/Expand Tracker">▾</button>
+            </div>
+            <div id="hud-mission-tracker-body" class="tracker-body"></div>
+          </div>
+
+          <!-- Day 34: Persistent Squadron HUD Widget -->
+          <div id="squadron-hud-widget" class="squadron-hud-widget">
+            <div class="squadron-widget-header">
+              <span class="widget-icon">🚀</span>
+              <span class="widget-title">SQUADRON</span>
+              <span class="widget-order-badge badge-formation-follow" id="squadron-order-badge">FOLLOW</span>
+            </div>
+            <div class="squadron-wingmen-list" id="squadron-wingmen-list">
+              <!-- Rendered dynamically -->
+            </div>
+          </div>
+
+          <!-- Instructions / Flight Controls Panel (Toggled by [F1]) -->
+          <aside class="hud-panel instructions-panel hidden" id="instructions-panel">
+            <div class="panel-header">
+              <h3>FLIGHT &amp; COMBAT CONTROLS</h3>
+              <button id="btn-close-controls" class="hud-btn-tiny" title="Close Controls [F1]">×</button>
+            </div>
+            <ul class="control-list">
+              <li><kbd>W / S</kbd> Forward Thrust / Reverse Brake</li>
+              <li><kbd>A / D</kbd> Turn Left / Right</li>
+              <li><kbd>M1 / 1</kbd> High Slot 1: Light Pulse Cannon</li>
+              <li><kbd>M2 / 2</kbd> High Slot 2: Plasma Accelerator</li>
+              <li><kbd>SHIFT / 3</kbd> Mid Slot 1: Afterburner Overdrive</li>
+              <li><kbd>4</kbd> Mid Slot 2: Flak Scatter Blaster</li>
+              <li><kbd>E</kbd> Laser Salvage Mining Beam (on targeted wreck)</li>
+              <li><kbd>R</kbd> Target / Cycle Nearest Asteroid Vein</li>
+              <li><kbd>G</kbd> Engage Precision Mining Laser / Drones</li>
+              <li><kbd>T</kbd> Toggle Telemetry / Tow Tether</li>
+              <li><kbd>SPACE</kbd> Fire Active Weapon</li>
+              <li><kbd>Q</kbd> Cycle Active Primary Preset</li>
+              <li><kbd>TAB</kbd> Cycle Nearest Target Lock</li>
+              <li><kbd>X</kbd> All-Stop Emergency Brake</li>
+              <li><kbd>Z</kbd> Inertia Dampeners Toggle</li>
+              <li><kbd>J / M / H / O</kbd> Nav / Starmap / Hyperspace / Orbit</li>
+            </ul>
+          </aside>
+        </div>
+      </div>
+
+      <!-- Integrated Bottom-Center Flight Deck (Alerts -> Synergy Hotbar -> Vitals & Slots -> Action Bar) -->
+      <div id="hud-bottom-dock" class="hud-bottom-dock">
+        <div class="hud-bottom-prompts">
+          <div id="hud-frontier-hail-pill" class="hud-frontier-hail-pill hidden"></div>
+
+          <!-- Day 15: Tow Cable Active HUD Banner -->
+          <div id="tow-cable-hud" class="tow-cable-hud hidden">
+            <div class="tow-badge">🪝 TETHER ATTACHED</div>
+            <div class="tow-info">
+              <span class="tow-target-name" id="tow-target-name">Derelict Hegemony Cruiser</span>
+              <span class="tow-dist-metric" id="tow-dist-metric">14.2 u</span>
+              <span class="tow-status-badge tension-nominal" id="tow-tension-badge">TENSION: NOMINAL</span>
+            </div>
+            <button id="btn-hud-release-tow" class="tow-release-btn">RELEASE [T]</button>
+          </div>
+
+          <!-- Day 29: Xenobiology Tactical Stim & Nanite Buff HUD -->
+          <div id="biotech-buff-hud" class="biotech-buff-hud hidden">
+            <div class="biotech-stim-badge hidden" id="stim-adrenal-badge">
+              ⚡ ADRENAL SURGE: <span id="stim-timer">30s</span> (+35% THRUST / -30% COOLDOWN)
+            </div>
+            <div class="biotech-regen-badge hidden" id="regen-coating-badge">
+              🧬 BIO-REPAIR ACTIVE (+1.5 HP/s)
+            </div>
+          </div>
+
+          <!-- Targeted Loot Canister Interaction Prompt (Day 13) -->
+          <div id="loot-prompt-hud" class="loot-prompt-hud hidden">
+            <div class="loot-prompt-badge">F</div>
+            <div class="loot-prompt-details">
+              <span class="loot-prompt-title">CARGO CANISTER DETECTED</span>
+              <span class="loot-prompt-text" id="loot-prompt-text">PRESS [F] TO SECURE CARGO (18.2u)</span>
             </div>
           </div>
         </div>
-        <button id="btn-escort-claim-bounty" class="escort-claim-btn hidden">💰 CLAIM ESCORT BOUNTY</button>
-      </div>
 
-      <!-- Day 15: Tow Cable Active HUD Banner -->
-      <div id="tow-cable-hud" class="tow-cable-hud hidden">
-        <div class="tow-badge">🪝 TETHER ATTACHED</div>
-        <div class="tow-info">
-          <span class="tow-target-name" id="tow-target-name">Derelict Hegemony Cruiser</span>
-          <span class="tow-dist-metric" id="tow-dist-metric">14.2 u</span>
-          <span class="tow-status-badge tension-nominal" id="tow-tension-badge">TENSION: NOMINAL</span>
+        <!-- Milestone 1.9: Fitted MMORPG Inter-Squadron Synergy Hotbar -->
+        <div id="synergy-hotbar" class="synergy-hotbar hidden">
+          <div id="synergy-ally-strip" class="synergy-ally-strip"></div>
+          <div id="synergy-slots-row" class="synergy-slots-row"></div>
         </div>
-        <button id="btn-hud-release-tow" class="tow-release-btn">RELEASE [T]</button>
-      </div>
-
-      <!-- Day 29: Xenobiology Tactical Stim & Nanite Buff HUD -->
-      <div id="biotech-buff-hud" class="biotech-buff-hud hidden">
-        <div class="biotech-stim-badge hidden" id="stim-adrenal-badge">
-          ⚡ ADRENAL SURGE: <span id="stim-timer">30s</span> (+35% THRUST / -30% COOLDOWN)
-        </div>
-        <div class="biotech-regen-badge hidden" id="regen-coating-badge">
-          🧬 BIO-REPAIR ACTIVE (+1.5 HP/s)
-        </div>
-      </div>
 
       <!-- Bottom-Center Command Console & Ability Hotbar -->
       <div id="combat-command-console" class="combat-command-console">
@@ -571,49 +662,19 @@
         </div>
       </div>
 
-      <footer class="hud-footer">
-        <div class="hud-actions">
-          <button id="btn-enter-hyperspace" class="hud-btn primary" title="Energize Warp Drive and Enter Hyperspace (H)">⚡ Hyperspace (H)</button>
-          <button id="btn-open-starmap" class="hud-btn primary" title="Open CRT Galactic Starmap (M)">🌌 Starmap (M)</button>
-          <button id="btn-open-nav" class="hud-btn primary" title="Open Hyperspace Nav Console (J)">🚀 Warp Nav (J)</button>
-          <button id="btn-hud-orbit" class="hud-btn primary" title="Enter Planetary Orbit & Surface Survey (O)">🪐 Orbit Survey (O)</button>
-          <button id="btn-toggle-cam" class="hud-btn" title="Toggle Camera (C)">Camera: Chase</button>
-          <button id="btn-toggle-damp" class="hud-btn" title="Toggle Dampeners (Z)">Dampeners: ON</button>
-          <button id="btn-reset-pos" class="hud-btn" title="Reset Ship to Dock">Reset Position</button>
-          <button id="btn-toggle-grid" class="hud-btn" title="Toggle Grid (G)">Toggle Grid</button>
-        </div>
-        <div class="hud-system-note">
-          <span id="hud-status-line">Milestone 0.7 // The Deep Frontier Complete — Surface Landers, Apex Titans & Xenobiology Synthesized</span>
-        </div>
-      </footer>
-    </div>
-
-    <!-- Milestone 1.9: Frontier Dreadnought World Boss Telemetry HUD -->
-    <div id="raid-boss-hud" class="raid-boss-hud hidden">
-      <div class="raid-boss-head">
-        <span id="raid-boss-name" class="raid-boss-name">UR-QUAN VAELIC DREAD-ARK</span>
-        <span id="raid-boss-phase-badge" class="raid-phase-badge">PHASE 1 // AEGIS -90%</span>
-        <span id="raid-boss-pylons-badge" class="raid-pylons-badge">PYLONS: 4</span>
-        <span id="raid-boss-enrage-badge" class="raid-enrage-badge hidden">ENRAGE 3x</span>
+        <footer class="hud-footer">
+          <div class="hud-actions">
+            <button id="btn-enter-hyperspace" class="hud-btn primary" title="Energize Warp Drive and Enter Hyperspace (H)">⚡ Hyperspace [H]</button>
+            <button id="btn-open-starmap" class="hud-btn primary" title="Open CRT Galactic Starmap (M)">🌌 Starmap [M]</button>
+            <button id="btn-open-nav" class="hud-btn primary" title="Open Hyperspace Nav Console (J)">🚀 Warp Nav [J]</button>
+            <button id="btn-hud-orbit" class="hud-btn primary" title="Enter Planetary Orbit &amp; Surface Survey (O)">🪐 Orbit [O]</button>
+            <button id="btn-toggle-cam" class="hud-btn" title="Toggle Camera (C)">Cam: Chase</button>
+            <button id="btn-toggle-damp" class="hud-btn" title="Toggle Dampeners (Z)">Damp: ON</button>
+            <button id="btn-reset-pos" class="hud-btn" title="Reset Ship to Dock">Reset</button>
+            <button id="btn-toggle-grid" class="hud-btn" title="Toggle Grid">Grid</button>
+          </div>
+        </footer>
       </div>
-      <div class="raid-boss-bars">
-        <div class="raid-bar-row">
-          <span class="raid-bar-lbl">SHLD</span>
-          <div class="raid-bar-track"><div id="raid-boss-shield-fill" class="raid-bar-fill shield"></div></div>
-          <span id="raid-boss-shield-val" class="raid-bar-val">12000/12000</span>
-        </div>
-        <div class="raid-bar-row">
-          <span class="raid-bar-lbl">HULL</span>
-          <div class="raid-bar-track"><div id="raid-boss-hull-fill" class="raid-bar-fill hull"></div></div>
-          <span id="raid-boss-hull-val" class="raid-bar-val">18000/18000</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- Milestone 1.9: Fitted MMORPG Inter-Squadron Synergy Hotbar -->
-    <div id="synergy-hotbar" class="synergy-hotbar hidden">
-      <div id="synergy-ally-strip" class="synergy-ally-strip"></div>
-      <div id="synergy-slots-row" class="synergy-slots-row"></div>
     </div>
 
     <!-- Tactical Target Reticle (Milestone 0.3) -->
@@ -632,15 +693,6 @@
           <span class="reticle-range" id="reticle-range">RANGE: 42u</span>
           <div id="reticle-warp-badge" class="reticle-warp-badge hidden">⚡ WARP: 30.0s</div>
         </div>
-      </div>
-    </div>
-
-    <!-- Targeted Loot Canister Interaction Prompt (Day 13) -->
-    <div id="loot-prompt-hud" class="loot-prompt-hud hidden">
-      <div class="loot-prompt-badge">F</div>
-      <div class="loot-prompt-details">
-        <span class="loot-prompt-title">CARGO CANISTER DETECTED</span>
-        <span class="loot-prompt-text" id="loot-prompt-text">PRESS [F] TO SECURE CARGO (18.2u)</span>
       </div>
     </div>
 
@@ -706,27 +758,6 @@
           <div class="hub-active-directive" id="wheel-active-directive">FORMATION FOLLOW</div>
           <div class="hub-hint">HOLD [TAB] / [C] • SELECT OR TAP 1-4</div>
         </div>
-      </div>
-    </div>
-
-    <!-- Day 34: Tactical Order HUD Notification Banner -->
-    <div id="tactical-order-banner" class="tactical-order-banner hidden">
-      <span class="banner-icon">📡</span>
-      <div class="banner-text">
-        <span class="banner-title" id="tactical-banner-title">SQUADRON DIRECTIVE ISSUED</span>
-        <span class="banner-order" id="tactical-banner-order">FOCUS TARGET</span>
-      </div>
-    </div>
-
-    <!-- Day 34: Persistent Squadron HUD Widget -->
-    <div id="squadron-hud-widget" class="squadron-hud-widget">
-      <div class="squadron-widget-header">
-        <span class="widget-icon">🚀</span>
-        <span class="widget-title">SQUADRON</span>
-        <span class="widget-order-badge badge-formation-follow" id="squadron-order-badge">FOLLOW</span>
-      </div>
-      <div class="squadron-wingmen-list" id="squadron-wingmen-list">
-        <!-- Rendered dynamically -->
       </div>
     </div>
 
@@ -1132,6 +1163,7 @@
               <div class="envoys-list" id="diplomacy-envoys-list">
                 <!-- Dynamically populated envoy cards -->
               </div>
+            </div>
             <!-- Astrometry Cartography Bureau (Day 18) -->
             <div class="salvage-panel astrometry-bureau-panel" style="grid-column: 1 / -1; margin-top: 1rem;">
               <div class="salvage-header">
@@ -2388,8 +2420,8 @@
       </div>
     </div>
 
-    <!-- Milestone 1.8: Live Subspace Comms & Presence Dock -->
-    <aside id="multiplayer-comms-dock" class="mp-comms-dock">
+    <!-- Milestone 1.8: Live Subspace Comms & Presence Dock (Compact by default) -->
+    <aside id="multiplayer-comms-dock" class="mp-comms-dock collapsed">
       <div class="mp-comms-header">
         <span class="mp-comms-title">📡 SUBSPACE COMMS &amp; ROSTER</span>
         <button id="btn-comms-toggle-collapse" class="hud-btn-tiny">_</button>

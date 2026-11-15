@@ -4,6 +4,7 @@
  * blended into Wayward Void's Neon/CRT Starcon HUD.
  */
 
+import { apiClient } from '../network/ApiClient';
 export interface OutpostBuildingSpec {
   id: string;
   name: string;
@@ -232,7 +233,7 @@ export class OutpostColonyController {
   public async refreshGrid(): Promise<void> {
     if (!this.colonyId) return;
     try {
-      const res = await fetch(`/api/colonies/${this.colonyId}/grid?accountId=acc_sol_captain`);
+      const res = await fetch(`/api/colonies/${this.colonyId}/grid?accountId=${encodeURIComponent(apiClient.getAccountId())}`);
       if (!res.ok) return;
       const data = await res.json();
       if (!data.success) return;
@@ -356,7 +357,7 @@ export class OutpostColonyController {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            accountId: 'acc_sol_captain',
+            accountId: apiClient.getAccountId(),
             layer: this.activeLayer,
             x,
             y,
@@ -399,7 +400,7 @@ export class OutpostColonyController {
       const res = await fetch(`/api/colonies/${this.colonyId}/grid/toggle`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accountId: 'acc_sol_captain', ...this.selectedTile }),
+        body: JSON.stringify({ accountId: apiClient.getAccountId(), ...this.selectedTile }),
       });
       const data = await res.json();
       if (res.ok && data.success) {
@@ -424,7 +425,7 @@ export class OutpostColonyController {
       const res = await fetch(`/api/colonies/${this.colonyId}/grid/demolish`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accountId: 'acc_sol_captain', ...this.selectedTile }),
+        body: JSON.stringify({ accountId: apiClient.getAccountId(), ...this.selectedTile }),
       });
       const data = await res.json();
       if (res.ok && data.success) {
@@ -450,7 +451,7 @@ export class OutpostColonyController {
       const res = await fetch(`/api/colonies/${this.colonyId}/grid/complete-now`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accountId: 'acc_sol_captain' }),
+        body: JSON.stringify({ accountId: apiClient.getAccountId() }),
       });
       const data = await res.json();
       if (res.ok && data.success) {
@@ -474,7 +475,7 @@ export class OutpostColonyController {
       const res = await fetch(`/api/colonies/${this.colonyId}/harvest`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accountId: 'acc_sol_captain' }),
+        body: JSON.stringify({ accountId: apiClient.getAccountId() }),
       });
       const data = await res.json();
       if (res.ok && data.success) {

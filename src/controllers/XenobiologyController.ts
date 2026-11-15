@@ -151,7 +151,7 @@ export class XenobiologyController {
     if (!this.xenodexSpeciesGrid) return;
     try {
       const accountId = this.ctx.getAccountId();
-      const res = await fetch(`http://127.0.0.1:3000/api/xenobiology/xenodex?accountId=${accountId}`);
+      const res = await fetch(`/api/xenobiology/xenodex?accountId=${encodeURIComponent(accountId)}`);
       if (!res.ok) return;
       const data = await res.json();
       const entries = data.entries || [];
@@ -185,7 +185,7 @@ export class XenobiologyController {
   public async fetchLabStatus(): Promise<void> {
     try {
       const accountId = this.ctx.getAccountId();
-      const res = await fetch(`http://127.0.0.1:3000/api/xenobiology/lab?accountId=${accountId}`);
+      const res = await fetch(`/api/xenobiology/lab?accountId=${encodeURIComponent(accountId)}`);
       if (res.ok) {
         this.labData = await res.json();
         this.renderLab();
@@ -365,7 +365,7 @@ export class XenobiologyController {
   public async submitSpecimens(quantity: number, speciesId?: string): Promise<void> {
     try {
       const accountId = this.ctx.getAccountId();
-      const res = await fetch('http://127.0.0.1:3000/api/xenobiology/submit-specimens', {
+      const res = await fetch('/api/xenobiology/submit-specimens', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ accountId, quantity, speciesId }),
@@ -386,7 +386,7 @@ export class XenobiologyController {
   public async upgradeBiosphere(): Promise<void> {
     try {
       const accountId = this.ctx.getAccountId();
-      const res = await fetch('http://127.0.0.1:3000/api/xenobiology/upgrade-biosphere', {
+      const res = await fetch('/api/xenobiology/upgrade-biosphere', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ accountId }),
@@ -406,7 +406,7 @@ export class XenobiologyController {
   public async researchProject(projectId: string): Promise<void> {
     try {
       const accountId = this.ctx.getAccountId();
-      const res = await fetch('http://127.0.0.1:3000/api/xenobiology/research-project', {
+      const res = await fetch('/api/xenobiology/research-project', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ accountId, projectId }),
@@ -426,7 +426,7 @@ export class XenobiologyController {
   public async synthesizeItem(itemId: string): Promise<void> {
     try {
       const accountId = this.ctx.getAccountId();
-      const res = await fetch('http://127.0.0.1:3000/api/xenobiology/synthesize', {
+      const res = await fetch('/api/xenobiology/synthesize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ accountId, itemId }),
@@ -447,7 +447,7 @@ export class XenobiologyController {
   public async useStim(stimId: string = 'STIM_ADRENAL_SURGE'): Promise<void> {
     try {
       const accountId = this.ctx.getAccountId();
-      const res = await fetch('http://127.0.0.1:3000/api/xenobiology/use-stim', {
+      const res = await fetch('/api/xenobiology/use-stim', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ accountId, stimId }),

@@ -1,4 +1,5 @@
 import { AudioEngine } from '../audio/AudioEngine';
+import { apiClient } from '../network/ApiClient';
 
 export interface PrecursorSiteData {
   id: string;
@@ -372,11 +373,11 @@ export class PrecursorTerminalController {
     const site = this.activePrecursorSite;
 
     try {
-      const res = await fetch(`http://localhost:3000/api/precursor/${site.id}/decipher`, {
+      const res = await fetch(`/api/precursor/${site.id}/decipher`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          accountId: 'acc_sol_captain',
+          accountId: apiClient.getAccountId(),
           solution: this.precursorTuning,
         }),
       });

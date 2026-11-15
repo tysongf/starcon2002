@@ -1,4 +1,5 @@
 import { AudioEngine } from '../audio/AudioEngine';
+import { apiClient } from '../network/ApiClient';
 
 export interface LanderNode {
   id: string;
@@ -705,7 +706,7 @@ export class LanderController {
 
     // 1. Verify player lander status & fitted modules
     try {
-      const statusRes = await fetch('/api/shipyard/lander/status?accountId=acc_sol_captain');
+      const statusRes = await fetch(`/api/shipyard/lander/status?accountId=${encodeURIComponent(apiClient.getAccountId())}`);
       if (statusRes.ok) {
         const sData = await statusRes.json();
         if (!sData.hasActiveLander || sData.lander.hull <= 0 || !sData.lander.is_active) {
@@ -867,7 +868,7 @@ export class LanderController {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          accountId: 'acc_sol_captain',
+          accountId: apiClient.getAccountId(),
           mineralsHarvested: uncommittedMinerals,
           bioSamplesHarvested: this.landerBioSamples,
           hullRemaining: Math.max(1, Math.round(this.landerState.hull)),
@@ -988,7 +989,7 @@ export class LanderController {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          accountId: 'acc_sol_captain',
+          accountId: apiClient.getAccountId(),
           mineralsHarvested: [],
           bioSamplesHarvested: [],
           hullRemaining: 0,
@@ -1025,7 +1026,7 @@ export class LanderController {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          accountId: 'acc_sol_captain',
+          accountId: apiClient.getAccountId(),
           mineralsHarvested: collectedMinerals,
           bioSamplesHarvested: this.landerBioSamples,
           hullRemaining: hullVal,
@@ -1417,7 +1418,7 @@ export class LanderController {
               fetch(`/api/planets/${pId}/lander/titan-hit`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ accountId: 'acc_sol_captain', speciesId: f.speciesId }),
+                body: JSON.stringify({ accountId: apiClient.getAccountId(), speciesId: f.speciesId }),
               }).catch(() => {});
 
               if (f.currentStunHits >= reqHits) {
@@ -2749,7 +2750,7 @@ export class LanderController {
       const res = await fetch(`/api/planets/${planetId}/lander/deploy`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accountId: 'acc_sol_captain', crewIds }),
+        body: JSON.stringify({ accountId: apiClient.getAccountId(), crewIds }),
       });
       const data = await res.json();
       if (!res.ok || !data.success || !data.session) {

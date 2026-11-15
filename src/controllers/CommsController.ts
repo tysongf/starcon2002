@@ -1,5 +1,6 @@
 import { AudioEngine } from '../audio/AudioEngine';
 import { FACTION_REGISTRY, getFactionEntry } from '../../shared/FactionRegistry';
+import { apiClient } from '../network/ApiClient';
 
 export interface CommsCallbacks {
   audio: AudioEngine;
@@ -208,7 +209,7 @@ export class CommsController {
 
     const sectorId = this.callbacks.getCurrentSectorId();
     try {
-      const res = await fetch(`/api/captains/sector/${sectorId}?accountId=acc_sol_captain`);
+      const res = await fetch(`/api/captains/sector/${sectorId}?accountId=${encodeURIComponent(apiClient.getAccountId())}`);
       if (res.ok) {
         const data = await res.json();
         const captains = data.captains || [];
@@ -236,7 +237,7 @@ export class CommsController {
     if (!pillEl) return;
     const sectorId = this.callbacks.getCurrentSectorId();
     try {
-      const res = await fetch(`/api/captains/sector/${sectorId}?accountId=acc_sol_captain`);
+      const res = await fetch(`/api/captains/sector/${sectorId}?accountId=${encodeURIComponent(apiClient.getAccountId())}`);
       if (!res.ok) return;
       const data = await res.json();
       const captains = data.captains || [];
@@ -279,7 +280,7 @@ export class CommsController {
     this.audio.playCommsHailingChime();
 
     try {
-      const res = await fetch(`/api/captains/${encodeURIComponent(captainKey)}?accountId=acc_sol_captain&sectorId=${sectorId}`);
+      const res = await fetch(`/api/captains/${encodeURIComponent(captainKey)}?accountId=${encodeURIComponent(apiClient.getAccountId())}&sectorId=${sectorId}`);
       if (!res.ok) return;
       const data = await res.json();
       if (!data.dialog) return;
@@ -330,7 +331,7 @@ export class CommsController {
     }
 
     try {
-      const res = await fetch(`/api/dialog/convoy/${convoyId}?accountId=acc_sol_captain&sectorId=${sectorId}`);
+      const res = await fetch(`/api/dialog/convoy/${convoyId}?accountId=${encodeURIComponent(apiClient.getAccountId())}&sectorId=${sectorId}`);
       if (!res.ok) {
         this.callbacks.showApNotification('⚠️ CONVOY COMMS FREQUENCY UNRESPONSIVE', true);
         this.closeAlienComms();
@@ -400,7 +401,7 @@ export class CommsController {
     this.audio.playCommsHailingChime();
 
     try {
-      const res = await fetch(`/api/dialog/${npcId}?accountId=acc_sol_captain`);
+      const res = await fetch(`/api/dialog/${npcId}?accountId=${encodeURIComponent(apiClient.getAccountId())}`);
       if (!res.ok) return;
       const data = await res.json();
       const dialog = data.dialog;
@@ -537,7 +538,7 @@ export class CommsController {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            accountId: 'acc_sol_captain',
+            accountId: apiClient.getAccountId(),
             captainKey: this.currentFrontierCaptainKey,
             sectorId: this.currentFrontierCaptainSectorId,
             optionId: selectedOpt?.id || '',
@@ -571,7 +572,7 @@ export class CommsController {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                accountId: 'acc_sol_captain',
+                accountId: apiClient.getAccountId(),
                 blipId: this.currentInterceptionHandshake.blipId,
                 actionId: mappedAction,
               }),
@@ -606,7 +607,7 @@ export class CommsController {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              accountId: 'acc_sol_captain',
+              accountId: apiClient.getAccountId(),
               blipId: this.currentInterceptionHandshake.blipId,
               actionId,
             }),
@@ -631,7 +632,7 @@ export class CommsController {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            accountId: 'acc_sol_captain',
+            accountId: apiClient.getAccountId(),
             sectorId,
             convoyId: this.currentConvoyId,
             optionIndex,
@@ -662,7 +663,7 @@ export class CommsController {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          accountId: 'acc_sol_captain',
+          accountId: apiClient.getAccountId(),
           npcId: this.currentAlienNpcId,
           optionIndex,
         }),
@@ -689,8 +690,10 @@ export class CommsController {
   }
 
   public async refreshFactionStandings(): Promise<void> {
+    const accountId = apiClient.getAccountId();
+    if (!apiClient.getToken() || !accountId) return;
     try {
-      const res = await fetch('/api/reputation/standings?accountId=acc_sol_captain');
+      const res = await fetch(`/api/reputation/standings?accountId=${encodeURIComponent(accountId)}`);
       if (!res.ok) return;
       const data = await res.json();
       this.playerStandings = data.standings || [];

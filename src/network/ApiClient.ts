@@ -55,9 +55,11 @@ class ApiClient {
     window.fetch = (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       let url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
 
-      // Normalize any hardcoded localhost:3000 origins to same-origin paths for LAN/multiplayer compatibility
+      // Normalize any hardcoded localhost/127.0.0.1 origins to same-origin paths for LAN/multiplayer compatibility
       if (url.startsWith('http://localhost:3000/')) {
         url = url.slice('http://localhost:3000'.length);
+      } else if (url.startsWith('http://127.0.0.1:3000/')) {
+        url = url.slice('http://127.0.0.1:3000'.length);
       }
 
       const activeId = this.getAccountId();

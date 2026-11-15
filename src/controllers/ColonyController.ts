@@ -1,4 +1,5 @@
 import { OutpostColonyController } from './OutpostColonyController.ts';
+import { apiClient } from '../network/ApiClient';
 
 /**
  * ColonyController.ts
@@ -123,7 +124,7 @@ export class ColonyController {
    */
   public async fetchPlanetColonies(planetId: string): Promise<void> {
     try {
-      const res = await fetch(`http://localhost:3000/api/colonies/planet/${planetId}?accountId=acc_sol_captain`);
+      const res = await fetch(`/api/colonies/planet/${planetId}?accountId=${encodeURIComponent(apiClient.getAccountId())}`);
       if (res.ok) {
         const data = await res.json();
         this.activeColoniesList = data.colonies || [];
@@ -280,11 +281,11 @@ export class ColonyController {
     if (btn) btn.disabled = true;
 
     try {
-      const res = await fetch('http://localhost:3000/api/colonies/found', {
+      const res = await fetch('/api/colonies/found', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          accountId: 'acc_sol_captain',
+          accountId: apiClient.getAccountId(),
           planetId: activePlanet.data.id,
           beaconId,
           name,
@@ -318,11 +319,11 @@ export class ColonyController {
     if (!this.activeColony) return;
 
     try {
-      const res = await fetch(`http://localhost:3000/api/colonies/${this.activeColony.id}/upgrade`, {
+      const res = await fetch(`/api/colonies/${this.activeColony.id}/upgrade`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          accountId: 'acc_sol_captain',
+          accountId: apiClient.getAccountId(),
           facilityType,
         }),
       });
@@ -357,11 +358,11 @@ export class ColonyController {
     }
 
     try {
-      const res = await fetch(`http://localhost:3000/api/colonies/${this.activeColony.id}/harvest`, {
+      const res = await fetch(`/api/colonies/${this.activeColony.id}/harvest`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          accountId: 'acc_sol_captain',
+          accountId: apiClient.getAccountId(),
         }),
       });
 
@@ -387,7 +388,7 @@ export class ColonyController {
    */
   public async fetchPlanetPrecursorSites(planetId: string): Promise<void> {
     try {
-      const res = await fetch(`http://localhost:3000/api/precursor/planet/${planetId}?accountId=acc_sol_captain`);
+      const res = await fetch(`/api/precursor/planet/${planetId}?accountId=${encodeURIComponent(apiClient.getAccountId())}`);
       if (res.ok) {
         const data = await res.json();
         this.planetPrecursorSites = data.sites || [];
@@ -420,7 +421,7 @@ export class ColonyController {
    */
   public async fetchPrecursorResearch(): Promise<void> {
     try {
-      const res = await fetch(`http://localhost:3000/api/precursor/research?accountId=acc_sol_captain`);
+      const res = await fetch(`/api/precursor/research?accountId=${encodeURIComponent(apiClient.getAccountId())}`);
       if (!res.ok) return;
       const data = await res.json();
       this.precursorResearchCatalog = data.catalog || [];
@@ -505,10 +506,10 @@ export class ColonyController {
    */
   public async synthesizePrototypeTech(techId: string): Promise<void> {
     try {
-      const res = await fetch('http://localhost:3000/api/precursor/synthesize', {
+      const res = await fetch('/api/precursor/synthesize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accountId: 'acc_sol_captain', techId }),
+        body: JSON.stringify({ accountId: apiClient.getAccountId(), techId }),
       });
 
       const data = await res.json();
@@ -535,10 +536,10 @@ export class ColonyController {
     const factionId = sel ? sel.value : 'FACTION_SOL';
 
     try {
-      const res = await fetch('http://localhost:3000/api/precursor/remit', {
+      const res = await fetch('/api/precursor/remit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accountId: 'acc_sol_captain', factionId }),
+        body: JSON.stringify({ accountId: apiClient.getAccountId(), factionId }),
       });
 
       const data = await res.json();
@@ -568,9 +569,9 @@ export class ColonyController {
 
     try {
       const [rosterRes, marketRes, modCatRes] = await Promise.all([
-        fetch('http://localhost:3000/api/crew/roster?accountId=acc_sol_captain'),
-        fetch(`http://localhost:3000/api/crew/market?accountId=acc_sol_captain&sourceType=COLONY&sourceId=${encodeURIComponent(col.id)}`),
-        this.colonyModulesCatalog.length > 0 ? Promise.resolve(null) : fetch('http://localhost:3000/api/colonies/modules/catalog'),
+        fetch(`/api/crew/roster?accountId=${encodeURIComponent(apiClient.getAccountId())}`),
+        fetch(`/api/crew/market?accountId=${encodeURIComponent(apiClient.getAccountId())}&sourceType=COLONY&sourceId=${encodeURIComponent(col.id)}`),
+        this.colonyModulesCatalog.length > 0 ? Promise.resolve(null) : fetch('/api/colonies/modules/catalog'),
       ]);
 
       const roster = rosterRes.ok ? await rosterRes.json() : { crew: [] };
@@ -678,11 +679,11 @@ export class ColonyController {
       root.querySelector('#btn-col-station-crew')?.addEventListener('click', async () => {
         const sel = root.querySelector('#select-col-station-crew') as HTMLSelectElement | null;
         if (!sel?.value) return;
-        const res = await fetch('http://localhost:3000/api/crew/assign', {
+        const res = await fetch('/api/crew/assign', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            accountId: 'acc_sol_captain',
+            accountId: apiClient.getAccountId(),
             crewId: sel.value,
             assignmentType: 'COLONY',
             colonyId: col.id,
@@ -702,11 +703,11 @@ export class ColonyController {
         btn.addEventListener('click', async () => {
           const crewId = (btn as HTMLElement).dataset.crewId;
           if (!crewId) return;
-          const res = await fetch('http://localhost:3000/api/crew/assign', {
+          const res = await fetch('/api/crew/assign', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              accountId: 'acc_sol_captain',
+              accountId: apiClient.getAccountId(),
               crewId,
               assignmentType: 'RESERVE',
             }),
@@ -722,11 +723,11 @@ export class ColonyController {
         btn.addEventListener('click', async () => {
           const listingId = (btn as HTMLElement).dataset.listingId;
           if (!listingId) return;
-          const res = await fetch('http://localhost:3000/api/crew/hire', {
+          const res = await fetch('/api/crew/hire', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              accountId: 'acc_sol_captain',
+              accountId: apiClient.getAccountId(),
               listingId,
               sourceType: 'COLONY',
               sourceId: col.id,
@@ -748,10 +749,10 @@ export class ColonyController {
         btn.addEventListener('click', async () => {
           const moduleKey = (btn as HTMLElement).dataset.modKey;
           if (!moduleKey) return;
-          const res = await fetch(`http://localhost:3000/api/colonies/${col.id}/modules/upgrade`, {
+          const res = await fetch(`/api/colonies/${col.id}/modules/upgrade`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ accountId: 'acc_sol_captain', moduleKey }),
+            body: JSON.stringify({ accountId: apiClient.getAccountId(), moduleKey }),
           });
           const data = await res.json();
           if (!res.ok || !data.success) {

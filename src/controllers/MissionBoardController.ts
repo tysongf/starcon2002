@@ -1,3 +1,4 @@
+import { apiClient } from '../network/ApiClient';
 export interface MissionCallbacks {
   showNotification: (msg: string, isError?: boolean) => void;
   playUiBlip: () => void;
@@ -109,7 +110,7 @@ export class MissionBoardController {
   public async loadBoard(): Promise<void> {
     try {
       const sectorId = this.callbacks.getCurrentSectorId();
-      const res = await fetch(`/api/missions?accountId=acc_sol_captain&sectorId=${sectorId}`);
+      const res = await fetch(`/api/missions?accountId=${encodeURIComponent(apiClient.getAccountId())}&sectorId=${sectorId}`);
       if (!res.ok) return;
       const data = await res.json();
       this.boardOffers = data.boardOffers || [];
@@ -129,7 +130,7 @@ export class MissionBoardController {
       await fetch('/api/missions/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accountId: 'acc_sol_captain' }),
+        body: JSON.stringify({ accountId: apiClient.getAccountId() }),
       });
       await this.loadBoard();
     } catch (err) {
@@ -144,7 +145,7 @@ export class MissionBoardController {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          accountId: 'acc_sol_captain',
+          accountId: apiClient.getAccountId(),
           sectorId: this.callbacks.getCurrentSectorId(),
         }),
       });
@@ -374,7 +375,7 @@ export class MissionBoardController {
       const res = await fetch(`/api/missions/${missionId}/accept`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accountId: 'acc_sol_captain' }),
+        body: JSON.stringify({ accountId: apiClient.getAccountId() }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -395,7 +396,7 @@ export class MissionBoardController {
       const res = await fetch(`/api/missions/${missionId}/abandon`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accountId: 'acc_sol_captain' }),
+        body: JSON.stringify({ accountId: apiClient.getAccountId() }),
       });
       if (res.ok) {
         this.callbacks.showNotification('Mission abandoned.', false);
@@ -445,7 +446,7 @@ export class MissionBoardController {
       const res = await fetch(`/api/missions/${missionId}/claim`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accountId: 'acc_sol_captain', branch }),
+        body: JSON.stringify({ accountId: apiClient.getAccountId(), branch }),
       });
       const data = await res.json();
       if (!res.ok) {

@@ -14,6 +14,7 @@ import type { ColonyController } from './ColonyController';
 import type { CommsController } from './CommsController';
 import type { LanderController } from './LanderController';
 import type { PrecursorTerminalController } from './PrecursorTerminalController';
+import { apiClient } from '../network/ApiClient';
 
 export interface SurveyControllerCallbacks {
   audio: AudioEngine;
@@ -99,7 +100,7 @@ export class SurveyController {
    */
   public async loadSectorPlanet(sectorId: number): Promise<void> {
     try {
-      const res = await fetch(`http://localhost:3000/api/planets/sector/${sectorId}`);
+      const res = await fetch(`/api/planets/sector/${sectorId}`);
       if (!res.ok) return;
       const data = await res.json();
       if (data.success && Array.isArray(data.planets) && data.planets.length > 0) {
@@ -256,13 +257,13 @@ export class SurveyController {
     // Fetch authoritative survey state
     this.activePlanetLifeforms = [];
     try {
-      const res = await fetch(`http://localhost:3000/api/planets/${p.id}`);
+      const res = await fetch(`/api/planets/${p.id}`);
       if (res.ok) {
         const data = await res.json();
         if (data.success && data.planet) {
           this.activePlanetDetail = data.planet;
           if (data.planet.survey?.scannedBio) {
-            const lfRes = await fetch(`http://localhost:3000/api/planets/${p.id}/lifeforms`);
+            const lfRes = await fetch(`/api/planets/${p.id}/lifeforms`);
             if (lfRes.ok) {
               const lfJson = await lfRes.json();
               this.activePlanetLifeforms = lfJson.lifeforms || [];
@@ -321,7 +322,7 @@ export class SurveyController {
    */
   public async fetchPlanetAirspace(planetId: string): Promise<void> {
     try {
-      const res = await fetch(`http://localhost:3000/api/planets/${planetId}/airspace?accountId=acc_sol_captain`);
+      const res = await fetch(`/api/planets/${planetId}/airspace?accountId=${encodeURIComponent(apiClient.getAccountId())}`);
       if (res.ok) {
         const data = await res.json();
         this.activeAirspaceClearance = data.clearance || null;
@@ -1043,11 +1044,11 @@ export class SurveyController {
     this.audio.playScannerSonarPing(band);
 
     try {
-      const res = await fetch(`http://localhost:3000/api/planets/${this.activePlanet.data.id}/scan`, {
+      const res = await fetch(`/api/planets/${this.activePlanet.data.id}/scan`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          accountId: 'acc_sol_captain',
+          accountId: apiClient.getAccountId(),
           scanBand: band,
         }),
       });
@@ -1119,11 +1120,11 @@ export class SurveyController {
     }, 80);
 
     try {
-      const res = await fetch(`http://localhost:3000/api/planets/${this.activePlanet.data.id}/probe`, {
+      const res = await fetch(`/api/planets/${this.activePlanet.data.id}/probe`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          accountId: 'acc_sol_captain',
+          accountId: apiClient.getAccountId(),
           targetLat: this.targetedLat,
           targetLng: this.targetedLng,
           shieldBoost,
@@ -1172,7 +1173,7 @@ export class SurveyController {
 
     try {
       const sectorId = this.callbacks.getCurrentSectorId();
-      const res = await fetch(`http://localhost:3000/api/planets/sector/${sectorId}`);
+      const res = await fetch(`/api/planets/sector/${sectorId}`);
       if (!res.ok) return;
       const data = await res.json();
       const planets = data.planets || [];
@@ -1224,11 +1225,11 @@ export class SurveyController {
           const planetId = (e.currentTarget as HTMLElement).getAttribute('data-planet-id');
           if (!planetId) return;
           try {
-            const sellRes = await fetch(`http://localhost:3000/api/planets/${planetId}/sell-data`, {
+            const sellRes = await fetch(`/api/planets/${planetId}/sell-data`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                accountId: 'acc_sol_captain',
+                accountId: apiClient.getAccountId(),
                 portId: 'PORT_AEGIS_01',
               }),
             });
@@ -1274,10 +1275,10 @@ export class SurveyController {
   public async refreshLanderStagingPanel(): Promise<void> {
     try {
       const [statusRes, tiersRes, rosterRes, casualtiesRes] = await Promise.all([
-        fetch('/api/shipyard/lander/status?accountId=acc_sol_captain'),
+        fetch(`/api/shipyard/lander/status?accountId=${encodeURIComponent(apiClient.getAccountId())}`),
         fetch('/api/shipyard/lander/tiers'),
-        fetch('/api/crew/roster?accountId=acc_sol_captain'),
-        fetch('/api/crew/casualties?accountId=acc_sol_captain'),
+        fetch(`/api/crew/roster?accountId=${encodeURIComponent(apiClient.getAccountId())}`),
+        fetch(`/api/crew/casualties?accountId=${encodeURIComponent(apiClient.getAccountId())}`),
       ]);
       if (statusRes.ok) {
         const sData = await statusRes.json();
@@ -1406,7 +1407,7 @@ export class SurveyController {
       const res = await fetch('/api/shipyard/lander/purchase', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accountId: 'acc_sol_captain', tier }),
+        body: JSON.stringify({ accountId: apiClient.getAccountId(), tier }),
       });
       const data = await res.json();
       if (res.ok && data.success) {

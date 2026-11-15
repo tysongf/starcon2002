@@ -25,6 +25,9 @@ import { HyperspaceFlightController } from './controllers/HyperspaceFlightContro
 import { MissionBoardController } from './controllers/MissionBoardController';
 import { CrewController } from './controllers/CrewController';
 import { MultiplayerController } from './controllers/MultiplayerController';
+import { OutfittingController } from './controllers/OutfittingController';
+import { StationMarketController } from './controllers/StationMarketController';
+import { WarpNavController } from './controllers/WarpNavController';
 import { apiClient } from './network/ApiClient';
 
 class GameEngine {
@@ -58,6 +61,9 @@ class GameEngine {
   public missionBoardController!: MissionBoardController;
   public crewController!: CrewController;
   public multiplayerController!: MultiplayerController;
+  public outfittingController!: OutfittingController;
+  public marketController!: StationMarketController;
+  public warpNavController!: WarpNavController;
 
   // Navigation & Sector Jump System (Day 8)
   private currentSectorId: number = 1;
@@ -71,17 +77,10 @@ class GameEngine {
   }> = [];
   private shipFuel: number = 100;
   private maxShipFuel: number = 100;
-  private isWarping: boolean = false;
-  private warpAnimationTime: number = 0;
   private baseFov: number = 52;
 
   // Nav DOM Elements
-  private modalNav: HTMLElement | null = null;
   private btnOpenNav: HTMLElement | null = null;
-  private btnCloseNav: HTMLElement | null = null;
-  private navLanesList: HTMLElement | null = null;
-  private navCurrentSectorTitle: HTMLElement | null = null;
-  private navCurrentSectorSubtext: HTMLElement | null = null;
   private navFuelDisplay: HTMLElement | null = null;
   private hudSector: HTMLElement | null = null;
 
@@ -129,36 +128,13 @@ class GameEngine {
   private modalDock: HTMLElement | null = null;
   private modalStationName: HTMLElement | null = null;
   private modalOfficerQuote: HTMLElement | null = null;
-  private modalMarketExchange: HTMLElement | null = null;
   private elBackendBadge: HTMLElement | null = null;
   private btnUndock: HTMLElement | null = null;
   private btnQuickService: HTMLElement | null = null;
 
   // Economy & Cargo Hold (Day 9)
   private playerCredits: number = 2500;
-  private playerCargoCapacity: number = 40;
-  private playerUsedCargo: number = 0;
-  private playerCargoHold: Array<{ commodity_id: string; name: string; quantity: number }> = [];
-  private currentMarketPortId: string | null = null;
-  private currentMarketItems: any[] = [];
 
-  // Market & Trade DOM Elements
-  private elTelemetryCredits: HTMLElement | null = null;
-  private elTelemetryCargo: HTMLElement | null = null;
-  private modalMarketPlayerCredits: HTMLElement | null = null;
-  private modalMarketPlayerCargo: HTMLElement | null = null;
-  private modalCargoDisplay: HTMLElement | null = null;
-  private marketToast: HTMLElement | null = null;
-  private marketToastTimer: number | null = null;
-
-  // Milestone 0.2 Economic Arbitrage & Sector Intel
-  private initialSessionCredits: number = 2500;
-  private hasInitialCreditsSet: boolean = false;
-  private sessionArbitrageProfit: number = 0;
-  private elTelemetryNetWorth: HTMLElement | null = null;
-  private elTelemetryProfit: HTMLElement | null = null;
-  private navRadarRoutes: HTMLElement | null = null;
-  private activeRadarTab: 'TRAFFIC' | 'COMMERCE' = 'TRAFFIC';
   private modalOfficerAvatar: HTMLElement | null = null;
   private modalOfficerName: HTMLElement | null = null;
   private modalDockBadge: HTMLElement | null = null;
@@ -192,9 +168,6 @@ class GameEngine {
   private elSlotMid1: HTMLElement | null = null;
   private elSlotMid2: HTMLElement | null = null;
   private elSlotMid3: HTMLElement | null = null;
-  private elSlotLow1: HTMLElement | null = null;
-  private elSlotLow2: HTMLElement | null = null;
-  private elSlotLow3: HTMLElement | null = null;
   private elCdHigh1: HTMLElement | null = null;
   private elCdHigh2: HTMLElement | null = null;
   private elCdMid1: HTMLElement | null = null;
@@ -216,12 +189,9 @@ class GameEngine {
     wingSpread: 1.0,
     weaponHardpoints: 2,
   };
-  private workbenchSelectedItemId: string | null = null;
-  private workbenchLockedAffixIndex: number | null = null;
-
   // Action Point (AP) System (Day 7)
   private playerAP = {
-    playerId: 'acc_sol_captain',
+    playerId: '',
     currentAP: 600,
     maxAP: 600,
     lastRegenAt: Date.now(),
@@ -245,7 +215,7 @@ class GameEngine {
   private btnDockHaggle: HTMLElement | null = null;
   private elApNotification: HTMLElement | null = null;
 
-  // Day 13: Station Service Tabs & Outfitting Bay DOM
+  // Day 13: Station Service Tabs DOM
   private tabBtnExchange: HTMLElement | null = null;
   private tabBtnOutfitting: HTMLElement | null = null;
   private tabBtnArmory: HTMLElement | null = null;
@@ -253,22 +223,6 @@ class GameEngine {
   private viewTabOutfitting: HTMLElement | null = null;
   private viewTabArmory: HTMLElement | null = null;
   private activeStationTab: 'exchange' | 'outfitting' | 'armory' | 'contracts' | 'missions' | 'salvage' | 'diplomacy' | 'fleet' | 'crew' = 'exchange';
-
-  private valFittingPg: HTMLElement | null = null;
-  private valFittingCpu: HTMLElement | null = null;
-  private barFittingPg: HTMLElement | null = null;
-  private barFittingCpu: HTMLElement | null = null;
-  private fittingOverbudgetAlert: HTMLElement | null = null;
-  private paperdollSlotsList: HTMLElement | null = null;
-  private lockerModulesList: HTMLElement | null = null;
-  private lockerItemCount: HTMLElement | null = null;
-  private isLoadoutOverBudget: boolean = false;
-  private playerLoadout: any = null;
-
-  private elArmoryCatalogGrid: HTMLElement | null = null;
-  private elArmoryProceduralShopGrid: HTMLElement | null = null;
-  private elArmoryPlayerCredits: HTMLElement | null = null;
-  private equipmentCatalog: any[] = [];
 
   // Station Tabs
   private tabBtnContracts: HTMLElement | null = null;
@@ -279,7 +233,6 @@ class GameEngine {
   private elContractsActiveCount: HTMLElement | null = null;
   private elKillmailsArchiveList: HTMLElement | null = null;
   private elKillmailsCount: HTMLElement | null = null;
-  private elContractsPlayerCredits: HTMLElement | null = null;
 
   private tabBtnSalvage: HTMLElement | null = null;
   private viewTabSalvage: HTMLElement | null = null;
@@ -413,13 +366,16 @@ class GameEngine {
     // 13. Generate Initial Ship Hull
     this.generateShip(this.currentSeed, this.currentFaction);
 
-    // 14. Setup Event Listeners
-    this.setupEventListeners();
-
-    // 14b. Initialize Modular Sub-System Controllers
+    // 14. Initialize Modular Sub-System Controllers before listeners or async auth
     this.initControllers();
 
-    // 15. Start Animation & Physics Loop
+    // 15. Setup Event Listeners
+    this.setupEventListeners();
+
+    // 16. Post-controller startup routines (auth gate, health badge, deep links)
+    this.runStartupLifecycle();
+
+    // 17. Start Animation & Physics Loop
     this.animate = this.animate.bind(this);
     requestAnimationFrame(this.animate);
   }
@@ -662,21 +618,10 @@ class GameEngine {
     this.modalDock = document.getElementById('station-dock-modal');
     this.modalStationName = document.getElementById('modal-station-name');
     this.modalOfficerQuote = document.getElementById('modal-officer-quote');
-    this.modalMarketExchange = document.getElementById('modal-market-exchange');
     this.elBackendBadge = document.getElementById('backend-status-badge');
     this.btnUndock = document.getElementById('btn-undock');
     this.btnQuickService = document.getElementById('btn-quick-service');
 
-    // Market & Telemetry DOM Elements (Day 9 & 10)
-    this.elTelemetryCredits = document.getElementById('val-telemetry-credits');
-    this.elTelemetryCargo = document.getElementById('val-telemetry-cargo');
-    this.elTelemetryNetWorth = document.getElementById('val-telemetry-networth');
-    this.elTelemetryProfit = document.getElementById('val-telemetry-profit');
-    this.modalMarketPlayerCredits = document.getElementById('market-player-credits');
-    this.modalMarketPlayerCargo = document.getElementById('market-player-cargo');
-    this.modalCargoDisplay = document.getElementById('modal-cargo-display');
-    this.marketToast = document.getElementById('market-toast');
-    this.navRadarRoutes = document.getElementById('nav-radar-routes');
     this.modalOfficerAvatar = document.getElementById('modal-officer-avatar');
     this.modalOfficerName = document.getElementById('modal-officer-name');
     this.modalDockBadge = document.getElementById('modal-dock-badge');
@@ -696,13 +641,8 @@ class GameEngine {
     this.btnDockHaggle = document.getElementById('btn-dock-haggle');
     this.elApNotification = document.getElementById('ap-notification');
 
-    // Nav Console Elements (Day 8)
-    this.modalNav = document.getElementById('nav-modal');
+    // Nav Console Trigger
     this.btnOpenNav = document.getElementById('btn-open-nav');
-    this.btnCloseNav = document.getElementById('btn-close-nav');
-    this.navLanesList = document.getElementById('nav-lanes-list');
-    this.navCurrentSectorTitle = document.getElementById('nav-current-sector-title');
-    this.navCurrentSectorSubtext = document.getElementById('nav-current-sector-subtext');
     this.navFuelDisplay = document.getElementById('nav-fuel-display');
     this.hudSector = document.getElementById('hud-sector');
 
@@ -742,9 +682,6 @@ class GameEngine {
     });
     this.elSlotHigh3 = document.getElementById('slot-high-3');
     this.elSlotMid3 = document.getElementById('slot-mid-3');
-    this.elSlotLow1 = document.getElementById('slot-low-1');
-    this.elSlotLow2 = document.getElementById('slot-low-2');
-    this.elSlotLow3 = document.getElementById('slot-low-3');
     this.elSlotHigh3?.addEventListener('click', () => {
       this.selectWeaponPreset(3);
       this.fireWeaponDirectly('RAIL');
@@ -766,19 +703,6 @@ class GameEngine {
     this.tabBtnOutfitting?.addEventListener('click', () => this.switchStationTab('outfitting'));
     this.tabBtnArmory?.addEventListener('click', () => this.switchStationTab('armory'));
 
-    this.valFittingPg = document.getElementById('val-fitting-pg');
-    this.valFittingCpu = document.getElementById('val-fitting-cpu');
-    this.barFittingPg = document.getElementById('bar-fitting-pg');
-    this.barFittingCpu = document.getElementById('bar-fitting-cpu');
-    this.fittingOverbudgetAlert = document.getElementById('fitting-overbudget-alert');
-    this.paperdollSlotsList = document.getElementById('paperdoll-slots-list');
-    this.lockerModulesList = document.getElementById('locker-modules-list');
-    this.lockerItemCount = document.getElementById('locker-item-count');
-
-    this.elArmoryCatalogGrid = document.getElementById('armory-catalog-grid');
-    this.elArmoryProceduralShopGrid = document.getElementById('armory-procedural-shop-grid');
-    this.elArmoryPlayerCredits = document.getElementById('armory-player-credits');
-
     if (this.hudSector) {
       this.hudSector.classList.add('clickable');
       this.hudSector.title = 'Click to open Hyperspace Nav Computer (J)';
@@ -790,7 +714,6 @@ class GameEngine {
     this.elContractsActiveCount = document.getElementById('contracts-active-count');
     this.elKillmailsArchiveList = document.getElementById('killmails-archive-list');
     this.elKillmailsCount = document.getElementById('killmails-count');
-    this.elContractsPlayerCredits = document.getElementById('contracts-player-credits');
     this.tabBtnContracts?.addEventListener('click', () => this.switchStationTab('contracts'));
 
     this.tabBtnMissions = document.getElementById('tab-btn-missions');
@@ -822,9 +745,9 @@ class GameEngine {
 
     this.btnHudHailTarget = document.getElementById('btn-hud-hail-target');
     this.btnHudHailTarget?.addEventListener('click', () => this.hailCurrentTargetOrEnvoy());
+  }
 
-    this.refreshFactionStandings();
-
+  private runStartupLifecycle(): void {
     // Hash routing for direct modal access / deep linking (#survey, #lander, #precursor, #terminal, #lab)
     const handleHash = () => {
       const hash = window.location.hash;
@@ -867,10 +790,20 @@ class GameEngine {
 
   private async bootstrapAuthenticatedSession(): Promise<void> {
     const profile = await this.multiplayerController.ensureAuthenticated();
-    if (profile?.account?.id) {
-      this.playerAP.playerId = profile.account.id;
+    await this.hydrateAuthenticatedSession(profile?.account?.id);
+  }
+
+  private hydratedForToken: string | null = null;
+
+  private async hydrateAuthenticatedSession(accountId?: string): Promise<void> {
+    const tok = apiClient.getToken();
+    if (!tok || this.hydratedForToken === tok) return;
+    this.hydratedForToken = tok;
+    if (accountId) {
+      this.playerAP.playerId = accountId;
     }
     this.multiplayerController.connectSocialSocket();
+    await this.refreshFactionStandings();
     await this.fetchPlayerAP();
     await this.loadShipAndSector();
   }
@@ -895,8 +828,10 @@ class GameEngine {
   }
 
   public async fetchPlayerAP(): Promise<void> {
+    const accountId = apiClient.getAccountId();
+    if (!accountId) return;
     try {
-      const res = await fetch('/api/player/ap?playerId=acc_sol_captain');
+      const res = await fetch(`/api/player/ap?playerId=${encodeURIComponent(accountId)}`);
       if (res.ok) {
         const data = await res.json();
         this.playerAP = data;
@@ -913,7 +848,7 @@ class GameEngine {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          playerId: 'acc_sol_captain',
+          playerId: apiClient.getAccountId(),
           action,
           cost: customCost,
         }),
@@ -949,7 +884,7 @@ class GameEngine {
       const res = await fetch('/api/player/ap/debug-set', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ playerId: 'acc_sol_captain', amount: target }),
+        body: JSON.stringify({ playerId: apiClient.getAccountId(), amount: target }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -1019,336 +954,38 @@ class GameEngine {
   }
 
   public async refreshPlayerHold(): Promise<void> {
-    try {
-      const res = await fetch('/api/player/hold?playerId=acc_sol_captain');
-      if (res.ok) {
-        const hold = await res.json();
-        if (!this.hasInitialCreditsSet) {
-          this.initialSessionCredits = hold.credits;
-          this.hasInitialCreditsSet = true;
-        }
-        this.playerCredits = hold.credits;
-        this.playerCargoCapacity = hold.cargoCapacity;
-        this.playerUsedCargo = hold.usedCargo;
-        this.playerCargoHold = hold.cargo || [];
-        this.sessionArbitrageProfit = this.playerCredits - this.initialSessionCredits;
-        this.updateHoldUI();
-      }
-    } catch (err) {
-      console.warn('[HOLD] Failed to load hold:', err);
-    }
-  }
-
-  private updateHoldUI(): void {
-    const formattedCredits = this.playerCredits.toLocaleString('en-US');
-    const cargoRatio = `${this.playerUsedCargo} / ${this.playerCargoCapacity} m³`;
-
-    // Calculate Net Worth = Credits + Cargo liquidation value
-    const estimatedCargoVal = this.playerCargoHold.reduce((sum, item) => {
-      const match = this.currentMarketItems.find((i) => i.commodity_id === item.commodity_id);
-      const unitVal = match ? match.sell_price : 35;
-      return sum + item.quantity * unitVal;
-    }, 0);
-    const netWorth = Math.round(this.playerCredits + estimatedCargoVal);
-
-    if (this.elTelemetryCredits) {
-      this.elTelemetryCredits.textContent = `${formattedCredits} Cr`;
-    }
-    this.combatClient?.setCargoHudFill(this.playerUsedCargo, this.playerCargoCapacity);
-    if (this.elTelemetryCargo) {
-      this.elTelemetryCargo.textContent = cargoRatio;
-    }
-    if (this.elTelemetryNetWorth) {
-      this.elTelemetryNetWorth.textContent = `${netWorth.toLocaleString('en-US')} Cr`;
-    }
-    if (this.elTelemetryProfit) {
-      const sign = this.sessionArbitrageProfit >= 0 ? '+' : '';
-      this.elTelemetryProfit.textContent = `${sign}${this.sessionArbitrageProfit.toLocaleString('en-US')} Cr`;
-      this.elTelemetryProfit.style.color = this.sessionArbitrageProfit > 0 ? '#34d399' : '#94a3b8';
-    }
-    if (this.modalMarketPlayerCredits) {
-      this.modalMarketPlayerCredits.textContent = `${formattedCredits} Cr`;
-    }
-    if (this.modalMarketPlayerCargo) {
-      this.modalMarketPlayerCargo.textContent = cargoRatio;
-    }
-    if (this.modalCargoDisplay) {
-      this.modalCargoDisplay.textContent = cargoRatio;
-    }
+    await this.marketController.refreshPlayerHold();
   }
 
   public showMarketToast(message: string, isError: boolean = false): void {
-    if (!this.marketToast) return;
-    if (this.marketToastTimer) {
-      clearTimeout(this.marketToastTimer);
-      this.marketToastTimer = null;
-    }
-
-    this.marketToast.textContent = message;
-    this.marketToast.className = `market-toast ${isError ? 'error' : 'success'}`;
-    this.marketToastTimer = window.setTimeout(() => {
-      if (this.marketToast) {
-        this.marketToast.className = 'market-toast hidden';
-      }
-    }, 4500);
+    this.marketController.showMarketToast(message, isError);
   }
 
   private async loadPortInventory(portId?: string): Promise<void> {
-    const targetPort = portId || (this.currentSectorId === 1 ? 'PORT_AEGIS_01' : this.currentSectorId === 3 ? 'PORT_SMELTER_01' : null);
-    this.currentMarketPortId = targetPort;
-
-    if (!targetPort) {
-      if (this.modalMarketExchange) {
-        this.modalMarketExchange.innerHTML = `
-          <div class="market-loading-hint">⚠️ NO COMMERCIAL EXCHANGE IN THIS SECTOR</div>
-        `;
-      }
-      return;
-    }
-
-    try {
-      const res = await fetch(`/api/ports/${targetPort}/market?playerId=acc_sol_captain`);
-      if (res.ok) {
-        const data = await res.json();
-        this.currentMarketItems = data.items || [];
-        if (data.hold) {
-          this.playerCredits = data.hold.credits;
-          this.playerCargoCapacity = data.hold.cargoCapacity;
-          this.playerUsedCargo = data.hold.usedCargo;
-          this.playerCargoHold = data.hold.cargo || [];
-          this.updateHoldUI();
-        }
-        this.renderMarketExchange(targetPort, this.currentMarketItems);
-      } else {
-        if (this.modalMarketExchange) {
-          this.modalMarketExchange.innerHTML = `
-            <div class="market-loading-hint">Failed to load market telemetry.</div>
-          `;
-        }
-      }
-    } catch (err) {
-      console.warn('[MARKET] Failed to load market:', err);
-    }
+    await this.marketController.loadPortInventory(portId);
   }
 
-  private renderMarketExchange(portId: string, items: any[]): void {
-    if (!this.modalMarketExchange) return;
-
-    if (items.length === 0) {
-      this.modalMarketExchange.innerHTML = `
-        <div class="market-loading-hint">No commodities registered at this terminal.</div>
-      `;
-      return;
-    }
-
-    const freeSpace = Math.max(0, this.playerCargoCapacity - this.playerUsedCargo);
-
-    this.modalMarketExchange.innerHTML = items
-      .map((item) => {
-        const canAfford = this.playerCredits >= item.buy_price;
-        const canBuy = freeSpace > 0 && canAfford && item.stock > 0;
-        const canSell = item.player_cargo > 0;
-
-        return `
-          <div class="comm-item-card" data-commodity="${item.commodity_id}">
-            <div class="comm-header-row">
-              <div class="comm-name-group">
-                <span class="comm-name">${item.name}</span>
-                <span class="comm-category-badge ${item.category}">${item.category.replace('_', ' ')}</span>
-              </div>
-              <div class="comm-player-hold">
-                HOLD: <strong>${item.player_cargo}</strong>
-              </div>
-            </div>
-
-            <div class="comm-details-row">
-              <div class="comm-prices">
-                <div class="price-tag buy">
-                  <span class="p-label">BUY</span>
-                  <span class="p-val">${item.buy_price.toFixed(1)} Cr</span>
-                  ${item.rep_modifier_label ? `<span class="rep-tariff-badge ${item.rep_multiplier < 1.0 ? 'discount' : 'tariff'}">${item.rep_modifier_label}</span>` : ''}
-                </div>
-                <div class="price-tag sell">
-                  <span class="p-label">SELL</span>
-                  <span class="p-val">${item.sell_price.toFixed(1)} Cr</span>
-                </div>
-              </div>
-
-              <div class="comm-stock-info">
-                STOCK: <span class="stock-val">${item.stock} / ${item.capacity}</span>
-              </div>
-            </div>
-
-            <div class="comm-actions-row">
-              <div class="comm-stepper">
-                <button class="stepper-btn btn-step-down" data-action="dec" title="Decrease quantity">-</button>
-                <input type="number" class="stepper-input" value="1" min="1" max="40" />
-                <button class="stepper-btn btn-step-up" data-action="inc" title="Increase quantity">+</button>
-                <button class="stepper-max-btn" data-action="max" title="Max buyable / sellable units">MAX</button>
-              </div>
-              <div class="comm-trade-buttons">
-                <button class="btn-trade buy" data-action="buy" ${!canBuy ? 'disabled' : ''} title="Purchase from Port">
-                  BUY
-                </button>
-                <button class="btn-trade sell" data-action="sell" ${!canSell ? 'disabled' : ''} title="Sell to Port">
-                  SELL
-                </button>
-              </div>
-            </div>
-          </div>
-        `;
-      })
-      .join('');
-
-    // Attach interaction handlers to each item
-    const cards = this.modalMarketExchange.querySelectorAll('.comm-item-card');
-    cards.forEach((card) => {
-      const commId = card.getAttribute('data-commodity');
-      if (!commId) return;
-
-      const input = card.querySelector('.stepper-input') as HTMLInputElement;
-      const btnDec = card.querySelector('.btn-step-down') as HTMLButtonElement;
-      const btnInc = card.querySelector('.btn-step-up') as HTMLButtonElement;
-      const btnMax = card.querySelector('.stepper-max-btn') as HTMLButtonElement;
-      const btnBuy = card.querySelector('.btn-trade.buy') as HTMLButtonElement;
-      const btnSell = card.querySelector('.btn-trade.sell') as HTMLButtonElement;
-
-      const item = items.find((i) => i.commodity_id === commId);
-      if (!item) return;
-
-      const getQty = () => {
-        const val = parseInt(input.value, 10);
-        return isNaN(val) || val < 1 ? 1 : val;
-      };
-
-      btnDec?.addEventListener('click', () => {
-        const q = Math.max(1, getQty() - 1);
-        input.value = String(q);
-        this.audio.playUiBlip();
-      });
-
-      btnInc?.addEventListener('click', () => {
-        const q = getQty() + 1;
-        input.value = String(q);
-        this.audio.playUiBlip();
-      });
-
-      btnMax?.addEventListener('click', () => {
-        const currentFree = Math.max(0, this.playerCargoCapacity - this.playerUsedCargo);
-        const maxAffordable = Math.floor(this.playerCredits / item.buy_price);
-        const buyLimit = Math.min(item.stock, currentFree, maxAffordable);
-        const maxVal = Math.max(1, Math.max(buyLimit, item.player_cargo));
-        input.value = String(maxVal);
-        this.audio.playUiBlip();
-      });
-
-      input?.addEventListener('change', () => {
-        input.value = String(getQty());
-      });
-
-      btnBuy?.addEventListener('click', async () => {
-        const qty = getQty();
-        await this.executeTrade(portId, commId, qty, 'BUY');
-      });
-
-      btnSell?.addEventListener('click', async () => {
-        const qty = getQty();
-        await this.executeTrade(portId, commId, qty, 'SELL');
-      });
-    });
-  }
-
-  public async executeTrade(
-    portId: string,
-    commodityId: string,
-    quantity: number,
-    type: 'BUY' | 'SELL'
-  ): Promise<void> {
-    if (quantity <= 0) return;
-
-    try {
-      const res = await fetch(`/api/ports/${portId}/trade`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          playerId: 'acc_sol_captain',
-          commodityId,
-          quantity,
-          type,
-        }),
-      });
-
-      const data = await res.json();
-
-      if (res.ok && data.success) {
-        if (type === 'BUY') {
-          this.audio.playTradeBuySound();
-        } else {
-          this.audio.playTradeSellSound();
-        }
-
-        const actionText = type === 'BUY' ? 'Purchased' : 'Sold';
-        const costText = type === 'BUY' ? `-${data.totalCredits} Cr` : `+${data.totalCredits} Cr`;
-        this.showMarketToast(`✓ ${actionText} ${data.quantity}x ${data.commodityName} (${costText})`, false);
-
-        if (data.hold) {
-          this.playerCredits = data.hold.credits;
-          this.playerCargoCapacity = data.hold.cargoCapacity;
-          this.playerUsedCargo = data.hold.usedCargo;
-          this.playerCargoHold = data.hold.cargo || [];
-          this.updateHoldUI();
-        }
-
-        if (Array.isArray(data.updatedInventory)) {
-          this.currentMarketItems = data.updatedInventory;
-          this.renderMarketExchange(portId, this.currentMarketItems);
-        } else {
-          await this.loadPortInventory(portId);
-        }
-      } else {
-        this.audio.playApWarningSound();
-        let errMsg = 'Trade order rejected by station exchange.';
-        switch (data.error) {
-          case 'INSUFFICIENT_CREDITS':
-            errMsg = `⚠️ Insufficient Credits! Requires ${data.requiredCredits || ''} Cr.`;
-            break;
-          case 'HOLD_CAPACITY_EXCEEDED':
-          case 'CARGO_BAY_FULL':
-            errMsg = `⚠️ Cargo Bay Full! Only ${data.freeCargo || 0} m³ available.`;
-            break;
-          case 'INSUFFICIENT_STOCK':
-            errMsg = `⚠️ Station has insufficient stock (${data.availableStock || 0} available).`;
-            break;
-          case 'INSUFFICIENT_CARGO':
-            errMsg = `⚠️ Insufficient Cargo in hold to sell (${data.availableCargo || 0} in hold).`;
-            break;
-          case 'OUT_OF_RANGE':
-            errMsg = `⚠️ Trade Out of Range! Vessel must be docked in same sector.`;
-            break;
-          default:
-            errMsg = `⚠️ Trade Error: ${data.error || 'Server rejected order'}`;
-            break;
-        }
-        this.showMarketToast(errMsg, true);
-      }
-    } catch (err) {
-      console.error('[TRADE] Trade execution failed:', err);
-      this.audio.playApWarningSound();
-      this.showMarketToast('⚠️ Network failure during transaction', true);
-    }
+  public async executeTrade(portId: string, commodityId: string, quantity: number, type: 'BUY' | 'SELL'): Promise<void> {
+    await this.marketController.executeTrade(portId, commodityId, quantity, type);
   }
 
   public get cargoHold(): Array<{ commodity_id: string; name: string; quantity: number }> {
-    return this.playerCargoHold;
+    return this.marketController?.playerCargoHold || [];
   }
 
   public get activePortId(): string | null {
-    return this.currentMarketPortId;
+    return this.marketController?.currentMarketPortId || null;
+  }
+
+  public get isWarping(): boolean {
+    return this.warpNavController?.isWarping ?? false;
   }
 
   public async loadShipAndSector(): Promise<void> {
+    const accountId = apiClient.getAccountId();
+    if (!accountId) return;
     try {
-      const res = await fetch('/api/player/ship?playerId=acc_sol_captain');
+      const res = await fetch(`/api/player/ship?playerId=${encodeURIComponent(accountId)}`);
       if (res.ok) {
         const data = await res.json();
         const loadedSectorId = data.ship.current_sector_id;
@@ -1399,308 +1036,15 @@ class GameEngine {
   }
 
   public openNavModal(): void {
-    if (this.isWarping) return;
-    if (this.modalNav) {
-      this.audio.playUiBlip();
-      this.modalNav.classList.remove('hidden');
-
-      if (this.navCurrentSectorTitle) {
-        this.navCurrentSectorTitle.textContent = `SECTOR 0${this.currentSectorId} // ${this.currentSectorName.toUpperCase()}`;
-      }
-      if (this.navCurrentSectorSubtext) {
-        const faction = this.currentSectorId === 1 ? 'SOL-PERIMETER LEAGUE' : this.currentSectorId === 2 ? 'UNCLAIMED VOID / HAZARD' : 'THE LITHOS AXIOM';
-        this.navCurrentSectorSubtext = document.getElementById('nav-current-sector-subtext');
-        if (this.navCurrentSectorSubtext) {
-          this.navCurrentSectorSubtext.textContent = `SYSTEM SEED: ${this.currentSectorId * 101} // JURISDICTION: ${faction}`;
-        }
-      }
-      if (this.navFuelDisplay) {
-        this.navFuelDisplay.textContent = `FUEL: ${this.shipFuel} / ${this.maxShipFuel}`;
-      }
-
-      // Update Topology visual nodes
-      [1, 2, 3].forEach((id) => {
-        const node = document.getElementById(`node-sec-${id}`);
-        if (node) {
-          if (id === this.currentSectorId) {
-            node.classList.add('active');
-          } else {
-            node.classList.remove('active');
-          }
-        }
-      });
-
-      // Render Jump Lanes dynamically
-      if (this.navLanesList) {
-        if (this.adjacentSectors.length === 0) {
-          this.navLanesList.innerHTML = `<div class="nav-lane-card"><span class="nav-lane-target">NO ADJACENT WARP LANES DETECTED</span></div>`;
-          return;
-        }
-
-        this.navLanesList.innerHTML = this.adjacentSectors
-          .map((sec) => `
-            <div class="nav-lane-card">
-              <div class="nav-lane-info">
-                <span class="nav-lane-target">SEC-0${sec.id} // ${sec.name.toUpperCase()}</span>
-                <span class="nav-lane-details">FACTION: ${sec.controlling_faction.replace('FACTION_', '')} // SYSTEM SEED: ${sec.system_seed}</span>
-                <span class="nav-lane-cost">⚡ Warp Cost: 5 AP + 1 Fuel</span>
-              </div>
-              <button class="hud-btn jump-btn" data-target-id="${sec.id}">
-                ENGAGE JUMP 🚀
-              </button>
-            </div>
-          `)
-          .join('');
-
-        // Attach jump click handlers to dynamically rendered buttons
-        const jumpBtns = this.navLanesList.querySelectorAll('.jump-btn');
-        jumpBtns.forEach((btn) => {
-          btn.addEventListener('click', (e) => {
-            const targetId = parseInt((e.currentTarget as HTMLElement).getAttribute('data-target-id') || '0', 10);
-            if (targetId > 0) {
-              this.executeWarpJump(targetId);
-            }
-          });
-        });
-      }
-
-      // Fetch and render Sub-Space Traffic & Commerce Radar
-      this.loadRadarFeed();
-    }
-  }
-
-  private loadRadarFeed(): void {
-    if (this.activeRadarTab === 'TRAFFIC') {
-      this.loadTrafficRadar();
-    } else {
-      this.loadCommerceRadar();
-    }
-  }
-
-  private async loadCommerceRadar(): Promise<void> {
-    if (!this.navRadarRoutes) return;
-    try {
-      const res = await fetch('/api/market/intel');
-      if (res.ok) {
-        const intel = await res.json();
-        if (intel.arbitrage && intel.arbitrage.length > 0) {
-          this.navRadarRoutes.innerHTML = intel.arbitrage.slice(0, 4).map((arb: any) => `
-            <div class="radar-arbitrage-card">
-              <div class="radar-route-info">
-                <span class="radar-route-title">${arb.commodityName}</span>
-                <span class="radar-route-path">SEC-0${arb.fromSectorId} (${arb.fromPortName}) ➔ SEC-0${arb.toSectorId} (${arb.toPortName})</span>
-              </div>
-              <div class="radar-route-profit">
-                <span class="profit-badge">+${arb.profitPerUnit.toFixed(1)} Cr</span>
-                <span class="profit-label">SPREAD / UNIT</span>
-              </div>
-            </div>
-          `).join('');
-        } else {
-          this.navRadarRoutes.innerHTML = `<div class="radar-loading">No active market disparities detected.</div>`;
-        }
-      }
-    } catch {
-      this.navRadarRoutes.innerHTML = `<div class="radar-loading">Subspace commerce relay offline.</div>`;
-    }
-  }
-
-  private async loadTrafficRadar(): Promise<void> {
-    if (!this.navRadarRoutes) return;
-    try {
-      const res = await fetch('/api/convoys/traffic');
-      if (res.ok) {
-        const data = await res.json();
-        let html = '';
-        if (data.skirmishes && data.skirmishes.length > 0) {
-          const sk = data.skirmishes[0];
-          html += `
-            <div class="radar-skirmish-banner">
-              <span>⚠️ SEC-0${sk.sector_id} CONFLICT ZONE: ${sk.initiator_faction_id === 'FACTION_VAELIC' ? 'Vaelic Hegemony' : sk.initiator_faction_id} vs ${sk.defender_faction_id === 'FACTION_KRYLL' ? 'Kryll Cartel' : sk.defender_faction_id}</span>
-              <span class="profit-badge" style="color: #ef4444;">${sk.hazard_level} RISK</span>
-            </div>
-          `;
-        }
-        if (data.convoys && data.convoys.length > 0) {
-          html += data.convoys.map((convoy: any) => {
-            const manifestSummary = convoy.cargo_manifest.map((m: any) => `${m.quantity}x ${m.name}`).join(', ');
-            const progressPercent = Math.min(100, Math.max(0, Math.round((convoy.transitProgress || 0) * 100)));
-            return `
-              <div class="radar-convoy-card">
-                <div class="radar-route-info" style="flex: 1; margin-right: 0.75rem;">
-                  <span class="radar-route-title">${convoy.name}</span>
-                  <span class="radar-route-path">SEC-0${convoy.current_sector_id} ➔ Target: SEC-0${convoy.target_sector_id || convoy.current_sector_id} (Shield: ${convoy.escort_count}x Escorts)</span>
-                  <span class="convoy-manifest-summary">📦 Cargo: ${manifestSummary} (~${convoy.totalCargoValue} Cr)</span>
-                  <div class="radar-eta-container">
-                    <div class="radar-eta-bar" style="width: ${progressPercent}%;"></div>
-                  </div>
-                </div>
-                <div class="radar-route-profit">
-                  <span class="convoy-badge-transit">ETA ${convoy.etaSeconds}s</span>
-                  <span class="profit-label">${convoy.status}</span>
-                </div>
-              </div>
-            `;
-          }).join('');
-        } else {
-          html += `<div class="radar-loading">No active faction convoys detected in local sectors.</div>`;
-        }
-        this.navRadarRoutes.innerHTML = html;
-
-        // Dynamic Map Topology Decoration (Milestone 0.6 Capstone UX Polish)
-        this.updateTopologyRadarDecorations(data.convoys || [], data.skirmishes || []);
-      }
-    } catch {
-      this.navRadarRoutes.innerHTML = `<div class="radar-loading">Subspace traffic relay offline.</div>`;
-    }
-  }
-
-  private updateTopologyRadarDecorations(convoys: any[], skirmishes: any[]): void {
-    // 1. Skirmish indicators on topology nodes
-    [1, 2, 3].forEach((sectorId) => {
-      const node = document.getElementById(`node-sec-${sectorId}`);
-      if (node) {
-        node.classList.remove('has-skirmish');
-        const existingBadge = node.querySelector('.skirmish-node-badge');
-        if (existingBadge) existingBadge.remove();
-      }
-    });
-
-    skirmishes.forEach((sk: any) => {
-      const node = document.getElementById(`node-sec-${sk.sector_id}`);
-      if (node) {
-        node.classList.add('has-skirmish');
-        if (!node.querySelector('.skirmish-node-badge')) {
-          const badge = document.createElement('div');
-          badge.className = 'skirmish-node-badge';
-          badge.textContent = '⚔️ CONTESTED';
-          node.appendChild(badge);
-        }
-      }
-    });
-
-    // 2. Clear existing convoy pips
-    document.querySelectorAll('.convoy-pip').forEach((pip) => pip.remove());
-
-    // 3. Render convoy pips along lanes or nodes
-    convoys.forEach((convoy: any) => {
-      const cur = convoy.current_sector_id;
-      const tgt = convoy.target_sector_id;
-      const progress = typeof convoy.transitProgress === 'number' ? convoy.transitProgress : 0.5;
-
-      let targetEl: HTMLElement | null = null;
-      let pipLeft = 50;
-
-      if ((cur === 1 && tgt === 2) || (cur === 2 && tgt === 1)) {
-        targetEl = document.getElementById('lane-1-2');
-        const normalized = cur === 1 ? progress : (1 - progress);
-        pipLeft = Math.min(85, Math.max(15, normalized * 100));
-      } else if ((cur === 2 && tgt === 3) || (cur === 3 && tgt === 2)) {
-        targetEl = document.getElementById('lane-2-3');
-        const normalized = cur === 2 ? progress : (1 - progress);
-        pipLeft = Math.min(85, Math.max(15, normalized * 100));
-      } else {
-        targetEl = document.getElementById(`node-sec-${cur}`);
-      }
-
-      if (targetEl) {
-        const pip = document.createElement('div');
-        pip.className = 'convoy-pip';
-        pip.textContent = '🚛';
-        pip.setAttribute('data-tooltip', `${convoy.name} (ETA ${convoy.etaSeconds}s)`);
-        if (targetEl.classList.contains('lane-connector')) {
-          pip.style.left = `${pipLeft}%`;
-        } else {
-          pip.style.top = '-14px';
-          pip.style.right = '-6px';
-        }
-        targetEl.appendChild(pip);
-      }
-    });
+    this.warpNavController.openNavModal();
   }
 
   public closeNavModal(): void {
-    if (this.modalNav) {
-      this.modalNav.classList.add('hidden');
-    }
+    this.warpNavController.closeNavModal();
   }
 
   public async executeWarpJump(targetSectorId: number): Promise<void> {
-    if (this.isWarping) return;
-    this.closeNavModal();
-
-    // Check pre-conditions locally
-    if (this.playerAP.currentAP < 5) {
-      this.audio.playApWarningSound();
-      this.showApNotification('⚠️ INSUFFICIENT ACTION POINTS (Requires 5 AP to jump)', true);
-      return;
-    }
-    if (this.shipFuel < 1) {
-      this.audio.playApWarningSound();
-      this.showApNotification('⚠️ INSUFFICIENT FUEL (Requires 1 unit Deuterium)', true);
-      return;
-    }
-
-    // Begin Hyperspace Warp Transition
-    this.isWarping = true;
-    this.warpAnimationTime = 0;
-    this.audio.playWarpDriveEngage();
-    this.showApNotification(`🌌 ENGAGING HYPERSPACE JUMP -> SEC-0${targetSectorId}...`, false);
-
-    // Call server jump API in parallel
-    try {
-      const res = await fetch('/api/navigate/jump', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ playerId: 'acc_sol_captain', targetSectorId }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok || !data.success) {
-        this.isWarping = false;
-        this.camera.fov = this.baseFov;
-        this.camera.updateProjectionMatrix();
-        this.audio.playApWarningSound();
-        this.showApNotification(`⚠️ ${data.error || 'WARP JUMP REJECTED'}`, true);
-        return;
-      }
-
-      // Smooth delay for warp animation climax (~1.1s)
-      await new Promise((resolve) => setTimeout(resolve, 1100));
-
-      // Update state from server response
-      this.currentSectorId = data.toSector.id;
-      this.currentSectorName = data.toSector.name;
-      this.shipFuel = data.remainingFuel;
-      this.playerAP.currentAP = data.currentAP;
-      this.updateApUI();
-
-      // Switch Sector Entities in Three.js Scene
-      this.loadSectorScene(this.currentSectorId, data.toSector.system_seed);
-
-      // Refresh ship and adjacent sectors
-      await this.loadShipAndSector();
-      this.updateHudSectorAllegiance();
-
-
-      // Breakout audio & finish warp animation
-      this.audio.playWarpExitChime();
-      this.showApNotification(`🚀 WARP COMPLETE // ENTERED SEC-0${this.currentSectorId} (${this.currentSectorName})`, false);
-
-      setTimeout(() => {
-        this.isWarping = false;
-        this.camera.fov = this.baseFov;
-        this.camera.updateProjectionMatrix();
-      }, 500);
-
-    } catch (err) {
-      this.isWarping = false;
-      this.camera.fov = this.baseFov;
-      this.camera.updateProjectionMatrix();
-      console.error('[WARP] Jump failed:', err);
-      this.showApNotification('⚠️ SUB-SPACE TRANSIT COLLAPSE', true);
-    }
+    await this.warpNavController.executeWarpJump(targetSectorId);
   }
 
   public loadSectorScene(sectorId: number, seed: number): void {
@@ -1901,9 +1245,7 @@ class GameEngine {
       getPlayerCredits: () => this.playerCredits,
       setPlayerCredits: (cr) => {
         this.playerCredits = cr;
-        if (this.modalMarketPlayerCredits) this.modalMarketPlayerCredits.textContent = `${this.playerCredits.toLocaleString()} Cr`;
-        if (this.elTelemetryCredits) this.elTelemetryCredits.textContent = `${this.playerCredits.toLocaleString()} Cr`;
-        if (this.elContractsPlayerCredits) this.elContractsPlayerCredits.textContent = `${this.playerCredits.toLocaleString()} Cr`;
+        this.marketController?.syncCreditDisplays(cr);
       },
       closeComms: () => this.commsController.closeAlienComms(),
       loadSectorScene: (id, seed) => this.loadSectorScene(id, seed ?? 99201),
@@ -1935,9 +1277,7 @@ class GameEngine {
       getPlayerCredits: () => this.playerCredits,
       setPlayerCredits: (credits: number) => {
         this.playerCredits = credits;
-        if (this.modalMarketPlayerCredits) this.modalMarketPlayerCredits.textContent = `${credits.toLocaleString()} Cr`;
-        if (this.elTelemetryCredits) this.elTelemetryCredits.textContent = `${credits.toLocaleString()} Cr`;
-        if (this.elContractsPlayerCredits) this.elContractsPlayerCredits.textContent = `${credits.toLocaleString()} Cr`;
+        this.marketController?.syncCreditDisplays(credits);
       },
       onPlotCourse: async (sectorId: number) => {
         await this.starmapController.lockCourse(sectorId);
@@ -1946,6 +1286,54 @@ class GameEngine {
         this.refreshFactionStandings();
         this.commsController?.loadSectorCaptainsPill();
       },
+    });
+
+    this.marketController = new StationMarketController({
+      audio: this.audio,
+      showApNotification: (msg, isErr) => this.showApNotification(msg, !!isErr),
+      getCurrentSectorId: () => this.currentSectorId,
+      getPlayerCredits: () => this.playerCredits,
+      setPlayerCredits: (cr) => {
+        this.playerCredits = cr;
+      },
+      onCargoUpdated: (usedCargo, capacity) => {
+        this.combatClient?.setCargoHudFill(usedCargo, capacity);
+      },
+    });
+
+    this.outfittingController = new OutfittingController({
+      audio: this.audio,
+      showApNotification: (msg, isErr) => this.showApNotification(msg, !!isErr),
+      getCurrentSectorId: () => this.currentSectorId,
+      getPlayerCredits: () => this.playerCredits,
+      setPlayerCredits: (cr) => {
+        this.playerCredits = cr;
+        this.marketController?.syncCreditDisplays(cr);
+      },
+      refreshPlayerHold: () => this.refreshPlayerHold(),
+    });
+
+    this.warpNavController = new WarpNavController({
+      audio: this.audio,
+      showApNotification: (msg, isErr) => this.showApNotification(msg, !!isErr),
+      getCurrentSectorId: () => this.currentSectorId,
+      getCurrentSectorName: () => this.currentSectorName,
+      getAdjacentSectors: () => this.adjacentSectors,
+      getShipFuel: () => this.shipFuel,
+      getMaxShipFuel: () => this.maxShipFuel,
+      getCurrentAP: () => this.playerAP.currentAP,
+      setSectorAndFuel: (sectorId, sectorName, fuel, ap) => {
+        this.currentSectorId = sectorId;
+        this.currentSectorName = sectorName;
+        this.shipFuel = fuel;
+        this.playerAP.currentAP = ap;
+        this.updateApUI();
+      },
+      getCamera: () => this.camera,
+      getBaseFov: () => this.baseFov,
+      loadSectorScene: (sectorId, seed) => this.loadSectorScene(sectorId, seed),
+      loadShipAndSector: () => this.loadShipAndSector(),
+      updateHudSectorAllegiance: () => this.updateHudSectorAllegiance(),
     });
 
     this.starmapController = new StarmapController({
@@ -1961,14 +1349,10 @@ class GameEngine {
       audio: this.audio,
       showApNotification: (msg, isErr) => this.showApNotification(msg, !!isErr),
       onAuthenticated: async (profile) => {
-        if (profile?.account?.id) {
-          this.playerAP.playerId = profile.account.id;
-        }
-        this.multiplayerController.connectSocialSocket();
-        await this.fetchPlayerAP();
-        await this.loadShipAndSector();
+        await this.hydrateAuthenticatedSession(profile?.account?.id);
       },
       onLoggedOut: () => {
+        this.hydratedForToken = null;
         if (this.combatClient?.combatSocket) {
           try {
             this.combatClient.combatSocket.close();
@@ -2168,23 +1552,37 @@ class GameEngine {
       this.openNavModal();
     });
 
-    this.btnCloseNav?.addEventListener('click', () => {
-      this.closeNavModal();
+    // Cockpit Minimal Drawer Toggles (Telemetry [T], Controls [F1], Hull Lab [B], Missions)
+    const togglePanel = (panelId: string, btnId?: string) => {
+      const panel = document.getElementById(panelId);
+      if (!panel) return;
+      const nowHidden = panel.classList.toggle('hidden');
+      if (btnId) document.getElementById(btnId)?.classList.toggle('active', !nowHidden);
+      this.audio.playUiBlip();
+    };
+    document.getElementById('btn-toggle-telemetry')?.addEventListener('click', () =>
+      togglePanel('telemetry-panel', 'btn-toggle-telemetry')
+    );
+    document.getElementById('btn-toggle-controls')?.addEventListener('click', () =>
+      togglePanel('instructions-panel', 'btn-toggle-controls')
+    );
+    document.getElementById('btn-toggle-hull-lab')?.addEventListener('click', () =>
+      togglePanel('hull-generator-panel', 'btn-toggle-hull-lab')
+    );
+    document.getElementById('btn-close-telemetry')?.addEventListener('click', () => {
+      document.getElementById('telemetry-panel')?.classList.add('hidden');
+      document.getElementById('btn-toggle-telemetry')?.classList.remove('active');
     });
-
-    const tabTraffic = document.getElementById('tab-radar-traffic');
-    const tabCommerce = document.getElementById('tab-radar-commerce');
-    tabTraffic?.addEventListener('click', () => {
-      this.activeRadarTab = 'TRAFFIC';
-      tabTraffic.classList.add('active');
-      tabCommerce?.classList.remove('active');
-      this.loadRadarFeed();
+    document.getElementById('btn-close-controls')?.addEventListener('click', () => {
+      document.getElementById('instructions-panel')?.classList.add('hidden');
+      document.getElementById('btn-toggle-controls')?.classList.remove('active');
     });
-    tabCommerce?.addEventListener('click', () => {
-      this.activeRadarTab = 'COMMERCE';
-      tabCommerce.classList.add('active');
-      tabTraffic?.classList.remove('active');
-      this.loadRadarFeed();
+    document.getElementById('btn-close-hull-lab')?.addEventListener('click', () => {
+      document.getElementById('hull-generator-panel')?.classList.add('hidden');
+      document.getElementById('btn-toggle-hull-lab')?.classList.remove('active');
+    });
+    document.getElementById('btn-toggle-missions')?.addEventListener('click', () => {
+      document.getElementById('hud-mission-tracker')?.classList.toggle('collapsed');
     });
 
     // Keydown Controls
@@ -2339,8 +1737,36 @@ class GameEngine {
         return;
       }
 
+      if (e.code === 'F1') {
+        e.preventDefault();
+        const ctrl = document.getElementById('instructions-panel');
+        if (ctrl) {
+          const h = ctrl.classList.toggle('hidden');
+          document.getElementById('btn-toggle-controls')?.classList.toggle('active', !h);
+        }
+        return;
+      }
+
+      if (e.code === 'KeyT') {
+        const tel = document.getElementById('telemetry-panel');
+        if (tel) {
+          const h = tel.classList.toggle('hidden');
+          document.getElementById('btn-toggle-telemetry')?.classList.toggle('active', !h);
+        }
+        return;
+      }
+
+      if (e.code === 'KeyB') {
+        const lab = document.getElementById('hull-generator-panel');
+        if (lab) {
+          const h = lab.classList.toggle('hidden');
+          document.getElementById('btn-toggle-hull-lab')?.classList.toggle('active', !h);
+        }
+        return;
+      }
+
       if (e.code === 'KeyJ') {
-        if (this.modalNav && !this.modalNav.classList.contains('hidden')) {
+        if (this.warpNavController.isOpen()) {
           this.closeNavModal();
         } else {
           this.openNavModal();
@@ -2365,12 +1791,27 @@ class GameEngine {
           this.combatClient.closeContainerLootModal();
           return;
         }
-        if (this.modalNav && !this.modalNav.classList.contains('hidden')) {
+        if (this.warpNavController.isOpen()) {
           this.closeNavModal();
           return;
         }
         if (this.isDocked) {
           this.undockShip();
+          return;
+        }
+        const openDrawerIds = ['instructions-panel', 'telemetry-panel', 'hull-generator-panel'];
+        let closedAny = false;
+        for (const id of openDrawerIds) {
+          const el = document.getElementById(id);
+          if (el && !el.classList.contains('hidden')) {
+            el.classList.add('hidden');
+            closedAny = true;
+          }
+        }
+        if (closedAny) {
+          document.getElementById('btn-toggle-controls')?.classList.remove('active');
+          document.getElementById('btn-toggle-telemetry')?.classList.remove('active');
+          document.getElementById('btn-toggle-hull-lab')?.classList.remove('active');
           return;
         }
       }
@@ -2890,9 +2331,9 @@ class GameEngine {
       : { inRange: false, canDock: false, distance: 999, message: 'NO STATION IN ORBIT // UNCLAIMED VOID SECTOR' };
 
     // 6. Hyperspace Warp Camera Distortion FX
-    if (this.isWarping) {
-      this.warpAnimationTime += deltaSec;
-      const progress = Math.min(1.0, this.warpAnimationTime / 1.1);
+    if (this.warpNavController?.isWarping) {
+      this.warpNavController.warpAnimationTime += deltaSec;
+      const progress = Math.min(1.0, this.warpNavController.warpAnimationTime / 1.1);
       const targetFov = this.baseFov + Math.sin(progress * Math.PI) * 44;
       this.camera.fov = targetFov;
       this.camera.updateProjectionMatrix();
@@ -3085,587 +2526,28 @@ class GameEngine {
     }
   }
 
-  /**
-   * Day 13 + Milestone 1.2: Fetches player loadout, variable slot layout, locker storage, and workbench UI
-   */
   public async loadOutfittingData(): Promise<void> {
-    try {
-      const res = await fetch('/api/outfitting/player?playerId=acc_sol_captain');
-      if (!res.ok) return;
-      const data = await res.json();
-      this.playerLoadout = data;
-
-      const { fitted, locker, powerGridMax, powerGridUsed, cpuMax, cpuUsed } = data;
-      const loadout = fitted || {};
-      const lockerList = locker || [];
-      const layout = data.slotLayout || { high: 2, mid: 2, low: 2, bay: 2 };
-      const bayCount = Number(layout.bay ?? 2);
-      const techComponents = Number(data.techComponents ?? 25);
-
-      // Update Outfitting Chassis Strip & Tech Components Currency
-      const elHullBadge = document.getElementById('outfitting-hull-badge');
-      const elHullName = document.getElementById('outfitting-hull-name');
-      const elTechComp = document.getElementById('outfitting-tech-components');
-      const elOutfitCredits = document.getElementById('outfitting-player-credits');
-      if (elHullBadge) {
-        elHullBadge.textContent = `${data.mainHullClass || data.shipClass} // ${layout.high}H • ${layout.mid}M • ${layout.low}L • ${bayCount} BAY`;
-      }
-      if (elHullName) {
-        elHullName.textContent = `${data.flagshipName || 'UNS Endeavour'} — ${data.hullSubtype || data.shipClass}`;
-      }
-      if (elTechComp) {
-        elTechComp.textContent = `${techComponents} Comp`;
-      }
-      if (elOutfitCredits) {
-        elOutfitCredits.textContent = `${this.playerCredits.toLocaleString()} Cr`;
-      }
-
-      // Sync HUD Hotbar Slot Visibility with Active Flagship Slot Layout
-      this.elSlotHigh1?.classList.toggle('hidden', layout.high < 1);
-      this.elSlotHigh2?.classList.toggle('hidden', layout.high < 2);
-      this.elSlotHigh3?.classList.toggle('hidden', layout.high < 3);
-      this.elSlotMid1?.classList.toggle('hidden', layout.mid < 1);
-      this.elSlotMid2?.classList.toggle('hidden', layout.mid < 2);
-      this.elSlotMid3?.classList.toggle('hidden', layout.mid < 3);
-      this.elSlotLow1?.classList.toggle('hidden', layout.low < 1);
-      this.elSlotLow2?.classList.toggle('hidden', layout.low < 2);
-      this.elSlotLow3?.classList.toggle('hidden', layout.low < 3);
-
-      const pgMax = powerGridMax || 120;
-      const cpuMaxVal = cpuMax || 180;
-      const totalPg = Number(powerGridUsed) || 0;
-      const totalCpu = Number(cpuUsed) || 0;
-      const pgPct = Math.min(100, (totalPg / pgMax) * 100);
-      const cpuPct = Math.min(100, (totalCpu / cpuMaxVal) * 100);
-
-      this.isLoadoutOverBudget = totalPg > pgMax || totalCpu > cpuMaxVal;
-
-      if (this.valFittingPg) {
-        this.valFittingPg.textContent = `${totalPg.toFixed(1)} / ${pgMax.toFixed(1)} MW (${pgPct.toFixed(1)}%)`;
-        this.valFittingPg.style.color = totalPg > pgMax ? '#ef4444' : '#f8fafc';
-      }
-      if (this.barFittingPg) {
-        this.barFittingPg.style.width = `${Math.min(100, pgPct)}%`;
-        if (totalPg > pgMax) this.barFittingPg.classList.add('over-budget');
-        else this.barFittingPg.classList.remove('over-budget');
-      }
-
-      if (this.valFittingCpu) {
-        this.valFittingCpu.textContent = `${totalCpu.toFixed(1)} / ${cpuMaxVal.toFixed(1)} tf (${cpuPct.toFixed(1)}%)`;
-        this.valFittingCpu.style.color = totalCpu > cpuMaxVal ? '#ef4444' : '#f8fafc';
-      }
-      if (this.barFittingCpu) {
-        this.barFittingCpu.style.width = `${Math.min(100, cpuPct)}%`;
-        if (totalCpu > cpuMaxVal) this.barFittingCpu.classList.add('over-budget');
-        else this.barFittingCpu.classList.remove('over-budget');
-      }
-
-      if (this.fittingOverbudgetAlert) {
-        if (this.isLoadoutOverBudget) this.fittingOverbudgetAlert.classList.remove('hidden');
-        else this.fittingOverbudgetAlert.classList.add('hidden');
-      }
-
-      // Render Dynamic Paperdoll Hardpoints (H1..H6, M1..M6, L1..L6, B1..B8)
-      if (this.paperdollSlotsList) {
-        this.paperdollSlotsList.innerHTML = '';
-        const slots: Array<{ slot: string; cat: 'HIGH' | 'MID' | 'LOW' | 'BAY' }> = [];
-        for (let i = 1; i <= layout.high; i++) slots.push({ slot: `H${i}`, cat: 'HIGH' });
-        for (let i = 1; i <= layout.mid; i++) slots.push({ slot: `M${i}`, cat: 'MID' });
-        for (let i = 1; i <= layout.low; i++) slots.push({ slot: `L${i}`, cat: 'LOW' });
-        for (let i = 1; i <= bayCount; i++) slots.push({ slot: `B${i}`, cat: 'BAY' });
-
-        for (const s of slots) {
-          const item = loadout[s.slot];
-          const card = document.createElement('div');
-          const catClass = s.cat.toLowerCase();
-
-          if (item) {
-            const rarity = item.rarity ? item.rarity.toLowerCase() : 'common';
-            card.className = `paperdoll-slot-card rarity-${rarity}`;
-            const mfg = item.manufacturer ? `<span class="mfg-badge">${item.manufacturer}</span>` : '';
-            const subTag = item.subtype ? `<span class="mfg-badge" style="border-color:#38bdf8;color:#7dd3fc;">${item.mainCategory || ''} • ${item.subtype}</span>` : '';
-            let affixesText = '';
-            if (item.affixes && item.affixes.length > 0) {
-              affixesText = item.affixes.map((a: any) => a.label || a.description || `${a.stat}: x${a.multiplier}`).join(' • ');
-            }
-
-            const pgCost = item.powerGridCost ?? item.power_grid_cost ?? 0;
-            const cpuCost = item.cpuCost ?? item.cpu_cost ?? 0;
-
-            card.innerHTML = `
-              <div class="slot-tag-badge ${catClass}">[${s.slot}]</div>
-              <div class="slot-info-block">
-                <div class="slot-item-name">${item.customName || item.name} ${subTag} ${mfg}</div>
-                <div class="slot-item-sub">
-                  <span>⚡ ${pgCost} MW</span>
-                  <span>🧠 ${cpuCost} tf</span>
-                </div>
-                ${affixesText ? `<div class="slot-item-stats">${affixesText}</div>` : ''}
-              </div>
-              <button class="unfit-btn-small" data-slot="${s.slot}">UNFIT</button>
-            `;
-            const unfitBtn = card.querySelector('.unfit-btn-small');
-            unfitBtn?.addEventListener('click', () => this.unfitModule(s.slot));
-          } else {
-            card.className = 'paperdoll-slot-card empty-slot';
-            card.innerHTML = `
-              <div class="slot-tag-badge ${catClass}">[${s.slot}]</div>
-              <div class="slot-info-block">
-                <span class="slot-empty-notice">EMPTY ${s.cat} SOCKET // READY FOR INSTALLATION</span>
-              </div>
-            `;
-          }
-          this.paperdollSlotsList.appendChild(card);
-        }
-      }
-
-      // Render Locker Storage with dynamic hull slot fit buttons + Workbench action
-      if (this.lockerModulesList) {
-        this.lockerModulesList.innerHTML = '';
-        if (this.lockerItemCount) {
-          this.lockerItemCount.textContent = `${lockerList.length} UNFITTED MODULES`;
-        }
-
-        if (lockerList.length === 0) {
-          this.lockerModulesList.innerHTML = '<div class="slot-empty-notice" style="padding: 1.5rem; text-align: center;">Station locker empty. Acquire modules from Armory or recover orbital loot containers.</div>';
-        } else {
-          for (const mod of lockerList) {
-            const card = document.createElement('div');
-            const rarity = mod.rarity ? mod.rarity.toLowerCase() : 'common';
-            card.className = `locker-module-card rarity-${rarity}`;
-
-            const mfg = mod.manufacturer ? `<span class="mfg-badge">${mod.manufacturer}</span>` : '';
-            const subTag = mod.subtype ? `<span class="mfg-badge" style="border-color:#38bdf8;color:#7dd3fc;">${mod.mainCategory || ''} • ${mod.subtype}</span>` : '';
-            const cat = mod.slotType || mod.slot_type || 'HIGH';
-            let affixesText = '';
-            if (mod.affixes && mod.affixes.length > 0) {
-              affixesText = mod.affixes.map((a: any) => a.label || a.description || `${a.stat}: x${a.multiplier}`).join(' • ');
-            }
-
-            const pgCost = mod.powerGridCost ?? mod.power_grid_cost ?? 0;
-            const cpuCost = mod.cpuCost ?? mod.cpu_cost ?? 0;
-
-            const prefix = cat === 'HIGH' ? 'H' : cat === 'MID' ? 'M' : cat === 'BAY' ? 'B' : 'L';
-            const slotCount = cat === 'HIGH' ? layout.high : cat === 'MID' ? layout.mid : cat === 'BAY' ? bayCount : layout.low;
-            let fitButtonsHtml = '';
-            for (let i = 1; i <= slotCount; i++) {
-              const sId = `${prefix}${i}`;
-              fitButtonsHtml += `<button class="fit-btn-small" data-id="${mod.id}" data-slot="${sId}">FIT [${sId}]</button>`;
-            }
-            fitButtonsHtml += `<button class="fit-btn-small workbench-select-btn" data-id="${mod.id}" style="border-color: #fbbf24; color: #fbbf24;">🔧 WORKBENCH</button>`;
-
-            card.innerHTML = `
-              <div class="locker-card-header">
-                <span class="locker-item-title">
-                  <span class="rarity-pill rarity-${rarity}">${mod.rarity || 'COMMON'}</span>
-                  <span>${mod.customName || mod.name}</span>
-                  ${subTag}
-                  ${mfg}
-                </span>
-                <span class="slot-tag-badge ${cat.toLowerCase()}">${cat}</span>
-              </div>
-              <div class="locker-card-specs">
-                <span>⚡ ${pgCost} MW</span>
-                <span>🧠 ${cpuCost} tf</span>
-              </div>
-              ${affixesText ? `<div class="locker-card-affixes">${affixesText}</div>` : ''}
-              <div class="locker-card-actions">
-                ${fitButtonsHtml}
-              </div>
-            `;
-
-            card.querySelectorAll('.fit-btn-small:not(.workbench-select-btn)').forEach((btn) => {
-              btn.addEventListener('click', (ev) => {
-                const target = ev.currentTarget as HTMLElement;
-                const slot = target.dataset.slot!;
-                const invId = target.dataset.id!;
-                this.fitModule(invId, slot);
-              });
-            });
-
-            card.querySelector('.workbench-select-btn')?.addEventListener('click', () => {
-              this.workbenchSelectedItemId = mod.id;
-              this.workbenchLockedAffixIndex = null;
-              this.renderWorkbenchPanel(lockerList, techComponents);
-            });
-
-            this.lockerModulesList.appendChild(card);
-          }
-        }
-      }
-
-      await this.renderWorkbenchPanel(lockerList, techComponents);
-    } catch (err) {
-      console.error('[OUTFITTING] Failed to load loadout:', err);
-    }
+    await this.outfittingController.loadOutfittingData();
   }
 
-  private async renderWorkbenchPanel(lockerList: any[], techComponents: number): Promise<void> {
-    const bodyEl = document.getElementById('workbench-body');
-    if (!bodyEl) return;
-
-    const selected =
-      lockerList.find((m) => m.id === this.workbenchSelectedItemId) || lockerList[0] || null;
-    if (!selected) {
-      this.workbenchSelectedItemId = null;
-      this.workbenchLockedAffixIndex = null;
-      bodyEl.innerHTML =
-        '<div class="slot-empty-notice">Locker empty — acquire or unfit a module to use Salvage, Reforge, or Rarity Upgrade.</div>';
-      return;
-    }
-
-    this.workbenchSelectedItemId = selected.id;
-    const rarity = (selected.rarity || 'COMMON').toUpperCase();
-    const affixes: any[] = Array.isArray(selected.affixes) ? selected.affixes : [];
-
-    // Fetch cost table once from authoritative API
-    if (!(this as any).workbenchCostCache) {
-      try {
-        const cRes = await fetch('/api/outfitting/workbench/costs');
-        if (cRes.ok) {
-          const cData = await cRes.json();
-          (this as any).workbenchCostCache = cData.costs;
-        }
-      } catch {}
-    }
-
-    const costTable = (this as any).workbenchCostCache || {};
-    const entry = costTable[rarity] || {
-      salvageComp: 4,
-      reforge: { credits: 120, components: 4 },
-      lockedReforge: null,
-      upgrade: { nextRarity: 'UNCOMMON', credits: 350, components: 12 },
-    };
-
-    const hasValidLock =
-      rarity !== 'COMMON' &&
-      this.workbenchLockedAffixIndex !== null &&
-      this.workbenchLockedAffixIndex >= 0 &&
-      this.workbenchLockedAffixIndex < affixes.length;
-    if (!hasValidLock) this.workbenchLockedAffixIndex = null;
-
-    const activeReforgeCost = hasValidLock && entry.lockedReforge ? entry.lockedReforge : entry.reforge;
-    const salvageCredits = Math.round(Number(selected.basePrice || 400) * 0.2);
-
-    const affixesHtml = affixes.length
-      ? affixes
-          .map((a, idx) => {
-            const isLocked = this.workbenchLockedAffixIndex === idx;
-            const canLock = rarity !== 'COMMON';
-            return `<button class="hud-btn small-btn workbench-affix-pill ${isLocked ? 'primary' : ''}" data-idx="${idx}" ${!canLock ? 'disabled title="Locking unlocks at UNCOMMON+"' : 'title="Click to lock/unlock this affix during Reforge"'}>${isLocked ? '🔒' : canLock ? '🔓' : '•'} ${a.label || `${a.stat}: x${a.multiplier}`}</button>`;
-          })
-          .join('')
-      : '<span class="slot-empty-notice">No rolled affixes (COMMON chassis)</span>';
-
-    bodyEl.innerHTML = `
-      <div class="workbench-selected-card">
-        <div class="workbench-item-summary">
-          <div>
-            <span class="rarity-pill rarity-${rarity.toLowerCase()}">${rarity}</span>
-            <strong style="margin-left: 0.4rem;">${selected.customName || selected.name}</strong>
-            <span class="col-subtext" style="margin-left: 0.5rem;">[${selected.slotType} • ${selected.subtype || ''}]</span>
-          </div>
-          <span style="font-family: monospace; color: #38bdf8;">Available: ${techComponents} Tech Comp • ${this.playerCredits.toLocaleString()} Cr</span>
-        </div>
-        <div class="workbench-affixes-row">
-          ${affixesHtml}
-        </div>
-        <div class="workbench-actions-row">
-          <button id="wb-btn-salvage" class="hud-btn small-btn danger">
-            ♻️ SALVAGE (+${entry.salvageComp} Comp, +${salvageCredits} Cr)
-          </button>
-          <button id="wb-btn-reforge" class="hud-btn small-btn">
-            🎲 REFORGE ${hasValidLock ? '(1 LOCKED)' : ''} (-${activeReforgeCost.credits} Cr, -${activeReforgeCost.components} Comp)
-          </button>
-          ${
-            entry.upgrade
-              ? `<button id="wb-btn-upgrade" class="hud-btn small-btn primary">⬆️ UPGRADE → ${entry.upgrade.nextRarity} (-${entry.upgrade.credits} Cr, -${entry.upgrade.components} Comp)</button>`
-              : `<span class="mfg-badge" style="border-color:#f59e0b;color:#fbbf24;">★ MAX LEGENDARY TIER</span>`
-          }
-        </div>
-      </div>
-    `;
-
-    bodyEl.querySelectorAll('.workbench-affix-pill').forEach((btn) => {
-      btn.addEventListener('click', (ev) => {
-        const idx = parseInt((ev.currentTarget as HTMLElement).dataset.idx || '-1', 10);
-        this.workbenchLockedAffixIndex = this.workbenchLockedAffixIndex === idx ? null : idx;
-        this.renderWorkbenchPanel(lockerList, techComponents);
-      });
-    });
-
-    document.getElementById('wb-btn-salvage')?.addEventListener('click', async () => {
-      await this.executeWorkbenchAction('/api/outfitting/workbench/salvage', {
-        playerId: 'acc_sol_captain',
-        itemId: selected.id,
-      });
-    });
-
-    document.getElementById('wb-btn-reforge')?.addEventListener('click', async () => {
-      await this.executeWorkbenchAction('/api/outfitting/workbench/reforge', {
-        playerId: 'acc_sol_captain',
-        itemId: selected.id,
-        lockedAffixIndex: this.workbenchLockedAffixIndex,
-      });
-    });
-
-    document.getElementById('wb-btn-upgrade')?.addEventListener('click', async () => {
-      await this.executeWorkbenchAction('/api/outfitting/workbench/upgrade', {
-        playerId: 'acc_sol_captain',
-        itemId: selected.id,
-      });
-    });
-  }
-
-  private async executeWorkbenchAction(endpoint: string, payload: Record<string, any>): Promise<void> {
-    try {
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        this.audio.playApWarningSound();
-        this.showApNotification(`⚠️ WORKBENCH ERROR: ${data.error || 'Action failed'}`, true);
-        return;
-      }
-      this.audio.playUiBlip();
-      if (typeof data.credits === 'number') {
-        this.playerCredits = data.credits;
-        if (this.elTelemetryCredits) this.elTelemetryCredits.textContent = `${data.credits.toLocaleString()} Cr`;
-      }
-      if (endpoint.endsWith('/salvage')) {
-        this.showApNotification(
-          `♻️ Salvaged "${data.salvagedName}": +${data.componentsGained} Comp, +${data.creditsGained} Cr`,
-          false
-        );
-        this.workbenchSelectedItemId = null;
-      } else if (endpoint.endsWith('/reforge')) {
-        this.showApNotification(`🎲 Reforged → "${data.item?.custom_name}"`, false);
-      } else if (endpoint.endsWith('/upgrade')) {
-        this.showApNotification(
-          `⬆️ Upgraded ${data.previousRarity} → ${data.newRarity}: "${data.item?.custom_name}"`,
-          false
-        );
-      }
-      await this.loadOutfittingData();
-      await this.refreshPlayerHold();
-    } catch (err) {
-      console.error('[WORKBENCH] Action error:', err);
-    }
-  }
-
-  /**
-   * Day 13: Fits module to slot with server-authoritative validation
-   */
   public async fitModule(inventoryId: string, slot: string): Promise<void> {
-    try {
-      const res = await fetch('/api/outfitting/fit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          playerId: 'acc_sol_captain',
-          inventoryId,
-          slot,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        this.audio.playApWarningSound();
-        this.showApNotification(`⚠️ FIT REJECTED: ${data.message || data.error || 'Capacity exceeded'}`, true);
-        return;
-      }
-      this.audio.playUiBlip();
-      this.showApNotification(`✅ MODULE INSTALLED TO SLOT [${slot}]`, false);
-      await this.loadOutfittingData();
-    } catch (err) {
-      console.error('[OUTFITTING] Fit error:', err);
-    }
+    await this.outfittingController.fitModule(inventoryId, slot);
   }
 
-  /**
-   * Day 13: Unfits module from slot back to locker
-   */
   public async unfitModule(slot: string): Promise<void> {
-    try {
-      const res = await fetch('/api/outfitting/unfit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          playerId: 'acc_sol_captain',
-          slot,
-        }),
-      });
-      if (res.ok) {
-        this.audio.playUiBlip();
-        this.showApNotification(`MODULE UNMOUNTED TO STATION LOCKER`, false);
-        await this.loadOutfittingData();
-      }
-    } catch (err) {
-      console.error('[OUTFITTING] Unfit error:', err);
-    }
+    await this.outfittingController.unfitModule(slot);
   }
 
-  /**
-   * Day 13: Loads naval armory blueprint catalog
-   */
   public async loadArmoryData(): Promise<void> {
-    try {
-      const res = await fetch('/api/outfitting/catalog');
-      if (!res.ok) return;
-      const json = await res.json();
-      const blueprints = Array.isArray(json) ? json : json.catalog || [];
-      this.equipmentCatalog = blueprints;
-
-      if (this.elArmoryPlayerCredits) {
-        this.elArmoryPlayerCredits.textContent = `${this.playerCredits.toLocaleString()} Cr`;
-      }
-
-      // Milestone 1.0: Load rotating Procedural Station Market Stock
-      if (this.elArmoryProceduralShopGrid) {
-        try {
-          const shopRes = await fetch(`/api/outfitting/shop?sectorId=${this.currentSectorId}`);
-          if (shopRes.ok) {
-            const shopJson = await shopRes.json();
-            const stock = shopJson.stock || [];
-            this.elArmoryProceduralShopGrid.innerHTML = '';
-            for (const item of stock) {
-              const card = document.createElement('div');
-              const cat = item.slotType || 'HIGH';
-              const rarity = (item.rarity || 'COMMON').toLowerCase();
-              card.className = `armory-card rarity-${rarity}`;
-              const affixText = (item.affixes || []).map((a: any) => a.label || `${a.stat} x${a.multiplier}`).join(' • ');
-              card.innerHTML = `
-                <div class="armory-card-header">
-                  <span class="slot-tag-badge ${cat.toLowerCase()}">${cat} • ${item.mainCategory}</span>
-                  <span class="armory-price-pill">${Number(item.basePrice).toLocaleString()} Cr</span>
-                </div>
-                <div class="armory-item-title">
-                  <span class="rarity-pill rarity-${rarity}">${item.rarity}</span>
-                  ${item.customName}
-                </div>
-                <div class="locker-card-specs">
-                  <span>⚡ ${item.powerGridCost} MW</span>
-                  <span>🧠 ${item.cpuCost} tf</span>
-                  <span>📦 ${item.subtype}</span>
-                </div>
-                ${affixText ? `<div class="locker-card-affixes">${affixText}</div>` : ''}
-                <button class="hud-btn primary fit-btn-small" style="margin-top: 0.4rem;">
-                  PURCHASE PROCEDURAL HARDWARE 🛒
-                </button>
-              `;
-              card.querySelector('button')?.addEventListener('click', () => {
-                this.buyProceduralShopModule(item.slotIndex);
-              });
-              this.elArmoryProceduralShopGrid.appendChild(card);
-            }
-          }
-        } catch (shopErr) {
-          console.warn('[ARMORY] Procedural shop load skipped:', shopErr);
-        }
-      }
-
-      if (this.elArmoryCatalogGrid) {
-        this.elArmoryCatalogGrid.innerHTML = '';
-        for (const bp of blueprints) {
-          const card = document.createElement('div');
-          const cat = bp.slot_type || bp.slotType || 'HIGH';
-          card.className = 'armory-card';
-
-          const mfg = bp.manufacturer ? `<span class="mfg-badge">${bp.manufacturer}</span>` : '';
-          const pgCost = bp.power_grid_cost ?? bp.powerGridCost ?? 0;
-          const cpuCost = bp.cpu_cost ?? bp.cpuCost ?? 0;
-          const price = bp.base_price ?? bp.basePrice ?? 500;
-          const stats = bp.base_stats || bp.baseStats;
-          const statsText = stats ? Object.entries(stats).map(([k, v]) => `${k}: ${v}`).join(' | ') : '';
-
-          card.innerHTML = `
-            <div class="armory-card-header">
-              <span class="slot-tag-badge ${cat.toLowerCase()}">${cat}</span>
-              <span class="armory-price-pill">${price.toLocaleString()} Cr</span>
-            </div>
-            <div class="armory-item-title">${bp.name} ${mfg}</div>
-            <div class="locker-card-specs">
-              <span>⚡ ${pgCost} MW</span>
-              <span>🧠 ${cpuCost} tf</span>
-            </div>
-            ${statsText ? `<div class="locker-card-affixes">${statsText}</div>` : ''}
-            <button class="hud-btn primary fit-btn-small" style="margin-top: 0.4rem;" data-id="${bp.id}">
-              PURCHASE MODULE 🛒
-            </button>
-          `;
-
-          card.querySelector('button')?.addEventListener('click', () => {
-            this.buyModule(bp.id);
-          });
-
-          this.elArmoryCatalogGrid.appendChild(card);
-        }
-      }
-    } catch (err) {
-      console.error('[ARMORY] Catalog load error:', err);
-    }
+    await this.outfittingController.loadArmoryData();
   }
 
-  /**
-   * Day 13: Purchases blueprint module from Armory and delivers to locker
-   */
   public async buyModule(blueprintId: string): Promise<void> {
-    try {
-      const res = await fetch('/api/outfitting/buy', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          playerId: 'acc_sol_captain',
-          blueprintId,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        this.audio.playApWarningSound();
-        this.showApNotification(`REQUISITION FAILED: ${data.error || 'Check funds'}`, true);
-        return;
-      }
-      this.audio.playTradeBuySound();
-      this.playerCredits = data.credits;
-      if (this.modalMarketPlayerCredits) this.modalMarketPlayerCredits.textContent = `${this.playerCredits.toLocaleString()} Cr`;
-      if (this.elTelemetryCredits) this.elTelemetryCredits.textContent = `${this.playerCredits.toLocaleString()} Cr`;
-      if (this.elArmoryPlayerCredits) this.elArmoryPlayerCredits.textContent = `${this.playerCredits.toLocaleString()} Cr`;
-      this.showApNotification(`🛒 MODULE PURCHASED & TRANSFERRED TO LOCKER`, false);
-      await this.loadArmoryData();
-    } catch (err) {
-      console.error('[ARMORY] Buy error:', err);
-    }
+    await this.outfittingController.buyModule(blueprintId);
   }
 
   public async buyProceduralShopModule(slotIndex: number): Promise<void> {
-    try {
-      const res = await fetch('/api/outfitting/shop/buy', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          playerId: 'acc_sol_captain',
-          sectorId: this.currentSectorId,
-          slotIndex,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        this.audio.playApWarningSound();
-        this.showApNotification(`REQUISITION FAILED: ${data.error || 'Check funds'}`, true);
-        return;
-      }
-      this.audio.playTradeBuySound();
-      this.playerCredits = data.credits;
-      if (this.modalMarketPlayerCredits) this.modalMarketPlayerCredits.textContent = `${this.playerCredits.toLocaleString()} Cr`;
-      if (this.elTelemetryCredits) this.elTelemetryCredits.textContent = `${this.playerCredits.toLocaleString()} Cr`;
-      if (this.elArmoryPlayerCredits) this.elArmoryPlayerCredits.textContent = `${this.playerCredits.toLocaleString()} Cr`;
-      this.showApNotification(`🛒 ACQUIRED ${data.module?.customName || 'PROCEDURAL HARDWARE'}`, false);
-      await this.loadArmoryData();
-    } catch (err) {
-      console.error('[ARMORY] Procedural buy error:', err);
-    }
+    await this.outfittingController.buyProceduralShopModule(slotIndex);
   }
 
   /**
@@ -3768,9 +2650,7 @@ class GameEngine {
    */
   public async loadContractsData(): Promise<void> {
     try {
-      if (this.elContractsPlayerCredits) {
-        this.elContractsPlayerCredits.textContent = `${this.playerCredits.toLocaleString()} Cr`;
-      }
+      this.marketController?.syncCreditDisplays(this.playerCredits);
 
       // Fetch active contracts
       const cRes = await fetch('/api/combat/contracts');
@@ -3808,7 +2688,8 @@ class GameEngine {
       }
 
       // Fetch killmails
-      const kmRes = await fetch('/api/combat/killmails?accountId=acc_sol_captain');
+      const accountId = apiClient.getAccountId();
+      const kmRes = await fetch(`/api/combat/killmails?accountId=${encodeURIComponent(accountId)}`);
       if (kmRes.ok) {
         const kmData = await kmRes.json();
         const killmails = kmData.killmails || [];
@@ -4128,11 +3009,15 @@ class GameEngine {
   }
 
   public getPlayerLoadout(): any {
-    return this.playerLoadout;
+    return this.outfittingController?.playerLoadout || null;
   }
 
   public getEquipmentCatalog(): any[] {
-    return this.equipmentCatalog;
+    return this.outfittingController?.equipmentCatalog || [];
+  }
+
+  public get isLoadoutOverBudget(): boolean {
+    return this.outfittingController?.isLoadoutOverBudget ?? false;
   }
 
   // --- Day 29: Xenobiology Controller Delegates ---

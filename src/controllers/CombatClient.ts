@@ -2537,7 +2537,7 @@ export class CombatClient {
 
   public async loadSalvageData(): Promise<void> {
     try {
-      const holdRes = await fetch('/api/player/hold?playerId=acc_sol_captain');
+      const holdRes = await fetch(`/api/player/hold?playerId=${encodeURIComponent(apiClient.getAccountId())}`);
       if (holdRes.ok) {
         const holdData = await holdRes.json();
         if (this.elSalvagePlayerCredits) {
@@ -2613,7 +2613,7 @@ export class CombatClient {
       const res = await fetch('/api/combat/wrecks/dismantle', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ wreckId, accountId: 'acc_sol_captain' }),
+        body: JSON.stringify({ wreckId, accountId: apiClient.getAccountId() }),
       });
       const data = await res.json();
       if (data.success) {
@@ -2637,7 +2637,7 @@ export class CombatClient {
       const res = await fetch('/api/combat/wrecks/refurbish', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ wreckId, accountId: 'acc_sol_captain' }),
+        body: JSON.stringify({ wreckId, accountId: apiClient.getAccountId() }),
       });
       const data = await res.json();
       if (data.success) {
@@ -2784,7 +2784,7 @@ export class CombatClient {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          creatorAccountId: 'acc_sol_captain',
+          creatorAccountId: apiClient.getAccountId(),
           targetName: this.activeKillmailData.killerName,
           targetEntityId: this.activeKillmailData.killerId,
           rewardCredits: this.selectedBountyAmount,
@@ -2823,7 +2823,7 @@ export class CombatClient {
       const res = await fetch('/api/combat/claim-frigate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ playerId: 'acc_sol_captain', sectorId }),
+        body: JSON.stringify({ playerId: apiClient.getAccountId(), sectorId }),
       });
 
       if (res.ok) {
@@ -2862,7 +2862,7 @@ export class CombatClient {
       const res = await fetch('/api/combat/emergency-recall', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ playerId: 'acc_sol_captain' }),
+        body: JSON.stringify({ playerId: apiClient.getAccountId() }),
       });
 
       if (res.ok) {
@@ -2999,7 +2999,7 @@ export class CombatClient {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          accountId: 'acc_sol_captain',
+          accountId: apiClient.getAccountId(),
           convoyId: this.activeEscortHauler.convoyId,
         }),
       });
