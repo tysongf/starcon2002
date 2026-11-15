@@ -3957,11 +3957,13 @@ class GameEngine {
 
   // --- Lander Controller Delegates ---
   public openSurfaceLander(): void {
-    this.landerController.openSurfaceLander();
+    const crewIds = this.surveyController ? this.surveyController.getSelectedLanderCrewIds() : [];
+    this.landerController.openSurfaceLander(crewIds);
   }
 
   public deploySurfaceLander(): void {
-    this.landerController.openSurfaceLander();
+    const crewIds = this.surveyController ? this.surveyController.getSelectedLanderCrewIds() : [];
+    this.landerController.openSurfaceLander(crewIds);
   }
 
   public closeSurfaceLander(): void {

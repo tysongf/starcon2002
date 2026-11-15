@@ -1,6 +1,13 @@
 import { db } from '../db/Database';
 import { getPlanetClassProfile } from '../procgen/PlanetTaxonomyCatalog';
 import { generatePlanetEcosystem, type ProceduralLifeform } from '../procgen/XenobiologyEngine';
+import {
+  computeLanderCrewEffects,
+  evaluateGritSurvivalRoll,
+  getLanderTierDef,
+  type EmbarkedCrewSnapshot,
+} from '../procgen/LanderCrewCatalog';
+import { combatManager } from './SectorCombatManager';
 
 export interface PlanetFauna {
   id: string;
@@ -37,12 +44,15 @@ export interface PlayerLander {
   id: string;
   account_id: string;
   name: string;
+  tier: number;
+  crew_capacity: number;
   hull: number;
   max_hull: number;
   fuel: number;
   max_fuel: number;
   cargo_capacity: number;
   fitted_modules: Record<string, any>;
+  active_expedition_crew?: EmbarkedCrewSnapshot[];
   is_active: boolean;
 }
 
@@ -237,9 +247,13 @@ export class PlanetaryFaunaService {
   }
 
   /**
-   * Validates orbital pre-conditions and deploys surface lander
+   * Validates orbital pre-conditions, embarks selected crew manifest, and deploys surface lander
    */
-  public async deployLander(accountId: string, planetId: string): Promise<{ success: boolean; session?: any; error?: string }> {
+  public async deployLander(
+    accountId: string,
+    planetId: string,
+    crewIds: string[] = []
+  ): Promise<{ success: boolean; session?: any; error?: string }> {
     // 1. Verify planet exists
     const { rows: pRows } = await db.query<any>(`SELECT * FROM planets WHERE id = $1`, [planetId]);
     if (pRows.length === 0) {
@@ -273,6 +287,80 @@ export class PlanetaryFaunaService {
       };
     }
 
+    const tierDef = getLanderTierDef(lander.tier);
+    const uniqueCrewIds = Array.from(new Set(crewIds.filter(Boolean)));
+    if (uniqueCrewIds.length > lander.crew_capacity) {
+      return {
+        success: false,
+        error: `CREW_CAPACITY_EXCEEDED: ${lander.name} seats max ${lander.crew_capacity} Specialist(s), attempted ${uniqueCrewIds.length}.`,
+      };
+    }
+
+    // Restore any stale LANDER-flagged crew on this lander back to prior state before embarking new manifest
+    const prevManifest: EmbarkedCrewSnapshot[] = Array.isArray(lander.active_expedition_crew)
+      ? lander.active_expedition_crew
+      : [];
+    if (prevManifest.length > 0) {
+      await this.restoreCrewManifest(accountId, prevManifest);
+    }
+
+    const embarkedCrew: EmbarkedCrewSnapshot[] = [];
+    if (uniqueCrewIds.length > 0) {
+      const { rows: crewRows } = await db.query<any>(
+        `SELECT * FROM crew_roster WHERE account_id = $1 AND id = ANY($2::varchar[])`,
+        [accountId, uniqueCrewIds]
+      );
+      if (crewRows.length !== uniqueCrewIds.length) {
+        return { success: false, error: 'CREW_NOT_FOUND: One or more selected crew members are not on your roster.' };
+      }
+
+      for (const r of crewRows) {
+        if (r.assignment_type === 'COLONY') {
+          return {
+            success: false,
+            error: `CREW_ON_COLONY: ${r.name} is stationed on a colony and cannot embark until recalled to Ship Reserve.`,
+          };
+        }
+        const specialties = typeof r.specialties === 'string' ? JSON.parse(r.specialties) : r.specialties || [r.primary_specialty];
+        embarkedCrew.push({
+          id: r.id,
+          seed: Number(r.seed || 1001),
+          name: r.name,
+          callsign: r.callsign || '',
+          factionId: r.faction_id || 'FACTION_SOL',
+          species: r.species || 'Sol Terran',
+          rarity: r.rarity || 'COMMON',
+          primarySpecialty: r.primary_specialty,
+          specialties,
+          aptitude: Number(r.aptitude || 50),
+          grit: Number(r.grit || 50),
+          efficiency: Number(r.efficiency || 50),
+          traitId: r.trait_id || 'STANDARD',
+          traitLabel: r.trait_label || 'Field Qualified',
+          traitDesc: r.trait_desc || '',
+          morale: Number(r.morale ?? 100),
+          previousAssignmentType: r.assignment_type === 'SHIP_BAY' ? 'SHIP_BAY' : 'RESERVE',
+          previousBaySlot: r.assigned_bay_slot || null,
+        });
+      }
+
+      await db.query(
+        `UPDATE crew_roster
+         SET assignment_type = 'LANDER', assigned_bay_slot = NULL
+         WHERE account_id = $1 AND id = ANY($2::varchar[])`,
+        [accountId, uniqueCrewIds]
+      );
+    }
+
+    await db.query(
+      `UPDATE player_landers SET active_expedition_crew = $1::jsonb WHERE id = $2`,
+      [JSON.stringify(embarkedCrew), lander.id]
+    );
+
+    const crewEffects = computeLanderCrewEffects(embarkedCrew, tierDef);
+    const effectiveMaxHull = Math.round(lander.max_hull * (1 + crewEffects.extraMaxHullPct));
+    const effectiveCargoCapacity = Math.round(lander.cargo_capacity * (1 + crewEffects.cargoCapBonusPct));
+
     const fauna = await this.getPlanetFauna(planetId, false);
     const titans = await this.getPlanetTitans(planetId);
 
@@ -286,13 +374,17 @@ export class PlanetaryFaunaService {
         lander: {
           id: lander.id,
           name: lander.name,
-          hull: lander.hull,
-          maxHull: lander.max_hull,
+          tier: lander.tier,
+          crewCapacity: lander.crew_capacity,
+          hull: Math.min(effectiveMaxHull, lander.hull + (effectiveMaxHull - lander.max_hull)),
+          maxHull: effectiveMaxHull,
           fuel: lander.fuel,
           maxFuel: lander.max_fuel,
-          cargoCapacity: lander.cargo_capacity,
+          cargoCapacity: effectiveCargoCapacity,
           fittedModules: lander.fitted_modules || {},
         },
+        embarkedCrew,
+        crewEffects,
         fauna,
         titans,
         deployedAt: new Date().toISOString(),
@@ -318,20 +410,28 @@ export class PlanetaryFaunaService {
   }> {
     const { accountId, mineralsHarvested, bioSamplesHarvested, hullRemaining, fuelRemaining } = payload;
 
-    // 1. Retrieve ship
+    // 1. Retrieve ship & active lander crew modifiers
     const { rows: sRows } = await db.query<any>(`SELECT id, cargo_capacity FROM ships WHERE account_id = $1 LIMIT 1`, [accountId]);
     if (sRows.length === 0) {
       return { success: false, stashedMinerals: 0, stashedBioUnits: 0, recoveredCommodities: [], fuelBonus: 0, lander: null, message: '', error: 'Ship not found for account.' };
     }
     const ship = sRows[0];
+    const activeLander = await this.getActiveLander(accountId);
+    const crewEffects = activeLander
+      ? computeLanderCrewEffects(activeLander.active_expedition_crew || [], getLanderTierDef(activeLander.tier))
+      : null;
+    const minMult = crewEffects?.mineralYieldMult || 1.0;
+    const bioMult = crewEffects?.bioYieldMult || 1.0;
+    const fuelBonus = 25.0 + (crewEffects?.beaconFuelBonus || 0);
 
-    // 2. Offload Minerals into ship_cargo
+    // 2. Offload Minerals into ship_cargo (authoritative Miner/Geologist yield scaling)
     let totalMinerals = 0;
     const recoveredCommodities: any[] = [];
 
     for (const mineral of mineralsHarvested) {
       if (mineral.quantity <= 0) continue;
-      totalMinerals += mineral.quantity;
+      const effectiveQty = Math.max(1, Math.round(mineral.quantity * minMult));
+      totalMinerals += effectiveQty;
       const commodityId = mineral.commodityId || this.mapMineralToCommodity(mineral.name);
 
       await db.query(
@@ -339,22 +439,24 @@ export class PlanetaryFaunaService {
          VALUES ($1, $2, $3)
          ON CONFLICT (ship_id, commodity_id)
          DO UPDATE SET quantity = ship_cargo.quantity + $3`,
-        [ship.id, commodityId, mineral.quantity]
+        [ship.id, commodityId, effectiveQty]
       );
 
       recoveredCommodities.push({
         commodityId,
         name: mineral.name,
-        quantity: mineral.quantity,
+        quantity: effectiveQty,
       });
     }
 
-    // 3. Offload Biological Samples into ship_cargo
+    // 3. Offload Biological Samples into ship_cargo (authoritative Biologist/Chemist scaling)
     let totalBioUnits = 0;
     for (const bio of bioSamplesHarvested) {
       if (bio.quantity <= 0) continue;
-      const units = bio.bioUnits || (bio.quantity * 10);
-      totalBioUnits += units;
+      const baseUnits = bio.bioUnits || bio.quantity * 10;
+      const effectiveUnits = Math.max(1, Math.round(baseUnits * bioMult));
+      const effectiveBioQty = Math.max(1, Math.round(bio.quantity * bioMult));
+      totalBioUnits += effectiveUnits;
 
       const commodityId = 'COMM_BIO_SPECIMENS';
       await db.query(
@@ -362,23 +464,25 @@ export class PlanetaryFaunaService {
          VALUES ($1, $2, $3)
          ON CONFLICT (ship_id, commodity_id)
          DO UPDATE SET quantity = ship_cargo.quantity + $3`,
-        [ship.id, commodityId, bio.quantity]
+        [ship.id, commodityId, effectiveBioQty]
       );
 
       recoveredCommodities.push({
         commodityId,
         name: bio.name,
-        quantity: bio.quantity,
-        bioUnits: units,
+        quantity: effectiveBioQty,
+        bioUnits: effectiveUnits,
       });
     }
 
-    // 4. Update lander: refund +25 fuel and update hull
+    // 4. Update lander: refund +25 fuel (+Settler bonus) and update hull
+    const refueledVal = Math.max(0, fuelRemaining) + fuelBonus;
+    const clampedHullVal = Math.max(1, hullRemaining);
     await db.query(
       `UPDATE player_landers
-       SET fuel = LEAST(max_fuel, $1 + 25.0), hull = $2
+       SET fuel = LEAST(max_fuel, $1), hull = LEAST(max_hull, $2)
        WHERE account_id = $3 AND is_active = TRUE`,
-      [Math.max(0, fuelRemaining), Math.max(1, hullRemaining), accountId]
+      [refueledVal, clampedHullVal, accountId]
     );
 
     const updatedLander = await this.getActiveLander(accountId);
@@ -388,19 +492,59 @@ export class PlanetaryFaunaService {
       stashedMinerals: totalMinerals,
       stashedBioUnits: totalBioUnits,
       recoveredCommodities,
-      fuelBonus: 25.0,
+      fuelBonus,
       lander: updatedLander,
-      message: `Offloaded ${recoveredCommodities.length} resource batches to mothership hold. Lander refueled (+25.0 Fuel). Surface expedition active.`,
+      message: `Offloaded ${recoveredCommodities.length} resource batches to mothership hold. Lander refueled (+${fuelBonus.toFixed(0)} Fuel). Surface expedition active.`,
     };
   }
 
+  private async restoreCrewManifest(accountId: string, manifest: EmbarkedCrewSnapshot[]): Promise<void> {
+    for (const member of manifest) {
+      let targetAssign = member.previousAssignmentType || 'RESERVE';
+      let targetBay = member.previousBaySlot || null;
+      if (targetAssign === 'SHIP_BAY' && targetBay) {
+        const occRes = await db.query<any>(
+          `SELECT id FROM crew_roster WHERE account_id = $1 AND assigned_bay_slot = $2 AND assignment_type = 'SHIP_BAY' AND id <> $3`,
+          [accountId, targetBay, member.id]
+        );
+        if (occRes.rows.length > 0) {
+          targetAssign = 'RESERVE';
+          targetBay = null;
+        }
+      } else {
+        targetAssign = 'RESERVE';
+        targetBay = null;
+      }
+
+      await db.query(
+        `UPDATE crew_roster
+         SET assignment_type = $1, assigned_bay_slot = $2
+         WHERE id = $3 AND account_id = $4`,
+        [targetAssign, targetBay, member.id, accountId]
+      );
+    }
+  }
+
   /**
-   * Atomically commits harvested minerals and bio-specimens into player hold upon lander recovery
+   * Atomically commits harvested minerals and bio-specimens into player hold upon lander recovery,
+   * handles Grit-based orbital CASTAWAY ejection vs KIA on hull loss, and grants Veteran progression.
    */
   public async recoverLander(
     planetId: string,
     payload: LanderRecoveryPayload
-  ): Promise<{ success: boolean; status?: string; totalMinerals: number; totalBioUnits: number; recoveredCommodities: any[]; error?: string }> {
+  ): Promise<{
+    success: boolean;
+    status?: string;
+    totalMinerals: number;
+    totalBioUnits: number;
+    recoveredCommodities: any[];
+    casualties?: any[];
+    ejectedCastaways?: any[];
+    veteransGained?: any[];
+    hazardPayPaid?: number;
+    sectorId?: number;
+    error?: string;
+  }> {
     const { accountId, mineralsHarvested, bioSamplesHarvested, hullRemaining, fuelRemaining } = payload;
 
     // 1. Retrieve ship
@@ -410,11 +554,83 @@ export class PlanetaryFaunaService {
     }
     const ship = sRows[0];
 
-    // 2. Check if lander suffered total hull failure on surface
+    const [activeLander, pRes] = await Promise.all([
+      this.getActiveLander(accountId),
+      db.query<any>(
+        `SELECT id, name, sector_id, COALESCE(hazard_thermal_level,0) AS th, COALESCE(hazard_ion_level,0) AS ion, COALESCE(hazard_caustic_level,0) AS cau
+         FROM planets WHERE id = $1 LIMIT 1`,
+        [planetId]
+      ),
+    ]);
+    const planetRow = pRes.rows[0] || { id: planetId, name: planetId, sector_id: 1, th: 0, ion: 0, cau: 0 };
+    const sectorId = Number(planetRow.sector_id || 1);
+    const manifest: EmbarkedCrewSnapshot[] = activeLander?.active_expedition_crew || [];
+
+    // 2. Check if lander suffered total hull failure on surface -> Grit survival roll!
     if (hullRemaining <= 0) {
+      const casualties: any[] = [];
+      const ejectedCastaways: any[] = [];
+      const planetSeedFactor = (sectorId * 131 + planetId.length * 17) >>> 0;
+
+      for (const member of manifest) {
+        const roll = evaluateGritSurvivalRoll(member, planetSeedFactor);
+        const casualtyId = `cas_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+        const outcome = roll.survived ? 'EJECTED_CASTAWAY' : 'KIA';
+
+        // Remove from active roster (survivors must be scooped from their orbital cryo-pod!)
+        await db.query(`DELETE FROM crew_roster WHERE id = $1 AND account_id = $2`, [member.id, accountId]);
+
+        await db.query(
+          `INSERT INTO crew_casualties (
+             id, account_id, crew_name, callsign, rarity, specialties, aptitude, grit,
+             planet_id, planet_name, lander_name, outcome
+           ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12)`,
+          [
+            casualtyId,
+            accountId,
+            member.name,
+            member.callsign || '',
+            member.rarity,
+            JSON.stringify(member.specialties),
+            member.aptitude,
+            member.grit,
+            planetRow.id,
+            planetRow.name,
+            activeLander?.name || 'Surface Lander',
+            outcome,
+          ]
+        );
+
+        if (roll.survived) {
+          const containerId = combatManager.spawnPreservedCastawayPod(
+            sectorId,
+            member,
+            `Ejected over ${planetRow.name} (${activeLander?.name || 'Lander'})`
+          );
+          ejectedCastaways.push({
+            id: member.id,
+            name: member.name,
+            specialties: member.specialties,
+            grit: member.grit,
+            survivalChance: roll.survivalChance,
+            containerId,
+            sectorId,
+          });
+        } else {
+          casualties.push({
+            id: member.id,
+            name: member.name,
+            specialties: member.specialties,
+            grit: member.grit,
+            survivalChance: roll.survivalChance,
+            outcome: 'KIA',
+          });
+        }
+      }
+
       await db.query(
         `UPDATE player_landers
-         SET hull = 0, is_active = FALSE, status = 'DESTROYED'
+         SET hull = 0, is_active = FALSE, status = 'DESTROYED', active_expedition_crew = '[]'::jsonb
          WHERE account_id = $1 AND is_active = TRUE`,
         [accountId]
       );
@@ -425,26 +641,43 @@ export class PlanetaryFaunaService {
         totalMinerals: 0,
         totalBioUnits: 0,
         recoveredCommodities: [],
+        casualties,
+        ejectedCastaways,
+        sectorId,
       };
     }
 
-    // 2. Update lander hull and fuel
+    // 3. Safe ascent: restore crew prior SHIP_BAY / RESERVE assignments & apply effects
+    const crewEffects = activeLander
+      ? computeLanderCrewEffects(manifest, getLanderTierDef(activeLander.tier))
+      : null;
+    const minMult = crewEffects?.mineralYieldMult || 1.0;
+    const bioMult = crewEffects?.bioYieldMult || 1.0;
+
     await db.query(
       `UPDATE player_landers
-       SET hull = $1, fuel = $2
+       SET hull = $1, fuel = $2, active_expedition_crew = '[]'::jsonb
        WHERE account_id = $3 AND is_active = TRUE`,
-      [Math.max(0, Math.min(250, hullRemaining)), Math.max(0, Math.min(250, fuelRemaining)), accountId]
+      [
+        Math.max(0, Math.min(Number(activeLander?.max_hull || 250) * 1.5, Math.round(hullRemaining))),
+        Math.max(0, Math.min(Number(activeLander?.max_fuel || 250), fuelRemaining)),
+        accountId,
+      ]
     );
 
-    // 3. Process Minerals into ship_cargo
+    if (manifest.length > 0) {
+      await this.restoreCrewManifest(accountId, manifest);
+    }
+
+    // 4. Process Minerals into ship_cargo
     let totalMinerals = 0;
     const recoveredCommodities: any[] = [];
 
     for (const mineral of mineralsHarvested) {
       if (mineral.quantity <= 0) continue;
-      totalMinerals += mineral.quantity;
+      const effectiveQty = Math.max(1, Math.round(mineral.quantity * minMult));
+      totalMinerals += effectiveQty;
 
-      // Map mineral name to appropriate commodity
       const commodityId = mineral.commodityId || this.mapMineralToCommodity(mineral.name);
 
       await db.query(
@@ -452,22 +685,24 @@ export class PlanetaryFaunaService {
          VALUES ($1, $2, $3)
          ON CONFLICT (ship_id, commodity_id)
          DO UPDATE SET quantity = ship_cargo.quantity + $3`,
-        [ship.id, commodityId, mineral.quantity]
+        [ship.id, commodityId, effectiveQty]
       );
 
       recoveredCommodities.push({
         commodityId,
         name: mineral.name,
-        quantity: mineral.quantity,
+        quantity: effectiveQty,
       });
     }
 
-    // 4. Process Biological Samples into ship_cargo
+    // 5. Process Biological Samples into ship_cargo
     let totalBioUnits = 0;
     for (const bio of bioSamplesHarvested) {
       if (bio.quantity <= 0) continue;
-      const units = bio.bioUnits || (bio.quantity * 10);
-      totalBioUnits += units;
+      const baseUnits = bio.bioUnits || bio.quantity * 10;
+      const effectiveUnits = Math.max(1, Math.round(baseUnits * bioMult));
+      const effectiveBioQty = Math.max(1, Math.round(bio.quantity * bioMult));
+      totalBioUnits += effectiveUnits;
 
       const commodityId = 'COMM_BIO_SPECIMENS';
       await db.query(
@@ -475,15 +710,58 @@ export class PlanetaryFaunaService {
          VALUES ($1, $2, $3)
          ON CONFLICT (ship_id, commodity_id)
          DO UPDATE SET quantity = ship_cargo.quantity + $3`,
-        [ship.id, commodityId, bio.quantity]
+        [ship.id, commodityId, effectiveBioQty]
       );
 
       recoveredCommodities.push({
         commodityId,
         name: bio.name,
-        quantity: bio.quantity,
-        bioUnits: units,
+        quantity: effectiveBioQty,
+        bioUnits: effectiveUnits,
       });
+    }
+
+    // 6. Veteran Stat Growth & Hazard Pay on safe extraction with embarked crew
+    const veteransGained: any[] = [];
+    let hazardPayPaid = 0;
+    const totalHazardLevel = Number(planetRow.th || 0) + Number(planetRow.ion || 0) + Number(planetRow.cau || 0);
+
+    if (manifest.length > 0) {
+      const payPerCrew = (15 + totalHazardLevel * 5) * (1 - (crewEffects?.hazardPayDiscount || 0));
+      const rawHazardPay = Math.round(payPerCrew * manifest.length);
+      if (rawHazardPay > 0) {
+        const accRes = await db.query<any>(`SELECT credits FROM accounts WHERE id = $1`, [accountId]);
+        const curCredits = Number(accRes.rows[0]?.credits || 0);
+        hazardPayPaid = Math.min(curCredits, rawHazardPay);
+        if (hazardPayPaid > 0) {
+          await db.query(`UPDATE accounts SET credits = credits - $1 WHERE id = $2`, [hazardPayPaid, accountId]);
+        }
+      }
+
+      for (const member of manifest) {
+        const moraleGain = totalHazardLevel > 0 ? 5 : 2;
+        if (totalHazardLevel >= 2 || totalMinerals + totalBioUnits >= 15) {
+          const boostGrit = (Number(member.seed || 0) + totalMinerals) % 2 === 0;
+          if (boostGrit) {
+            await db.query(
+              `UPDATE crew_roster SET grit = LEAST(99, grit + 1), morale = LEAST(100, morale + $1) WHERE id = $2`,
+              [moraleGain, member.id]
+            );
+            veteransGained.push({ id: member.id, name: member.name, stat: 'grit', delta: 1 });
+          } else {
+            await db.query(
+              `UPDATE crew_roster SET aptitude = LEAST(99, aptitude + 1), morale = LEAST(100, morale + $1) WHERE id = $2`,
+              [moraleGain, member.id]
+            );
+            veteransGained.push({ id: member.id, name: member.name, stat: 'aptitude', delta: 1 });
+          }
+        } else {
+          await db.query(
+            `UPDATE crew_roster SET morale = LEAST(100, morale + $1) WHERE id = $2`,
+            [moraleGain, member.id]
+          );
+        }
+      }
     }
 
     return {
@@ -491,6 +769,8 @@ export class PlanetaryFaunaService {
       totalMinerals,
       totalBioUnits,
       recoveredCommodities,
+      veteransGained,
+      hazardPayPaid,
     };
   }
 
@@ -509,12 +789,18 @@ export class PlanetaryFaunaService {
       id: r.id,
       account_id: r.account_id,
       name: r.name,
+      tier: Number(r.tier || 1),
+      crew_capacity: Number(r.crew_capacity || 1),
       hull: r.hull,
       max_hull: r.max_hull,
       fuel: parseFloat(r.fuel),
       max_fuel: parseFloat(r.max_fuel),
       cargo_capacity: r.cargo_capacity,
       fitted_modules: typeof r.fitted_modules === 'string' ? JSON.parse(r.fitted_modules) : (r.fitted_modules || {}),
+      active_expedition_crew:
+        typeof r.active_expedition_crew === 'string'
+          ? JSON.parse(r.active_expedition_crew || '[]')
+          : r.active_expedition_crew || [],
       is_active: r.is_active,
     };
   }
@@ -523,32 +809,14 @@ export class PlanetaryFaunaService {
    * Retrieves active lander or initializes default Vanguard Mk.I
    */
   public async getOrCreateActiveLander(accountId: string): Promise<PlayerLander> {
-    const { rows } = await db.query<any>(
-      `SELECT * FROM player_landers WHERE account_id = $1 AND is_active = TRUE LIMIT 1`,
-      [accountId]
-    );
-
-    if (rows.length > 0) {
-      const r = rows[0];
-      return {
-        id: r.id,
-        account_id: r.account_id,
-        name: r.name,
-        hull: r.hull,
-        max_hull: r.max_hull,
-        fuel: parseFloat(r.fuel),
-        max_fuel: parseFloat(r.max_fuel),
-        cargo_capacity: r.cargo_capacity,
-        fitted_modules: typeof r.fitted_modules === 'string' ? JSON.parse(r.fitted_modules) : (r.fitted_modules || {}),
-        is_active: r.is_active,
-      };
-    }
+    const existing = await this.getActiveLander(accountId);
+    if (existing) return existing;
 
     const newId = `lander_${accountId}_01`;
     await db.query(
-      `INSERT INTO player_landers (id, account_id, name, hull, max_hull, fuel, max_fuel, cargo_capacity, fitted_modules, is_active)
-       VALUES ($1, $2, 'Vanguard Mk.I Lander', 100, 100, 100.0, 100.0, 25, '{}'::jsonb, TRUE)
-       ON CONFLICT (id) DO UPDATE SET hull = 100, fuel = 100.0`,
+      `INSERT INTO player_landers (id, account_id, name, tier, crew_capacity, hull, max_hull, fuel, max_fuel, cargo_capacity, fitted_modules, active_expedition_crew, is_active)
+       VALUES ($1, $2, 'Vanguard Mk.I Lander', 1, 1, 100, 100, 100.0, 100.0, 25, '{}'::jsonb, '[]'::jsonb, TRUE)
+       ON CONFLICT (id) DO UPDATE SET hull = 100, fuel = 100.0, tier = 1, crew_capacity = 1, active_expedition_crew = '[]'::jsonb`,
       [newId, accountId]
     );
 
@@ -556,12 +824,15 @@ export class PlanetaryFaunaService {
       id: newId,
       account_id: accountId,
       name: 'Vanguard Mk.I Lander',
+      tier: 1,
+      crew_capacity: 1,
       hull: 100,
       max_hull: 100,
       fuel: 100.0,
       max_fuel: 100.0,
       cargo_capacity: 25,
       fitted_modules: {},
+      active_expedition_crew: [],
       is_active: true,
     };
   }

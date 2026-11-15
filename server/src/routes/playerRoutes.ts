@@ -170,6 +170,8 @@ export const playerRoutes: FastifyPluginAsync = async (server) => {
       await db.query('UPDATE player_fleet SET deployment_slot = NULL WHERE account_id = $1', [accountId]);
       await db.query('DELETE FROM crew_roster WHERE account_id = $1', [accountId]);
       await db.query('DELETE FROM crew_market_claims WHERE account_id = $1', [accountId]);
+      await db.query('DELETE FROM crew_casualties WHERE account_id = $1', [accountId]);
+      await db.query('DELETE FROM player_landers WHERE account_id = $1', [accountId]);
       await db.query('UPDATE accounts SET crew_arrears_cycles = 0, crew_refresh_nonce = 0 WHERE id = $1', [accountId]);
       await db.query('UPDATE precursor_sites SET is_deciphered = FALSE');
       await db.query('DELETE FROM precursor_research WHERE account_id = $1', [accountId]);
@@ -235,6 +237,8 @@ export const playerRoutes: FastifyPluginAsync = async (server) => {
       await db.query('UPDATE player_fleet SET deployment_slot = NULL WHERE account_id = $1', [accountId]);
       await db.query('DELETE FROM crew_roster WHERE account_id = $1', [accountId]);
       await db.query('DELETE FROM crew_market_claims WHERE account_id = $1', [accountId]);
+      await db.query('DELETE FROM crew_casualties WHERE account_id = $1', [accountId]);
+      await db.query('DELETE FROM player_landers WHERE account_id = $1', [accountId]);
       await db.query('UPDATE accounts SET crew_arrears_cycles = 0, crew_refresh_nonce = 0 WHERE id = $1', [accountId]);
       await db.query('UPDATE precursor_sites SET is_deciphered = FALSE');
       await db.query('DELETE FROM precursor_research WHERE account_id = $1', [accountId]);

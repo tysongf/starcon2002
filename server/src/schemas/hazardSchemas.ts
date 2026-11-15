@@ -7,6 +7,7 @@ export type PlanetParam = Static<typeof PlanetParamSchema>;
 
 export const PurchaseLanderBodySchema = Type.Object({
   accountId: Type.String({ minLength: 1 }),
+  tier: Type.Optional(Type.Integer({ minimum: 1, maximum: 4 })),
 });
 export type PurchaseLanderBody = Static<typeof PurchaseLanderBodySchema>;
 

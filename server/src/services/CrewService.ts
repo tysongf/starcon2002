@@ -41,7 +41,7 @@ export interface CrewMemberRecord {
   hiringFee: number;
   marketValue: number;
   resaleValue: number;
-  assignmentType: 'RESERVE' | 'SHIP_BAY' | 'COLONY';
+  assignmentType: 'RESERVE' | 'SHIP_BAY' | 'COLONY' | 'LANDER';
   assignedBaySlot: string | null;
   assignedColonyId: string | null;
   assignedModuleKey: string | null;
@@ -604,10 +604,69 @@ export class CrewService {
    * Directly enrolls an encounter-sourced crew member (Castaway Rescue Pod or Alien Captain Defector/Contractor).
    */
   public async enrollEncounterCrew(accountId: string, candidate: ProceduralCrewCandidate): Promise<CrewMemberRecord> {
-    return this.insertCrewMember(accountId, candidate);
+    return this.insertCrewMember(accountId, candidate, 100);
   }
 
-  private async insertCrewMember(accountId: string, candidate: ProceduralCrewCandidate): Promise<CrewMemberRecord> {
+  /**
+   * Re-enrolls a survivor ejected from a destroyed planetary lander cryo-pod, preserving all veteran stats.
+   */
+  public async enrollPreservedCrew(accountId: string, snap: any, moraleOverride: number = 55): Promise<CrewMemberRecord> {
+    const baseSpec = (Array.isArray(snap.specialties) && snap.specialties.length > 0 ? snap.specialties : ['Pilot']) as CrewSpecialtyId[];
+    const primary = (snap.primarySpecialty || baseSpec[0]) as CrewSpecialtyId;
+    const candidate: ProceduralCrewCandidate = {
+      listingId: `EJECT_${snap.id || Date.now()}`,
+      seed: Number(snap.seed || 7777),
+      name: String(snap.name || 'Recovered Specialist'),
+      callsign: String(snap.callsign || 'POD-1'),
+      factionId: (snap.factionId || 'FACTION_SOL') as any,
+      factionName: String(snap.factionName || 'Sol Directorate'),
+      species: String(snap.species || 'Sol Terran'),
+      age: Number(snap.age || 32),
+      rarity: (snap.rarity || 'COMMON') as CrewRarity,
+      primarySpecialty: primary,
+      specialties: baseSpec,
+      aptitude: Number(snap.aptitude || 60),
+      grit: Number(snap.grit || 65),
+      efficiency: Number(snap.efficiency || 60),
+      traitId: String(snap.traitId || 'STALWART'),
+      traitLabel: String(snap.traitLabel || 'Crash Survivor'),
+      traitDesc: String(snap.traitDesc || 'Survived an emergency planetary ejection.'),
+      baseSalary: Number(snap.baseSalary || 20),
+      hiringFee: Number(snap.hiringFee || 200),
+      marketValue: Number(snap.marketValue || 220),
+      originSource: 'RESCUE_POD',
+      originLabel: String(snap.originLabel || 'Emergency Lander Ejection Pod'),
+      bio: String(snap.bio || 'Rescued from orbital cryo-ejection following surface lander loss.'),
+    };
+    return this.insertCrewMember(accountId, candidate, moraleOverride);
+  }
+
+  public async getCrewCasualties(accountId: string = 'acc_sol_captain'): Promise<any[]> {
+    const { rows } = await db.query<any>(
+      `SELECT id, crew_name, callsign, rarity, specialties, aptitude, grit, planet_id, planet_name, lander_name, outcome, created_at
+       FROM crew_casualties
+       WHERE account_id = $1
+       ORDER BY created_at DESC
+       LIMIT 50`,
+      [accountId]
+    );
+    return rows.map((r) => ({
+      id: r.id,
+      crewName: r.crew_name,
+      callsign: r.callsign,
+      rarity: r.rarity,
+      specialties: typeof r.specialties === 'string' ? JSON.parse(r.specialties) : r.specialties || [],
+      aptitude: Number(r.aptitude),
+      grit: Number(r.grit),
+      planetId: r.planet_id,
+      planetName: r.planet_name,
+      landerName: r.lander_name,
+      outcome: r.outcome,
+      createdAt: r.created_at,
+    }));
+  }
+
+  private async insertCrewMember(accountId: string, candidate: ProceduralCrewCandidate, morale: number = 100): Promise<CrewMemberRecord> {
     const id = `crew_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
     const { rows } = await db.query<any>(
       `INSERT INTO crew_roster (
@@ -618,7 +677,7 @@ export class CrewService {
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9,
         $10, $11::jsonb, $12, $13, $14,
-        $15, $16, $17, 100, $18, $19, $20,
+        $15, $16, $17, $24, $18, $19, $20,
         'RESERVE', $21, $22, $23
       ) RETURNING *`,
       [
@@ -645,6 +704,7 @@ export class CrewService {
         candidate.originSource,
         candidate.originLabel,
         candidate.bio,
+        morale,
       ]
     );
 
@@ -691,7 +751,7 @@ export class CrewService {
     accountId: string,
     crewId: string,
     assignment: {
-      assignmentType: 'RESERVE' | 'SHIP_BAY' | 'COLONY';
+      assignmentType: 'RESERVE' | 'SHIP_BAY' | 'COLONY' | 'LANDER';
       baySlotKey?: string;
       colonyId?: string;
       moduleKey?: string;
@@ -902,6 +962,7 @@ export class CrewService {
       specialties: CrewSpecialtyId[];
       rarity?: CrewRarity;
       aptitude?: number;
+      grit?: number;
       assignColonyId?: string;
       assignBaySlot?: string;
       name?: string;
@@ -910,6 +971,7 @@ export class CrewService {
     const rarity = opts.rarity || (opts.specialties.length >= 3 ? 'RARE' : opts.specialties.length === 2 ? 'UNCOMMON' : 'COMMON');
     const id = `crew_dbg_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
     const aptitude = opts.aptitude ?? 78;
+    const grit = opts.grit ?? 74;
     const primary = opts.specialties[0];
     const assignType = opts.assignColonyId ? 'COLONY' : opts.assignBaySlot ? 'SHIP_BAY' : 'RESERVE';
 
@@ -921,7 +983,7 @@ export class CrewService {
         assignment_type, assigned_bay_slot, assigned_colony_id, origin_source, origin_label, bio
       ) VALUES (
         $1, $2, 77777, $3, $4, 'FACTION_SOL', 'Sol Terran', 34, $5,
-        $6, $7::jsonb, $8, 74, 76,
+        $6, $7::jsonb, $8, $12, 76,
         'DEEP_CORE_VETERAN', 'Deep-Core Veteran', '+10% yield.', 100, 18, 220, 220,
         $9, $10, $11, 'STARPORT', 'Sol Commission', 'Commissioned specialist.'
       )`,
@@ -937,6 +999,7 @@ export class CrewService {
         assignType,
         opts.assignBaySlot || null,
         opts.assignColonyId || null,
+        grit,
       ]
     );
 
@@ -947,6 +1010,7 @@ export class CrewService {
   public async debugClearCrew(accountId: string = 'acc_sol_captain'): Promise<void> {
     await db.query('DELETE FROM crew_roster WHERE account_id = $1', [accountId]);
     await db.query('DELETE FROM crew_market_claims WHERE account_id = $1', [accountId]);
+    await db.query('DELETE FROM crew_casualties WHERE account_id = $1', [accountId]);
     await db.query('UPDATE accounts SET crew_arrears_cycles = 0, crew_refresh_nonce = 0 WHERE id = $1', [accountId]);
   }
 

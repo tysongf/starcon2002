@@ -67,8 +67,8 @@ export const faunaRoutes: FastifyPluginAsync = async (server) => {
     { schema: { params: PlanetParamSchema, body: DeployLanderBodySchema } },
     async (req, reply) => {
       const planetId = req.params.id;
-      const { accountId } = req.body;
-      const result = await planetaryFaunaService.deployLander(accountId, planetId);
+      const { accountId, crewIds } = req.body;
+      const result = await planetaryFaunaService.deployLander(accountId, planetId, crewIds || []);
       if (!result.success) {
         return reply.status(400).send(result);
       }

@@ -41,6 +41,11 @@ export class SurveyController {
   public activePlanetLifeforms: any[] = [];
   public isInOrbit: boolean = false;
   public activeAirspaceClearance: any | null = null;
+  public selectedLanderCrewIds: string[] = [];
+  private landerTiersCache: any[] = [];
+  private activeLanderCache: any = null;
+  private crewRosterCache: any[] = [];
+  private crewCasualtiesCount: number = 0;
 
   // Globe Canvas Rendering & Controls
   public globeCanvas: HTMLCanvasElement | null = null;
@@ -84,6 +89,7 @@ export class SurveyController {
     document.getElementById('btn-scan-bio')?.addEventListener('click', () => this.performScannerSweep('BIO'));
     document.getElementById('btn-scan-anomalies')?.addEventListener('click', () => this.performScannerSweep('ANOMALIES'));
     document.getElementById('btn-launch-probe')?.addEventListener('click', () => this.launchAtmosphericProbe());
+    document.getElementById('btn-deploy-lander')?.addEventListener('click', () => this.deployLanderWithManifest());
 
     this.initGlobeCanvasControls();
   }
@@ -277,6 +283,9 @@ export class SurveyController {
 
     // Fetch Authoritative Precursor Sites & Relics
     await colonyCtrl.fetchPlanetPrecursorSites(p.id);
+
+    // Fetch Lander Chassis & Pre-Drop Crew Manifest
+    await this.refreshLanderStagingPanel();
 
     this.updateSurveyConsoleUI();
   }
@@ -1240,6 +1249,175 @@ export class SurveyController {
       });
     } catch (err) {
       console.warn('[SurveyController] Astrometry bureau fetch failed:', err);
+    }
+  }
+
+  /**
+   * Returns currently selected pre-drop crew IDs bounded by active lander seat capacity.
+   */
+  public getSelectedLanderCrewIds(): string[] {
+    const cap = Number(this.activeLanderCache?.crew_capacity || this.activeLanderCache?.crewCapacity || 1);
+    return this.selectedLanderCrewIds.slice(0, cap);
+  }
+
+  /**
+   * Deploys the surface lander using the currently staged crew manifest.
+   */
+  public deployLanderWithManifest(): void {
+    this.audio.playUiBlip();
+    this.callbacks.getLanderController().openSurfaceLander(this.getSelectedLanderCrewIds());
+  }
+
+  /**
+   * Fetches active lander chassis, tier upgrades, crew roster & casualties for pre-drop staging.
+   */
+  public async refreshLanderStagingPanel(): Promise<void> {
+    try {
+      const [statusRes, tiersRes, rosterRes, casualtiesRes] = await Promise.all([
+        fetch('/api/shipyard/lander/status?accountId=acc_sol_captain'),
+        fetch('/api/shipyard/lander/tiers'),
+        fetch('/api/crew/roster?accountId=acc_sol_captain'),
+        fetch('/api/crew/casualties?accountId=acc_sol_captain'),
+      ]);
+      if (statusRes.ok) {
+        const sData = await statusRes.json();
+        this.activeLanderCache = sData.hasActiveLander ? sData.lander : null;
+      }
+      if (tiersRes.ok) {
+        const tData = await tiersRes.json();
+        this.landerTiersCache = Array.isArray(tData.tiers) ? tData.tiers : [];
+      }
+      if (rosterRes.ok) {
+        const rData = await rosterRes.json();
+        this.crewRosterCache = Array.isArray(rData.crew) ? rData.crew : [];
+      }
+      if (casualtiesRes.ok) {
+        const cData = await casualtiesRes.json();
+        this.crewCasualtiesCount = Array.isArray(cData.casualties) ? cData.casualties.length : 0;
+      }
+      this.renderLanderStagingPanel();
+    } catch (err) {
+      console.warn('[SurveyController] Lander staging fetch failed:', err);
+    }
+  }
+
+  private renderLanderStagingPanel(): void {
+    const elSummary = document.getElementById('lander-chassis-summary');
+    const elCas = document.getElementById('lander-casualties-badge');
+    const elTiers = document.getElementById('lander-tier-shop-row');
+    const elManifest = document.getElementById('lander-crew-manifest-list');
+    const elPreview = document.getElementById('lander-crew-preview-line');
+
+    const activeTier = Number(this.activeLanderCache?.tier || 1);
+    const capacity = Number(this.activeLanderCache?.crew_capacity || 1);
+    const eligibleIds = new Set(
+      this.crewRosterCache
+        .filter((m) => m.assignmentType === 'RESERVE' || m.assignmentType === 'SHIP_BAY')
+        .map((m) => m.id)
+    );
+    this.selectedLanderCrewIds = this.selectedLanderCrewIds.filter((id) => eligibleIds.has(id)).slice(0, capacity);
+
+    if (elCas) {
+      elCas.textContent = `MEMORIAL: ${this.crewCasualtiesCount} LOST`;
+    }
+
+    if (elSummary) {
+      if (this.activeLanderCache) {
+        elSummary.textContent = `${String(this.activeLanderCache.name || 'LANDER').toUpperCase()} // TIER ${activeTier} // ${this.selectedLanderCrewIds.length}/${capacity} SEATS // ${this.activeLanderCache.max_hull} HP`;
+      } else {
+        elSummary.textContent = 'NO ACTIVE CHASSIS — PURCHASE REPLACEMENT BELOW';
+      }
+    }
+
+    if (elTiers) {
+      elTiers.innerHTML = this.landerTiersCache
+        .map((t) => {
+          const isCurrent = !!this.activeLanderCache && Number(this.activeLanderCache.tier) === Number(t.tier);
+          return `
+            <button class="lander-tier-btn ${isCurrent ? 'active' : ''}" data-lander-tier="${t.tier}">
+              <div><strong>MK.${t.tier}</strong> (${t.crewCapacity} Crew)</div>
+              <div>${t.maxHull}HP / ${t.cargoCapacity}C // ${isCurrent ? 'ACTIVE' : `${t.creditCost} Cr`}</div>
+            </button>
+          `;
+        })
+        .join('');
+
+      elTiers.querySelectorAll('.lander-tier-btn').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const tier = Number((btn as HTMLElement).getAttribute('data-lander-tier') || 1);
+          await this.purchaseLanderTier(tier);
+        });
+      });
+    }
+
+    if (elManifest) {
+      if (this.crewRosterCache.length === 0) {
+        elManifest.innerHTML = `<div class="ledger-empty">No specialists hired yet. Visit Spaceport Crew Concourse to recruit.</div>`;
+      } else {
+        const atCap = this.selectedLanderCrewIds.length >= capacity;
+        elManifest.innerHTML = this.crewRosterCache
+          .map((m) => {
+            const isColony = m.assignmentType === 'COLONY';
+            const isSelected = this.selectedLanderCrewIds.includes(m.id);
+            const disabled = isColony || (!isSelected && atCap);
+            const tag = m.assignmentType === 'SHIP_BAY' ? `[${m.assignedBaySlot || 'BAY'} - pauses]` : m.assignmentType === 'COLONY' ? '[COLONY LOCK]' : '[RESERVE]';
+            return `
+              <label class="lander-crew-option ${disabled ? 'disabled' : ''}">
+                <span>
+                  <input type="checkbox" class="lander-crew-check" data-crew-id="${m.id}" ${isSelected ? 'checked' : ''} ${disabled ? 'disabled' : ''} />
+                  <strong>${m.name}</strong> (${m.primarySpecialty})
+                </span>
+                <span>APT ${m.aptitude} / GRIT ${m.grit} ${tag}</span>
+              </label>
+            `;
+          })
+          .join('');
+
+        elManifest.querySelectorAll('.lander-crew-check').forEach((chk) => {
+          chk.addEventListener('change', () => {
+            const id = (chk as HTMLInputElement).getAttribute('data-crew-id');
+            if (!id) return;
+            if ((chk as HTMLInputElement).checked) {
+              if (!this.selectedLanderCrewIds.includes(id) && this.selectedLanderCrewIds.length < capacity) {
+                this.selectedLanderCrewIds.push(id);
+              }
+            } else {
+              this.selectedLanderCrewIds = this.selectedLanderCrewIds.filter((x) => x !== id);
+            }
+            this.renderLanderStagingPanel();
+          });
+        });
+      }
+    }
+
+    if (elPreview) {
+      const selected = this.crewRosterCache.filter((m) => this.selectedLanderCrewIds.includes(m.id));
+      if (selected.length === 0) {
+        elPreview.textContent = 'SOLO DROP // Standard chassis telemetry (no hazard pay).';
+      } else {
+        const specs = selected.map((s) => `${s.callsign || s.name} [${s.primarySpecialty}]`).join(', ');
+        elPreview.textContent = `EMBARKING (${selected.length}/${capacity}): ${specs} — Grit roll triggers cryo-ejection on fatal breach.`;
+      }
+    }
+  }
+
+  private async purchaseLanderTier(tier: number): Promise<void> {
+    try {
+      const res = await fetch('/api/shipyard/lander/purchase', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId: 'acc_sol_captain', tier }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        this.audio.playUiBlip();
+        this.callbacks.showApNotification(data.message || `Purchased Tier ${tier} lander chassis!`, false);
+        await this.refreshLanderStagingPanel();
+      } else {
+        this.callbacks.showApNotification(`⚠️ ${data.error || 'Purchase failed'}`, true);
+      }
+    } catch (err) {
+      console.warn('[SurveyController] Tier purchase failed:', err);
     }
   }
 }

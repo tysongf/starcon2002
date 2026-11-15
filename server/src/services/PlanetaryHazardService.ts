@@ -1,4 +1,5 @@
 import { db } from '../db/Database';
+import { LANDER_CHASSIS_TIERS, getLanderTierDef } from '../procgen/LanderCrewCatalog';
 
 export interface LanderModuleDef {
   id: string;
@@ -123,15 +124,19 @@ export class PlanetaryHazardService {
   }
 
   /**
-   * Purchases a replacement Vanguard Mk.I lander chassis for 1,000 Credits
+   * Purchases a Planetary Lander chassis (Tier 1..4) or replacement Vanguard Mk.I
    */
-  public async purchaseReplacementLander(accountId: string): Promise<{
+  public async purchaseReplacementLander(
+    accountId: string,
+    tier: number = 1
+  ): Promise<{
     success: boolean;
     lander?: any;
     creditsRemaining?: number;
     error?: string;
   }> {
-    const cost = 1000;
+    const tierDef = getLanderTierDef(tier);
+    const cost = tierDef.creditCost;
 
     const { rows: accRows } = await db.query<any>(`SELECT credits FROM accounts WHERE id = $1`, [accountId]);
     if (accRows.length === 0) {
@@ -142,9 +147,22 @@ export class PlanetaryHazardService {
     if (credits < cost) {
       return {
         success: false,
-        error: `INSUFFICIENT_CREDITS: Replacement Vanguard Mk.I Lander costs ${cost} CR (Available: ${credits} CR).`,
+        error: `INSUFFICIENT_CREDITS: ${tierDef.name} costs ${cost} CR (Available: ${credits} CR).`,
       };
     }
+
+    // Carry forward any fitted hazard modules from active hull when upgrading
+    const { rows: curLanderRows } = await db.query<any>(
+      `SELECT fitted_modules FROM player_landers WHERE account_id = $1 AND is_active = TRUE AND hull > 0 LIMIT 1`,
+      [accountId]
+    );
+    const prevFitted =
+      curLanderRows[0]?.fitted_modules && typeof curLanderRows[0].fitted_modules === 'string'
+        ? JSON.parse(curLanderRows[0].fitted_modules)
+        : curLanderRows[0]?.fitted_modules || {};
+
+    const hasExpandedBio = prevFitted.cargo === 'MOD_EXPANDED_BIO_BAY';
+    const cargoCapacity = tierDef.cargoCapacity + (hasExpandedBio ? 15 : 0);
 
     // Deduct credits
     const newCredits = credits - cost;
@@ -153,12 +171,25 @@ export class PlanetaryHazardService {
     // Deactivate any existing landers
     await db.query(`UPDATE player_landers SET is_active = FALSE WHERE account_id = $1`, [accountId]);
 
-    // Provision fresh Vanguard Mk.I
+    // Provision requested tier chassis
     const landerId = `lander_${accountId}_${Date.now()}`;
     await db.query(
-      `INSERT INTO player_landers (id, account_id, name, hull, max_hull, fuel, max_fuel, cargo_capacity, fitted_modules, status, is_active)
-       VALUES ($1, $2, 'Vanguard Mk.I Lander', 100, 100, 100.0, 100.0, 25, '{}'::jsonb, 'ACTIVE', TRUE)`,
-      [landerId, accountId]
+      `INSERT INTO player_landers (
+         id, account_id, name, tier, crew_capacity, hull, max_hull, fuel, max_fuel,
+         cargo_capacity, fitted_modules, active_expedition_crew, status, is_active
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $6, $7, $7, $8, $9::jsonb, '[]'::jsonb, 'ACTIVE', TRUE)`,
+      [
+        landerId,
+        accountId,
+        tierDef.name,
+        tierDef.tier,
+        tierDef.crewCapacity,
+        tierDef.maxHull,
+        tierDef.maxFuel,
+        cargoCapacity,
+        JSON.stringify(prevFitted),
+      ]
     );
 
     return {
@@ -166,13 +197,15 @@ export class PlanetaryHazardService {
       lander: {
         id: landerId,
         accountId,
-        name: 'Vanguard Mk.I Lander',
-        hull: 100,
-        maxHull: 100,
-        fuel: 100,
-        maxFuel: 100,
-        cargoCapacity: 25,
-        fittedModules: {},
+        name: tierDef.name,
+        tier: tierDef.tier,
+        crewCapacity: tierDef.crewCapacity,
+        hull: tierDef.maxHull,
+        maxHull: tierDef.maxHull,
+        fuel: tierDef.maxFuel,
+        maxFuel: tierDef.maxFuel,
+        cargoCapacity,
+        fittedModules: prevFitted,
         status: 'ACTIVE',
         isActive: true,
       },
@@ -217,11 +250,11 @@ export class PlanetaryHazardService {
     // Deactivate previous wrecks
     await db.query(`UPDATE player_landers SET is_active = FALSE WHERE account_id = $1`, [accountId]);
 
-    // Provision emergency loaner drone (fragile hull 50, cargo 12)
+    // Provision emergency loaner drone (fragile hull 50, cargo 12, 1 seat)
     const loanerId = `loaner_${accountId}_${Date.now()}`;
     await db.query(
-      `INSERT INTO player_landers (id, account_id, name, hull, max_hull, fuel, max_fuel, cargo_capacity, fitted_modules, status, is_active)
-       VALUES ($1, $2, 'Emergency Loaner Drone', 50, 50, 75.0, 75.0, 12, '{}'::jsonb, 'LOANER', TRUE)`,
+      `INSERT INTO player_landers (id, account_id, name, tier, crew_capacity, hull, max_hull, fuel, max_fuel, cargo_capacity, fitted_modules, active_expedition_crew, status, is_active)
+       VALUES ($1, $2, 'Emergency Loaner Drone', 1, 1, 50, 50, 75.0, 75.0, 12, '{}'::jsonb, '[]'::jsonb, 'LOANER', TRUE)`,
       [loanerId, accountId]
     );
 
@@ -232,6 +265,8 @@ export class PlanetaryHazardService {
         id: loanerId,
         accountId,
         name: 'Emergency Loaner Drone',
+        tier: 1,
+        crewCapacity: 1,
         hull: 50,
         maxHull: 50,
         fuel: 75,
@@ -294,9 +329,11 @@ export class PlanetaryHazardService {
     let fitted = typeof lander.fitted_modules === 'string' ? JSON.parse(lander.fitted_modules) : (lander.fitted_modules || {});
     fitted[slot] = moduleId;
 
-    let newCargoCapacity = lander.cargo_capacity;
+    let newCargoCapacity = Number(lander.cargo_capacity || 25);
     if (moduleId === 'MOD_EXPANDED_BIO_BAY') {
-      newCargoCapacity = 40;
+      const tDef = getLanderTierDef(lander.tier);
+      const baseCap = lander.status === 'LOANER' ? 12 : tDef.cargoCapacity;
+      newCargoCapacity = Math.max(newCargoCapacity, baseCap + 15);
     }
 
     await db.query(

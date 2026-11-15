@@ -1454,6 +1454,22 @@
                   </label>
                 </div>
 
+                <!-- Milestone 1.6: Lander Chassis Tiers & Pre-Drop Crew Manifest -->
+                <div class="lander-staging-panel" id="lander-staging-panel">
+                  <div class="lander-staging-header">
+                    <span id="lander-chassis-summary">VANGUARD MK.I // TIER 1 // 0/1 CREW SEATS</span>
+                    <span id="lander-casualties-badge" class="lander-casualty-badge">MEMORIAL: 0 LOST</span>
+                  </div>
+                  <div class="lander-tier-shop-row" id="lander-tier-shop-row"></div>
+                  <div class="lander-manifest-label">PRE-DROP CREW MANIFEST (SHIPS &amp; RESERVE):</div>
+                  <div class="lander-crew-manifest-list" id="lander-crew-manifest-list">
+                    <div class="ledger-empty">Scanning ship roster for flight-ready specialists...</div>
+                  </div>
+                  <div class="lander-crew-preview-line" id="lander-crew-preview-line">
+                    SOLO DROP // Standard chassis telemetry.
+                  </div>
+                </div>
+
                 <!-- Animated Descent Telemetry Readout -->
                 <div class="probe-descent-display hidden" id="probe-descent-display">
                   <div class="descent-track">
@@ -1674,6 +1690,7 @@
             <span class="crt-tag">STAR CONTROL II EXPLORATION LANDER</span>
             <h2 id="lander-planet-title">AEGIS PRIME // SURFACE TOPOGRAPHY</h2>
             <span class="lander-subtext">ORBITAL SYNCHRONIZATION LOCKED // SURFACE FLIGHT ENGAGED</span>
+            <div class="lander-crew-roster-pills" id="lander-crew-roster-pills"></div>
           </div>
           <div class="lander-header-controls">
             <button id="btn-lander-ascend" class="lander-ascend-btn">
@@ -1687,8 +1704,9 @@
           <div class="lander-canvas-wrapper">
             <canvas id="surface-lander-canvas" width="760" height="480"></canvas>
             <div class="lander-canvas-overlay">
-              <span>CONTROLS: [W][A][S][D] / ARROWS THRUSTERS // [SPACE] / CLICK STUN BLASTER // [R] SEISMIC RADAR // [E] STASH/DOCK // [X/ESC] ASCEND</span>
+              <span>CONTROLS: [W][A][S][D] / ARROWS THRUSTERS // [SPACE] / CLICK STUN BLASTER // [R] SEISMIC RADAR // [1-4] CREW ABILITIES // [E] STASH/DOCK // [X/ESC] ASCEND</span>
             </div>
+            <div class="lander-crew-abilities-bar" id="lander-crew-abilities-bar"></div>
           </div>
 
           <!-- Tactical Telemetry & Radar Panel -->

@@ -120,6 +120,79 @@ export interface LanderAcidPool {
   radius: number;
 }
 
+export interface EmbarkedLanderCrew {
+  id: string;
+  name: string;
+  callsign: string;
+  primarySpecialty: string;
+  specialties: string[];
+  aptitude: number;
+  grit: number;
+  efficiency: number;
+  morale: number;
+}
+
+export interface LanderActiveAbilityHUD {
+  slotIndex: number;
+  abilityId: 'ARC_SHOCKWAVE' | 'SEISMIC_VEIN_CRACKER' | 'NANO_GEL_PATCH' | 'OVERLOAD_CAPACITOR' | 'AFTERBURNER_SURGE';
+  name: string;
+  icon: string;
+  cooldownSec: number;
+  description: string;
+  grantedByName: string;
+  grantedBySpecialty: string;
+}
+
+export interface LanderCrewEffectsClient {
+  mineralYieldMult: number;
+  bonusMineralChance: number;
+  bioYieldMult: number;
+  speedMult: number;
+  fuelBurnMult: number;
+  radarRadiusMult: number;
+  discoveryRadiusMult: number;
+  stunCooldownMult: number;
+  stunDurationMult: number;
+  extraTitanStunChance: number;
+  biteDamageMult: number;
+  thermalResistBonus: number;
+  ionResistBonus: number;
+  causticResistBonus: number;
+  passiveHullRegenPerSec: number;
+  cargoCapBonusPct: number;
+  beaconRangeMult: number;
+  beaconFuelBonus: number;
+  extraMaxHullPct: number;
+  hazardPayDiscount: number;
+  precursorBonusEnabled: boolean;
+  activeAbilities: LanderActiveAbilityHUD[];
+}
+
+const DEFAULT_CREW_EFFECTS: LanderCrewEffectsClient = {
+  mineralYieldMult: 1.0,
+  bonusMineralChance: 0,
+  bioYieldMult: 1.0,
+  speedMult: 1.0,
+  fuelBurnMult: 1.0,
+  radarRadiusMult: 1.0,
+  discoveryRadiusMult: 1.0,
+  stunCooldownMult: 1.0,
+  stunDurationMult: 1.0,
+  extraTitanStunChance: 0,
+  biteDamageMult: 1.0,
+  thermalResistBonus: 0,
+  ionResistBonus: 0,
+  causticResistBonus: 0,
+  passiveHullRegenPerSec: 0,
+  cargoCapBonusPct: 0,
+  beaconRangeMult: 1.0,
+  beaconFuelBonus: 0,
+  extraMaxHullPct: 0,
+  hazardPayDiscount: 0,
+  precursorBonusEnabled: false,
+  activeAbilities: [],
+};
+
 export interface LanderCallbacks {
   audio: AudioEngine;
   showApNotification: (msg: string, isError: boolean) => void;
@@ -181,6 +254,14 @@ export class LanderController {
   public currentZoom: number = 1.0;
   public isNearBeacon: boolean = false;
 
+  // Milestone 1.6: Embarked Crew, Passive Modifiers & [1]-[4] Surface Abilities
+  public embarkedCrew: EmbarkedLanderCrew[] = [];
+  public landerCrewEffects: LanderCrewEffectsClient = { ...DEFAULT_CREW_EFFECTS };
+  public abilityCooldownsUntil: Record<number, number> = {};
+  public afterburnerTimer: number = 0;
+  public causticSealTimer: number = 0;
+  public veinCrackerActive: boolean = false;
+
   private lastStunFireTime: number = 0;
   private screenShakeTime: number = 0;
 
@@ -235,6 +316,22 @@ export class LanderController {
         e.preventDefault();
         this.fireSeismicRadarPing();
       }
+      if (e.code === 'Digit1' || e.code === 'Numpad1') {
+        e.preventDefault();
+        this.triggerCrewAbility(1);
+      }
+      if (e.code === 'Digit2' || e.code === 'Numpad2') {
+        e.preventDefault();
+        this.triggerCrewAbility(2);
+      }
+      if (e.code === 'Digit3' || e.code === 'Numpad3') {
+        e.preventDefault();
+        this.triggerCrewAbility(3);
+      }
+      if (e.code === 'Digit4' || e.code === 'Numpad4') {
+        e.preventDefault();
+        this.triggerCrewAbility(4);
+      }
       if (e.key === 'e' || e.key === 'E') {
         if (this.isNearBeacon && (this.landerState.cargo > 0 || this.landerBioSamples.length > 0)) {
           this.stashCargoToMothership();
@@ -259,9 +356,15 @@ export class LanderController {
   /**
    * Deploys the nimble planetary lander from synchronous orbit into the 2D topography flight view.
    */
-  public openSurfaceLander(): void {
+  public openSurfaceLander(crewIds: string[] = []): void {
     const activePlanet = this.callbacks.getActivePlanet();
     this.isLanderActive = true;
+    this.embarkedCrew = [];
+    this.landerCrewEffects = { ...DEFAULT_CREW_EFFECTS, activeAbilities: [] };
+    this.abilityCooldownsUntil = {};
+    this.afterburnerTimer = 0;
+    this.causticSealTimer = 0;
+    this.veinCrackerActive = false;
 
     if (!this.modalPlanetarySurvey) {
       this.modalPlanetarySurvey = document.getElementById('planetary-survey-modal');
@@ -398,11 +501,11 @@ export class LanderController {
       });
     });
 
-    // Populate indigenous alien fauna from planet catalog
-    this.loadPlanetaryFauna(activePlanet?.data?.id || 'planet_sec1_aegis');
-
-    // Populate atmospheric weather fronts and geological hazards
-    this.loadPlanetaryHazards(activePlanet?.data?.id || 'planet_sec1_aegis');
+    // Populate alien fauna & atmospheric hazards, plus lock in crewed drop session
+    const planetId = activePlanet?.data?.id || 'planet_sec1_aegis';
+    this.loadPlanetaryFauna(planetId);
+    this.loadPlanetaryHazards(planetId);
+    this.syncDeploySessionWithCrew(planetId, crewIds);
 
     const dockBanner = document.getElementById('megastructure-dock-banner');
     if (dockBanner) dockBanner.classList.add('hidden');
@@ -720,7 +823,8 @@ export class LanderController {
   public fireStunBlaster(): void {
     if (!this.isLanderActive) return;
     const now = Date.now();
-    if (now - this.lastStunFireTime < 220) return; // 220ms firing cooldown
+    const cooldownMs = Math.max(85, Math.round(220 * (this.landerCrewEffects.stunCooldownMult || 1.0)));
+    if (now - this.lastStunFireTime < cooldownMs) return;
     this.lastStunFireTime = now;
 
     const s = this.landerState;
@@ -878,7 +982,7 @@ export class LanderController {
     const hullVal = Math.max(0, Math.round(this.landerState.hull));
     const fuelVal = Math.max(0, Math.round(this.landerState.fuel));
 
-    // If lander suffered total hull failure on surface, notify backend and wipe uncommitted cargo
+    // If lander suffered total hull failure on surface, notify backend to run Grit Survival Rolls & log casualties
     if (hullVal <= 0 || this.isLanderDestroyed) {
       fetch(`/api/planets/${planetId}/lander/recover`, {
         method: 'POST',
@@ -890,12 +994,32 @@ export class LanderController {
           hullRemaining: 0,
           fuelRemaining: 0,
         }),
-      }).catch(() => {});
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          const ejected = Array.isArray(data.ejectedCastaways) ? data.ejectedCastaways : [];
+          const kia = Array.isArray(data.casualties) ? data.casualties : [];
+          if (ejected.length > 0) {
+            this.callbacks.showApNotification(
+              `🛰️ EMERGENCY EJECTION! ${ejected.map((c: any) => c.name).join(', ')} survived in cryo-pod(s) in Sector ${data.sectorId || 1} — scoop them in spaceflight!`,
+              true
+            );
+          }
+          if (kia.length > 0) {
+            this.callbacks.showApNotification(
+              `🕯️ CREW LOST IN ACTION: ${kia.map((c: any) => `${c.name} (${c.primarySpecialty})`).join(', ')} logged in Ship Memorial.`,
+              true
+            );
+          }
+        })
+        .catch(() => {});
       return;
     }
 
-    if (collectedMinerals.length > 0 || this.landerBioSamples.length > 0) {
-      this.audio.playCargoHarvestSound();
+    if (collectedMinerals.length > 0 || this.landerBioSamples.length > 0 || this.embarkedCrew.length > 0) {
+      if (collectedMinerals.length > 0 || this.landerBioSamples.length > 0) {
+        this.audio.playCargoHarvestSound();
+      }
 
       fetch(`/api/planets/${planetId}/lander/recover`, {
         method: 'POST',
@@ -913,8 +1037,12 @@ export class LanderController {
           if (data.success) {
             const finalMin = (data.totalMinerals || 0) + this.stashedMineralsTotal;
             const finalBio = (data.totalBioUnits || 0) + this.stashedBioUnitsTotal;
+            const vets = Array.isArray(data.veteransGained) && data.veteransGained.length > 0
+              ? ` | ⭐ Veteran Growth: ${data.veteransGained.map((v: any) => `${v.name} (+1 ${v.statGained})`).join(', ')}`
+              : '';
+            const pay = data.hazardPayPaid > 0 ? ` | 💰 Hazard Pay: -${data.hazardPayPaid} Cr` : '';
             this.callbacks.showApNotification(
-              `🚀 Lander docked with ship! Secured ${data.totalMinerals} minerals (${finalMin} total) and ${data.totalBioUnits} biological units (${finalBio} total)!`,
+              `🚀 Lander docked! Secured ${data.totalMinerals} minerals (${finalMin} total), ${data.totalBioUnits} bio units (${finalBio} total)${vets}${pay}`,
               false
             );
           }
@@ -941,11 +1069,12 @@ export class LanderController {
     if (!this.isLanderActive) return;
 
     this.audio.playSeismicRadarPing();
+    const maxRadius = Math.round(420 * (this.landerCrewEffects.radarRadiusMult || 1.0));
     this.landerSonarWaves.push({
       x: this.landerState.x,
       y: this.landerState.y,
       radius: 10,
-      maxRadius: 420,
+      maxRadius,
       alpha: 1.0,
     });
 
@@ -1002,17 +1131,54 @@ export class LanderController {
       return;
     }
 
+    // Milestone 1.6 active buff timers & passive Medic hull regeneration
+    if (this.afterburnerTimer > 0) {
+      this.afterburnerTimer = Math.max(0, this.afterburnerTimer - 0.016);
+    }
+    if (this.causticSealTimer > 0) {
+      this.causticSealTimer = Math.max(0, this.causticSealTimer - 0.016);
+    }
+    if (this.landerCrewEffects.passiveHullRegenPerSec > 0 && s.hull > 0 && s.hull < s.maxHull) {
+      s.hull = Math.min(s.maxHull, s.hull + this.landerCrewEffects.passiveHullRegenPerSec * 0.016);
+    }
+
+    // Passive sensor aura discovery around lander (Astronomer / Geologist discovery radius bonus)
+    const passiveRad = (this.landerCrewEffects.discoveryRadiusMult || 1.0) > 1.0 ? Math.round(85 * this.landerCrewEffects.discoveryRadiusMult) : 0;
+    if (passiveRad > 0) {
+      let newlyDiscovered = false;
+      this.landerNodes.forEach((n) => {
+        if (!n.discovered && Math.hypot(n.x - s.x, n.y - s.y) <= passiveRad) {
+          n.discovered = true;
+          newlyDiscovered = true;
+        }
+      });
+      this.landerFauna.forEach((f) => {
+        if (!f.discovered && Math.hypot(f.x - s.x, f.y - s.y) <= passiveRad) {
+          f.discovered = true;
+          newlyDiscovered = true;
+        }
+      });
+      if (newlyDiscovered) {
+        this.refreshLanderRadarList();
+      }
+    }
+
     // Rotation
-    if (k.left) s.heading -= 0.055;
-    if (k.right) s.heading += 0.055;
+    const spdMult = (this.landerCrewEffects.speedMult || 1.0) * (this.afterburnerTimer > 0 ? 1.75 : 1.0);
+    const turnRate = 0.055 * (1 + Math.max(0, spdMult - 1) * 0.4);
+    if (k.left) s.heading -= turnRate;
+    if (k.right) s.heading += turnRate;
 
     // Forward Thruster (inhibited during thermal flameout)
-    const canThrust = k.up && s.fuel > 0 && !this.isLanderFlamedOut;
+    const canThrust = k.up && (s.fuel > 0 || this.afterburnerTimer > 0) && !this.isLanderFlamedOut;
     if (canThrust) {
-      const accel = 0.15;
+      const accel = 0.15 * spdMult;
       s.vx += Math.cos(s.heading) * accel;
       s.vy += Math.sin(s.heading) * accel;
-      s.fuel = Math.max(0, s.fuel - 0.04);
+      if (this.afterburnerTimer <= 0) {
+        const burn = 0.04 * (this.landerCrewEffects.fuelBurnMult || 1.0);
+        s.fuel = Math.max(0, s.fuel - burn);
+      }
       this.audio.startLanderThrusterSound(1.0);
 
       // Spawn thruster exhaust particles
@@ -1067,11 +1233,14 @@ export class LanderController {
     // Atmospheric Weather & Geological Hazards Processing
     const hasThermalPlating = this.landerFittedModules?.thermal === 'MOD_THERMAL_PLATING';
     const hasIonDissipator = this.landerFittedModules?.electrical === 'MOD_ION_DISSIPATOR';
-    const hasCausticSealant = this.landerFittedModules?.caustic === 'MOD_CAUSTIC_SEALANT';
+    const hasCausticSealant = this.landerFittedModules?.caustic === 'MOD_CAUSTIC_SEALANT' || this.causticSealTimer > 0;
+    const thermalCrewFactor = Math.max(0.15, 1 - (this.landerCrewEffects.thermalResistBonus || 0));
+    const ionCrewFactor = Math.max(0.15, 1 - (this.landerCrewEffects.ionResistBonus || 0));
+    const causticCrewFactor = this.causticSealTimer > 0 ? 0 : Math.max(0.15, 1 - (this.landerCrewEffects.causticResistBonus || 0));
 
     // 1. Thermal Equilibrium
-    const ambientHeatRate = (this.landerHazardProfile.thermalLevel * 4.5 * 0.016) * (hasThermalPlating ? 0.25 : 1.0);
-    const thrusterHeatRate = canThrust ? (6.0 * 0.016 * (hasThermalPlating ? 0.4 : 1.0)) : 0;
+    const ambientHeatRate = (this.landerHazardProfile.thermalLevel * 4.5 * 0.016) * (hasThermalPlating ? 0.25 : 1.0) * thermalCrewFactor;
+    const thrusterHeatRate = canThrust ? (6.0 * 0.016 * (hasThermalPlating ? 0.4 : 1.0) * thermalCrewFactor) : 0;
     const idleCoolingRate = !canThrust ? (8.0 * 0.016 * (hasThermalPlating ? 2.0 : 1.0)) : (2.0 * 0.016);
 
     let geyserHeatRate = 0;
@@ -1150,9 +1319,10 @@ export class LanderController {
           if (hasIonDissipator) {
             this.callbacks.showApNotification('⚡ Ion Grounding Matrix deflected atmospheric lightning strike! (0 damage)', false);
           } else {
-            s.hull = Math.max(0, s.hull - 25);
+            const ionDmg = Math.max(4, Math.round(25 * ionCrewFactor));
+            s.hull = Math.max(0, s.hull - ionDmg);
             this.audio.playShieldBreakSound();
-            this.callbacks.showApNotification('⚡ DIRECT LIGHTNING STRIKE! Severe chassis electrical damage (-25 HP)!', true);
+            this.callbacks.showApNotification(`⚡ DIRECT LIGHTNING STRIKE! Chassis electrical damage (-${ionDmg} HP)!`, true);
           }
         }
       }
@@ -1168,7 +1338,7 @@ export class LanderController {
       const normX = (s.x - mist.x) / mist.radiusX;
       const normY = (s.y - mist.y) / mist.radiusY;
       if (normX * normX + normY * normY <= 1.0) {
-        const acidDmg = hasCausticSealant ? (1.2 * 0.016) : (6.0 * 0.016);
+        const acidDmg = (hasCausticSealant ? (1.2 * 0.016) : (6.0 * 0.016)) * causticCrewFactor;
         s.hull = Math.max(0, s.hull - acidDmg);
       }
     }
@@ -1236,8 +1406,9 @@ export class LanderController {
             boltHit = true;
 
             if (f.isApex) {
-              // Day 30 Apex Titan: Multi-Hit Tranquilizer Buildup & Enrage Mechanics
-              f.currentStunHits = (f.currentStunHits || 0) + 1;
+              // Day 30 Apex Titan: Multi-Hit Tranquilizer Buildup & Enrage Mechanics + Gunner bonus hit
+              const bonusHit = Math.random() < (this.landerCrewEffects.extraTitanStunChance || 0) ? 1 : 0;
+              f.currentStunHits = (f.currentStunHits || 0) + 1 + bonusHit;
               const reqHits = f.stunHitsRequired || 3;
 
               // Notify backend API
@@ -1252,14 +1423,14 @@ export class LanderController {
               if (f.currentStunHits >= reqHits) {
                 // Fully subdued!
                 f.state = 'STUNNED';
-                f.stunTimer = f.stunDuration || 16.0;
+                f.stunTimer = Math.round((f.stunDuration || 16.0) * (this.landerCrewEffects.stunDurationMult || 1.0));
                 f.isEnraged = false;
                 f.currentStunHits = 0;
                 f.vx = 0;
                 f.vy = 0;
                 this.screenShakeTime = 0.5;
                 this.callbacks.showApNotification(
-                  `👑 APEX TITAN SUBDUED! ${f.name} tranquilized for ${f.stunDuration}s!`,
+                  `👑 APEX TITAN SUBDUED! ${f.name} tranquilized for ${f.stunTimer}s!`,
                   false
                 );
               } else {
@@ -1292,7 +1463,7 @@ export class LanderController {
             } else {
               // Standard fauna: 1-shot tranquilization
               f.state = 'STUNNED';
-              f.stunTimer = f.stunDuration;
+              f.stunTimer = Math.round((f.stunDuration || 10) * (this.landerCrewEffects.stunDurationMult || 1.0));
               f.vx = 0;
               f.vy = 0;
 
@@ -1400,7 +1571,8 @@ export class LanderController {
 
             // Titan Ram / Melee Strike
             if (distToLander <= 28) {
-              const effectiveDmg = Math.round((f.attackDamage || 28) * (f.isEnraged ? 1.5 : 1.0));
+              const rawDmg = (f.attackDamage || 28) * (f.isEnraged ? 1.5 : 1.0);
+              const effectiveDmg = Math.max(3, Math.round(rawDmg * (this.landerCrewEffects.biteDamageMult || 1.0)));
               s.hull = Math.max(0, s.hull - effectiveDmg);
               this.screenShakeTime = f.isEnraged ? 0.6 : 0.4;
               this.audio.playShieldDeflection();
@@ -1484,11 +1656,12 @@ export class LanderController {
 
             // Bite / Ram Attack
             if (distToLander <= 22) {
-              s.hull = Math.max(0, s.hull - f.attackDamage);
+              const biteDmg = Math.max(2, Math.round(f.attackDamage * (this.landerCrewEffects.biteDamageMult || 1.0)));
+              s.hull = Math.max(0, s.hull - biteDmg);
               this.screenShakeTime = 0.35;
               this.audio.playShieldDeflection();
               this.callbacks.showApNotification(
-                `⚠️ CARNIVORE ATTACK! ${f.name} breached lander hull (-${f.attackDamage} HP)!`,
+                `⚠️ CARNIVORE ATTACK! ${f.name} breached lander hull (-${biteDmg} HP)!`,
                 true
               );
 
@@ -1560,7 +1733,8 @@ export class LanderController {
 
     // Day 30: Orbital Rendezvous Beacon Proximity & Stash Banner Handling
     const distToBeacon = Math.hypot(s.x - 380, s.y - 240);
-    this.isNearBeacon = distToBeacon <= 60;
+    const stashRadius = 60 * (this.landerCrewEffects.beaconRangeMult || 1.0);
+    this.isNearBeacon = distToBeacon <= stashRadius;
     const stashBanner = document.getElementById('rendezvous-stash-banner');
     if (this.isNearBeacon && (s.cargo > 0 || this.landerBioSamples.length > 0)) {
       if (stashBanner) stashBanner.classList.remove('hidden');
@@ -1743,6 +1917,24 @@ export class LanderController {
       } else {
         fillTemp.className = 'lander-bar-fill orange';
       }
+    }
+
+    // Milestone 1.6: Keep [1]-[4] ability cooldown badges live
+    const abilityBar = document.getElementById('lander-crew-abilities-bar');
+    if (abilityBar && this.landerCrewEffects.activeAbilities.length > 0) {
+      const now = Date.now();
+      abilityBar.querySelectorAll('.lander-ability-btn').forEach((btn) => {
+        const slot = Number((btn as HTMLElement).getAttribute('data-ability-slot') || 0);
+        const until = this.abilityCooldownsUntil[slot] || 0;
+        const cdEl = btn.querySelector('.lander-ability-cd');
+        if (until > now) {
+          btn.classList.add('on-cooldown');
+          if (cdEl) cdEl.textContent = `(${Math.ceil((until - now) / 1000)}s)`;
+        } else {
+          btn.classList.remove('on-cooldown');
+          if (cdEl) cdEl.textContent = 'READY';
+        }
+      });
     }
   }
 
@@ -2547,5 +2739,183 @@ export class LanderController {
 
     // Restore shake translation
     ctx.restore();
+  }
+
+  /**
+   * Milestone 1.6: Locks embarked crew onto server expedition session, updates tier stats & [1]-[4] abilities.
+   */
+  private async syncDeploySessionWithCrew(planetId: string, crewIds: string[]): Promise<void> {
+    try {
+      const res = await fetch(`/api/planets/${planetId}/lander/deploy`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId: 'acc_sol_captain', crewIds }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success || !data.session) {
+        this.callbacks.showApNotification(`⚠️ Deploy blocked: ${data.error || 'Chassis unavailable'}`, true);
+        this.closeSurfaceLander();
+        return;
+      }
+
+      const sess = data.session;
+      const lander = sess.lander || {};
+      this.embarkedCrew = Array.isArray(sess.embarkedCrew) ? sess.embarkedCrew : [];
+      this.landerCrewEffects = sess.crewEffects ? { ...DEFAULT_CREW_EFFECTS, ...sess.crewEffects } : { ...DEFAULT_CREW_EFFECTS };
+
+      this.landerState.hull = Number(lander.hull ?? this.landerState.hull);
+      this.landerState.maxHull = Number(lander.maxHull ?? this.landerState.maxHull);
+      this.landerState.fuel = Number(lander.fuel ?? this.landerState.fuel);
+      this.landerState.maxFuel = Number(lander.maxFuel ?? this.landerState.maxFuel);
+      this.landerState.maxCargo = Number(lander.cargoCapacity ?? this.landerState.maxCargo);
+      this.landerFittedModules = lander.fittedModules || {};
+
+      // Auto-discover Precursor vaults if Historian / Linguist / Archaeologist / Navigator aboard
+      if (this.landerCrewEffects.precursorBonusEnabled) {
+        this.landerNodes.forEach((n) => {
+          if (n.type === 'MEGASTRUCTURE') n.discovered = true;
+        });
+        this.refreshLanderRadarList();
+      }
+
+      this.renderCrewRosterHUD(lander.name, lander.tier);
+      this.renderCrewAbilitiesHUD();
+      this.updateLanderTelemetryUI();
+
+      if (this.embarkedCrew.length > 0) {
+        this.callbacks.showApNotification(
+          `👥 Crew embarked (${this.embarkedCrew.length}): ${this.embarkedCrew.map((c) => `${c.callsign} [${c.primarySpecialty}]`).join(', ')}`,
+          false
+        );
+      }
+    } catch (err) {
+      console.warn('[LANDER] Deploy crew sync failed:', err);
+      this.renderCrewRosterHUD();
+      this.renderCrewAbilitiesHUD();
+    }
+  }
+
+  private renderCrewRosterHUD(landerName?: string, tier?: number): void {
+    const elPills = document.getElementById('lander-crew-roster-pills');
+    if (!elPills) return;
+    const tierBadge = tier ? `<span class="lander-crew-pill">🚀 MK.${tier} ${landerName || ''}</span>` : '';
+    const crewBadges = this.embarkedCrew
+      .map((c) => `<span class="lander-crew-pill" title="APT ${c.aptitude} / GRIT ${c.grit}">${c.callsign} [${c.primarySpecialty}]</span>`)
+      .join('');
+    elPills.innerHTML = tierBadge + (crewBadges || `<span class="lander-crew-pill">SOLO PILOT</span>`);
+  }
+
+  private renderCrewAbilitiesHUD(): void {
+    const bar = document.getElementById('lander-crew-abilities-bar');
+    if (!bar) return;
+    const abilities = this.landerCrewEffects.activeAbilities || [];
+    if (abilities.length === 0) {
+      bar.innerHTML = `<span class="lander-crew-pill">NO ACTIVE CREW ABILITIES (EMBARK SPECIALISTS BEFORE DROP)</span>`;
+      return;
+    }
+
+    bar.innerHTML = abilities
+      .map(
+        (ab) => `
+        <button class="lander-ability-btn" data-ability-slot="${ab.slotIndex}" title="${ab.description} (Crew: ${ab.grantedByName})">
+          <span class="lander-ability-key">[${ab.slotIndex}]</span>
+          <span>${ab.icon} ${ab.name}</span>
+          <span class="lander-ability-cd">READY</span>
+        </button>
+      `
+      )
+      .join('');
+
+    bar.querySelectorAll('.lander-ability-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const slot = Number((btn as HTMLElement).getAttribute('data-ability-slot') || 0);
+        if (slot >= 1 && slot <= 4) {
+          this.triggerCrewAbility(slot);
+        }
+      });
+    });
+  }
+
+  /**
+   * Executes hotkeyed [1]–[4] crew active abilities during surface exploration.
+   */
+  public triggerCrewAbility(slotIndex: number): void {
+    if (!this.isLanderActive || this.isLanderDestroyed) return;
+    const ability = this.landerCrewEffects.activeAbilities.find((a) => a.slotIndex === slotIndex);
+    if (!ability) return;
+
+    const now = Date.now();
+    const until = this.abilityCooldownsUntil[slotIndex] || 0;
+    if (until > now) {
+      const rem = Math.ceil((until - now) / 1000);
+      this.callbacks.showApNotification(`⏳ ${ability.name} recharging (${rem}s remaining).`, true);
+      return;
+    }
+
+    this.abilityCooldownsUntil[slotIndex] = now + ability.cooldownSec * 1000;
+    const s = this.landerState;
+    this.audio.playUiBlip();
+
+    switch (ability.abilityId) {
+      case 'ARC_SHOCKWAVE': {
+        let stunnedCount = 0;
+        this.landerFauna.forEach((f) => {
+          if (!f.collected && Math.hypot(f.x - s.x, f.y - s.y) <= 175) {
+            f.state = 'STUNNED';
+            f.stunTimer = Math.round(8 * (this.landerCrewEffects.stunDurationMult || 1));
+            f.vx = 0;
+            f.vy = 0;
+            stunnedCount++;
+          }
+        });
+        this.landerSonarWaves.push({ x: s.x, y: s.y, radius: 12, maxRadius: 180, alpha: 1.0 });
+        this.refreshLanderRadarList();
+        this.callbacks.showApNotification(`⚡ ARC SHOCKWAVE (${ability.grantedByName}): ${stunnedCount} nearby fauna stunned for 8s!`, false);
+        break;
+      }
+      case 'SEISMIC_VEIN_CRACKER': {
+        this.landerSonarWaves.push({ x: s.x, y: s.y, radius: 15, maxRadius: 680, alpha: 1.0 });
+        let bonusMinerals = 0;
+        this.landerNodes.forEach((n) => {
+          n.discovered = true;
+          if (n.type === 'MINERAL' && !n.collected) {
+            n.amount = Math.ceil((n.amount || 5) * 1.15);
+            bonusMinerals++;
+          }
+        });
+        this.landerFauna.forEach((f) => {
+          f.discovered = true;
+        });
+        this.refreshLanderRadarList();
+        this.callbacks.showApNotification(`⛏️ SEISMIC VEIN CRACKER (${ability.grantedByName}): Deep sonar mapped arena & enriched ${bonusMinerals} veins (+15%)!`, false);
+        break;
+      }
+      case 'NANO_GEL_PATCH': {
+        s.hull = Math.min(s.maxHull, s.hull + 32);
+        this.landerTemp = Math.max(0, this.landerTemp - 45);
+        this.causticSealTimer = 8.0;
+        this.callbacks.showApNotification(`💉 NANO-GEL PATCH (${ability.grantedByName}): +32 Hull repaired, -45°C heat vented, 8s Caustic Seal!`, false);
+        break;
+      }
+      case 'OVERLOAD_CAPACITOR': {
+        this.isLanderFlamedOut = false;
+        this.landerFlameoutTimer = 0;
+        this.landerTemp = Math.max(0, this.landerTemp - 25);
+        s.hull = Math.min(s.maxHull, s.hull + 18);
+        this.landerNodes.forEach((n) => {
+          if (n.type === 'MEGASTRUCTURE') n.discovered = true;
+        });
+        this.refreshLanderRadarList();
+        this.callbacks.showApNotification(`🔧 OVERLOAD CAPACITOR (${ability.grantedByName}): Flameout cleared, +18 Hull & Precursor vaults pinged!`, false);
+        break;
+      }
+      case 'AFTERBURNER_SURGE': {
+        this.afterburnerTimer = 7.0;
+        this.callbacks.showApNotification(`🚀 AFTERBURNER SURGE (${ability.grantedByName}): +75% thrust speed & zero fuel burn for 7s!`, false);
+        break;
+      }
+    }
+
+    this.updateLanderTelemetryUI();
   }
 }

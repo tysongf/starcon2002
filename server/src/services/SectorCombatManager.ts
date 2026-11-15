@@ -4425,14 +4425,19 @@ export class SectorRoom {
           });
         }
       } else if (item.type === 'CASTAWAY') {
-        const candidate = generateProceduralCrewCandidate({
-          listingId: `RESCUE_${containerId}`,
-          seed: Number(item.seed || Date.now()),
-          factionId: item.factionId || 'FACTION_SOL',
-          originSource: 'RESCUE_POD',
-          originLabel: item.originLabel || container.title,
-        });
-        const enrolled = await crewService.enrollEncounterCrew(playerId, candidate);
+        let enrolled: any;
+        if (item.preservedCrew) {
+          enrolled = await crewService.enrollPreservedCrew(playerId, item.preservedCrew, 55);
+        } else {
+          const candidate = generateProceduralCrewCandidate({
+            listingId: `RESCUE_${containerId}`,
+            seed: Number(item.seed || Date.now()),
+            factionId: item.factionId || 'FACTION_SOL',
+            originSource: 'RESCUE_POD',
+            originLabel: item.originLabel || container.title,
+          });
+          enrolled = await crewService.enrollEncounterCrew(playerId, candidate);
+        }
         rescuedCrew.push(enrolled);
         this.pendingEvents.push({
           type: 'CASTAWAY_RESCUED',
@@ -4858,6 +4863,32 @@ export class SectorCombatManager {
 
   public static getLatestAAR(accountId: string): CombatAAR | null {
     return SectorCombatManager.latestAARByAccount.get(accountId) || null;
+  }
+
+  public spawnPreservedCastawayPod(sectorId: number, preservedCrew: any, originLabel: string): string {
+    const room = this.getOrCreateRoom(sectorId);
+    const angle = ((Number(preservedCrew.seed || 77) % 360) * Math.PI) / 180;
+    const dist = 16 + (Number(preservedCrew.grit || 50) % 14);
+    const containerId = `lander_eject_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+    const container: SectorLootContainer = {
+      id: containerId,
+      x: Math.round(Math.cos(angle) * dist * 10) / 10,
+      z: Math.round(Math.sin(angle) * dist * 10) / 10,
+      title: `Distress Ejection Pod: ${preservedCrew.name}`,
+      rarity: (preservedCrew.rarity || 'UNCOMMON') as SectorLootContainer['rarity'],
+      items: [
+        {
+          type: 'CASTAWAY',
+          name: `${preservedCrew.name} (${preservedCrew.primarySpecialty} Cryo-Pod)`,
+          factionId: preservedCrew.factionId || 'FACTION_SOL',
+          originLabel,
+          preservedCrew,
+        },
+      ],
+      createdAt: Date.now(),
+    };
+    room.containers.push(container);
+    return containerId;
   }
 
   public static setLatestAAR(accountId: string, aar: CombatAAR): void {

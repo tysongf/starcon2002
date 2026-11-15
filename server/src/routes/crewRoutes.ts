@@ -114,12 +114,20 @@ export const crewRoutes: FastifyPluginAsync = async (server) => {
     }
   });
 
+  server.get('/casualties', async (req, reply) => {
+    const query = (req.query || {}) as { accountId?: string };
+    const accountId = query.accountId || 'acc_sol_captain';
+    const casualties = await crewService.getCrewCasualties(accountId);
+    reply.send({ success: true, casualties });
+  });
+
   server.post('/debug-seed', async (req, reply) => {
     const body = (req.body || {}) as {
       accountId?: string;
       specialties: CrewSpecialtyId[];
       rarity?: CrewRarity;
       aptitude?: number;
+      grit?: number;
       assignColonyId?: string;
       assignBaySlot?: string;
       name?: string;
@@ -129,6 +137,7 @@ export const crewRoutes: FastifyPluginAsync = async (server) => {
         specialties: body.specialties,
         rarity: body.rarity,
         aptitude: body.aptitude,
+        grit: body.grit,
         assignColonyId: body.assignColonyId,
         assignBaySlot: body.assignBaySlot,
         name: body.name,

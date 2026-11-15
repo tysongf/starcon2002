@@ -7,6 +7,7 @@ export type PlanetParam = Static<typeof PlanetParamSchema>;
 
 export const DeployLanderBodySchema = Type.Object({
   accountId: Type.String({ minLength: 1 }),
+  crewIds: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
 });
 export type DeployLanderBody = Static<typeof DeployLanderBodySchema>;
 
@@ -28,8 +29,8 @@ export const RecoverLanderBodySchema = Type.Object({
   accountId: Type.String({ minLength: 1 }),
   mineralsHarvested: Type.Array(HarvestedMineralSchema),
   bioSamplesHarvested: Type.Array(HarvestedBioSampleSchema),
-  hullRemaining: Type.Number({ minimum: 0, maximum: 250 }),
-  fuelRemaining: Type.Number({ minimum: 0, maximum: 250 }),
+  hullRemaining: Type.Number({ minimum: 0, maximum: 500 }),
+  fuelRemaining: Type.Number({ minimum: 0, maximum: 500 }),
 });
 export type RecoverLanderBody = Static<typeof RecoverLanderBodySchema>;
 

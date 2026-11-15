@@ -1,5 +1,6 @@
 import { FastifyPluginAsync } from 'fastify';
 import { planetaryHazardService, LANDER_MODULE_CATALOG } from '../services/PlanetaryHazardService';
+import { LANDER_CHASSIS_TIERS } from '../procgen/LanderCrewCatalog';
 import { planetaryFaunaService } from '../services/PlanetaryFaunaService';
 import { shipyardService } from '../services/ShipyardService';
 import {
@@ -12,10 +13,19 @@ import {
 } from '../schemas/hazardSchemas';
 
 export const shipyardRoutes: FastifyPluginAsync = async (server) => {
-  // 1. Get Outfitting Module Catalog for Landers
+  // 1. Get Outfitting Module Catalog & Chassis Tiers for Landers
   server.get('/lander/modules', async (_req, reply) => {
     reply.send({
       success: true,
+      modules: Object.values(LANDER_MODULE_CATALOG),
+      tiers: Object.values(LANDER_CHASSIS_TIERS),
+    });
+  });
+
+  server.get('/lander/tiers', async (_req, reply) => {
+    reply.send({
+      success: true,
+      tiers: Object.values(LANDER_CHASSIS_TIERS),
       modules: Object.values(LANDER_MODULE_CATALOG),
     });
   });
@@ -40,13 +50,13 @@ export const shipyardRoutes: FastifyPluginAsync = async (server) => {
     });
   });
 
-  // 3. Purchase Replacement Vanguard Mk.I Lander Chassis (1,000 Credits)
+  // 3. Purchase Replacement or Upgraded Tier (1..4) Lander Chassis
   server.post<{ Body: PurchaseLanderBody }>(
     '/lander/purchase',
     { schema: { body: PurchaseLanderBodySchema } },
     async (req, reply) => {
-      const { accountId } = req.body;
-      const result = await planetaryHazardService.purchaseReplacementLander(accountId);
+      const { accountId, tier } = req.body;
+      const result = await planetaryHazardService.purchaseReplacementLander(accountId, tier ?? 1);
       if (!result.success) {
         return reply.status(400).send(result);
       }
