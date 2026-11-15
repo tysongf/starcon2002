@@ -11,6 +11,11 @@ import {
   type ColonyModuleKey,
 } from '../procgen/CrewCatalog';
 import { crewService } from './CrewService';
+import { outpostGridService } from './OutpostGridService';
+import {
+  mapFacilityToOutpostBuilding,
+  mapModuleKeyToOutpostBuilding,
+} from '../procgen/OutpostCatalog';
 
 export interface ColonyDetail {
   id: string;
@@ -50,6 +55,17 @@ export interface ColonyDetail {
     morale: number;
   }>;
   localWageSubsidy?: number;
+  morale?: number;
+  powerGeneratedMW?: number;
+  powerConsumedMW?: number;
+  o2Generated?: number;
+  o2Consumed?: number;
+  gridEfficiency?: number;
+  workerEfficiency?: number;
+  workersRequired?: number;
+  activeBuildingsCount?: number;
+  constructingCount?: number;
+  unlinkedCount?: number;
 }
 
 export class ColonyService {
@@ -180,6 +196,9 @@ export class ColonyService {
       ]
     );
 
+    await outpostGridService.ensureGridInitialized(colonyId, planetId);
+    await outpostGridService.evaluateGridSimulation(colonyId, 120);
+
     return this.getColonyDetail(colonyId, accountId);
   }
 
@@ -205,6 +224,9 @@ export class ColonyService {
     const lastHarvest = new Date(c.last_harvest_at).getTime();
     const elapsedSeconds = Math.max(0, Math.floor((now - lastHarvest) / 1000));
 
+    // Evaluate 4-layer Outpost grid connectivity, build timers, MW/O2/Worker simulation
+    const { telemetry } = await outpostGridService.evaluateGridSimulation(colonyId, Number(c.population || 120));
+
     // Query player biotech research
     const bioRes = await db.query<any>(
       `SELECT biosphere_tier, unlocked_projects FROM player_biotech_research WHERE account_id = $1`,
@@ -217,16 +239,8 @@ export class ColonyService {
       ? (typeof bioRow.unlocked_projects === 'string' ? JSON.parse(bioRow.unlocked_projects) : (bioRow.unlocked_projects || []))
       : [];
 
-    const effectiveMaxPop = Math.round(c.max_population * bioTierDef.populationMultiplier);
-
-    const rawMods: Record<string, number> =
-      typeof c.colony_modules === 'string'
-        ? JSON.parse(c.colony_modules || '{}')
-        : c.colony_modules || {};
-    const colonyModules = {} as Record<ColonyModuleKey, number>;
-    for (const mDef of COLONY_MODULES) {
-      colonyModules[mDef.key] = Number(rawMods[mDef.key] || 0);
-    }
+    const effectiveMaxPop = Math.round(telemetry.maxPopulation * bioTierDef.populationMultiplier);
+    const colonyModules = telemetry.colonyModules;
 
     const { rows: crewRows } = await db.query<any>(
       `SELECT id, name, rarity, primary_specialty, specialties, aptitude, morale
@@ -247,7 +261,7 @@ export class ColonyService {
 
     let localCrewOutputMult = 1.0;
     let localCrewPopMult = 1.0;
-    let localWageSubsidy = Number(c.habitation_tier || 1) * 12;
+    let localWageSubsidy = Number(telemetry.habitationTier || 1) * 12;
     const tradeExTier = colonyModules.TRADE_EXCHANGE || 0;
     if (tradeExTier === 1) localWageSubsidy += 45;
     else if (tradeExTier === 2) localWageSubsidy += 100;
@@ -275,14 +289,20 @@ export class ColonyService {
       }
     }
 
-    // Calculate deterministic accrual rates
-    // Base extraction: 6 units per minute at Tier 1, scaled by derrickTier, population factor, refinery & stationed crew
-    // Spore-Synthesized Crops (BIO_SPORE_AGRICULTURE) doubles COMM_RATIONS output
+    // Tile-derived extraction rate scaled by Power Grid Efficiency, Worker Efficiency & Crew
     const sporeMult = (c.commodity_id === 'COMM_RATIONS' && unlockedProjects.includes('BIO_SPORE_AGRICULTURE')) ? 2.0 : 1.0;
-    const derrickMult = c.derrick_tier === 1 ? 1.0 : c.derrick_tier === 2 ? 2.5 : 5.0;
     const popFactor = 1.0 + (c.population / 1000);
     const habFactor = 0.5 + (c.habitability_rating / 200);
-    const unitsPerSecond = (6 / 60) * derrickMult * popFactor * habFactor * sporeMult * refineryMult * localCrewOutputMult;
+    const unitsPerSecond =
+      (telemetry.baseExtractionPerMin / 60) *
+      telemetry.extractionMultiplier *
+      telemetry.gridEfficiency *
+      telemetry.workerEfficiency *
+      popFactor *
+      habFactor *
+      sporeMult *
+      refineryMult *
+      localCrewOutputMult;
     const productionRatePerMinute = Math.round(unitsPerSecond * 60 * 10) / 10;
 
     let newStockpile = c.stockpiled_amount;
@@ -291,24 +311,26 @@ export class ColonyService {
     let needsUpdate = false;
 
     if (elapsedSeconds >= 2) {
-      // 1. Accrue Stockpiled Minerals
       const accruedUnits = Math.floor(elapsedSeconds * unitsPerSecond);
       if (accruedUnits > 0) {
-        newStockpile = Math.min(c.silo_capacity, c.stockpiled_amount + accruedUnits);
+        newStockpile = Math.min(telemetry.siloCapacity, c.stockpiled_amount + accruedUnits);
         needsUpdate = true;
       }
 
-      // 2. Accrue Population Growth (mitigated by habitation tier, BIO_CELLULAR_GROWTH, Colonial Medbay & Settlers)
+      // Life-Support O2 Deficit halts colony population growth
+      const o2Supported = telemetry.o2Generated >= telemetry.o2Consumed;
       const growthMult = unlockedProjects.includes('BIO_CELLULAR_GROWTH') ? 1.5 : 1.0;
-      const popGrowthPerSec = 0.05 * c.habitation_tier * growthMult * medbayPopMult * localCrewPopMult;
+      const moraleScale = Math.max(0.4, telemetry.morale / 80);
+      const popGrowthPerSec = o2Supported
+        ? 0.05 * telemetry.habitationTier * growthMult * medbayPopMult * localCrewPopMult * moraleScale
+        : 0;
       const accruedPop = Math.floor(elapsedSeconds * popGrowthPerSec);
       if (accruedPop > 0 && c.population < effectiveMaxPop) {
         newPop = Math.min(effectiveMaxPop, c.population + accruedPop);
         needsUpdate = true;
       }
 
-      // 3. Accrue Terraforming Progress
-      const terraformRate = 0.008 * c.terraformer_tier; // ~0.5 progress per minute
+      const terraformRate = telemetry.terraformRatePerSec * telemetry.gridEfficiency;
       const accruedTerraform = elapsedSeconds * terraformRate;
       if (accruedTerraform >= 1.0) {
         newTerraform = c.terraforming_progress + accruedTerraform;
@@ -326,7 +348,7 @@ export class ColonyService {
       if (needsUpdate) {
         await db.query(
           `UPDATE colonies 
-           SET stockpiled_amount = $1, population = $2, terraforming_progress = $3, last_harvest_at = NOW()
+           SET stockpiled_amount = $1, population = $2, terraforming_progress = $3, last_harvest_at = NOW(), last_sim_at = NOW()
            WHERE id = $4`,
           [newStockpile, newPop, newTerraform, colonyId]
         );
@@ -346,12 +368,12 @@ export class ColonyService {
       population: newPop,
       maxPopulation: effectiveMaxPop,
       stockpiledAmount: newStockpile,
-      siloCapacity: c.silo_capacity,
-      derrickTier: c.derrick_tier,
-      habitationTier: c.habitation_tier,
-      terraformerTier: c.terraformer_tier,
-      siloTier: c.silo_tier,
-      shipyardTier: c.shipyard_tier || 0,
+      siloCapacity: telemetry.siloCapacity,
+      derrickTier: telemetry.derrickTier,
+      habitationTier: telemetry.habitationTier,
+      terraformerTier: telemetry.terraformerTier,
+      siloTier: telemetry.siloTier,
+      shipyardTier: telemetry.shipyardTier,
       terraformingProgress: Math.round(newTerraform * 10) / 10,
       productionRatePerMinute,
       lastHarvestAt: needsUpdate ? new Date().toISOString() : c.last_harvest_at,
@@ -363,6 +385,17 @@ export class ColonyService {
       colonyModules,
       stationedCrew,
       localWageSubsidy,
+      morale: telemetry.morale,
+      powerGeneratedMW: telemetry.powerGeneratedMW,
+      powerConsumedMW: telemetry.powerConsumedMW,
+      o2Generated: telemetry.o2Generated,
+      o2Consumed: telemetry.o2Consumed,
+      gridEfficiency: telemetry.gridEfficiency,
+      workerEfficiency: telemetry.workerEfficiency,
+      workersRequired: telemetry.workersRequired,
+      activeBuildingsCount: telemetry.activeBuildingsCount,
+      constructingCount: telemetry.constructingCount,
+      unlinkedCount: telemetry.unlinkedCount,
     };
   }
 
@@ -448,29 +481,15 @@ export class ColonyService {
       throw new Error(apCheck.error || `INSUFFICIENT_AP: Upgrade requires ${apCost} AP.`);
     }
 
-    // 3. Update database facility tier and parameters
-    let updateSql = '';
-    if (facilityType === 'DERRICK') {
-      updateSql = 'UPDATE colonies SET derrick_tier = $1 WHERE id = $2';
-    } else if (facilityType === 'HABITATION') {
-      const newMaxPop = nextTier === 2 ? 1500 : 5000;
-      updateSql = `UPDATE colonies SET habitation_tier = $1, max_population = ${newMaxPop} WHERE id = $2`;
-    } else if (facilityType === 'TERRAFORMER') {
-      updateSql = 'UPDATE colonies SET terraformer_tier = $1 WHERE id = $2';
-    } else if (facilityType === 'SILO') {
-      const newCapacity = nextTier === 2 ? 250 : 1000;
-      updateSql = `UPDATE colonies SET silo_tier = $1, silo_capacity = ${newCapacity} WHERE id = $2`;
-    } else if (facilityType === 'SHIPYARD') {
-      updateSql = 'UPDATE colonies SET shipyard_tier = $1 WHERE id = $2';
-    }
-
-    await db.query(updateSql, [nextTier, colonyId]);
+    // 3. Auto-place matching Outpost structure onto connected colony grid so tile telemetry drives upgrades
+    const buildingType = mapFacilityToOutpostBuilding(facilityType);
+    await outpostGridService.autoPlaceUpgradeOnGrid(accountId, colonyId, buildingType);
     const updated = await this.getColonyDetail(colonyId, accountId);
 
     return {
       success: true,
       colony: updated,
-      message: `${facilityType} successfully upgraded to Tier ${nextTier}. Facility operational.`,
+      message: `${facilityType} successfully upgraded to Tier ${nextTier} on Outpost Grid. Facility operational.`,
     };
   }
 
@@ -521,12 +540,8 @@ export class ColonyService {
       throw new Error(apCheck.error || `INSUFFICIENT_AP: Upgrade requires ${apCost} AP.`);
     }
 
-    currentMods[moduleKey] = nextTier;
-    await db.query('UPDATE colonies SET colony_modules = $1::jsonb WHERE id = $2 AND account_id = $3', [
-      JSON.stringify(currentMods),
-      colonyId,
-      accountId,
-    ]);
+    const buildingType = mapModuleKeyToOutpostBuilding(moduleKey);
+    await outpostGridService.autoPlaceUpgradeOnGrid(accountId, colonyId, buildingType);
 
     const updated = await this.getColonyDetail(colonyId, accountId);
     return {

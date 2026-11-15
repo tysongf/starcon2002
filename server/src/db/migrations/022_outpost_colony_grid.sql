@@ -1,0 +1,31 @@
+-- Milestone 1.7: Sierra Outpost (1994)-inspired 4-Layer 12x12 Isometric Colony Grid & Telemetry
+
+ALTER TABLE colonies
+  ADD COLUMN IF NOT EXISTS morale INTEGER NOT NULL DEFAULT 80,
+  ADD COLUMN IF NOT EXISTS power_generated_mw INTEGER NOT NULL DEFAULT 50,
+  ADD COLUMN IF NOT EXISTS power_consumed_mw INTEGER NOT NULL DEFAULT 18,
+  ADD COLUMN IF NOT EXISTS o2_generated INTEGER NOT NULL DEFAULT 46,
+  ADD COLUMN IF NOT EXISTS o2_consumed INTEGER NOT NULL DEFAULT 10,
+  ADD COLUMN IF NOT EXISTS grid_efficiency DOUBLE PRECISION NOT NULL DEFAULT 1.0,
+  ADD COLUMN IF NOT EXISTS last_sim_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE TABLE IF NOT EXISTS colony_grid_tiles (
+  id TEXT PRIMARY KEY,
+  colony_id TEXT NOT NULL REFERENCES colonies(id) ON DELETE CASCADE,
+  layer INTEGER NOT NULL CHECK (layer BETWEEN -3 AND 0),
+  x INTEGER NOT NULL CHECK (x BETWEEN 0 AND 11),
+  y INTEGER NOT NULL CHECK (y BETWEEN 0 AND 11),
+  terrain_type TEXT NOT NULL DEFAULT 'FLAT',
+  building_type TEXT,
+  status TEXT NOT NULL DEFAULT 'ACTIVE',
+  is_connected BOOLEAN NOT NULL DEFAULT TRUE,
+  is_powered BOOLEAN NOT NULL DEFAULT TRUE,
+  build_started_at TIMESTAMPTZ,
+  build_complete_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (colony_id, layer, x, y)
+);
+
+CREATE INDEX IF NOT EXISTS idx_colony_grid_colony_layer
+  ON colony_grid_tiles (colony_id, layer);
+

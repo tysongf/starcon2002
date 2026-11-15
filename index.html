@@ -1556,67 +1556,20 @@
                   </button>
                 </div>
 
-                <!-- 4 Functional Facility Cards -->
-                <div class="colony-facilities-grid">
-                  <!-- Facility 1: Extraction Derrick -->
-                  <div class="facility-card" id="facility-card-derrick">
-                    <div class="facility-header">
-                      <div class="facility-name-group">
-                        <span class="facility-icon">⛏️</span>
-                        <span class="facility-title">EXTRACTION DERRICK</span>
-                      </div>
-                      <span class="facility-tier-badge" id="badge-derrick-tier">TIER 1</span>
-                    </div>
-                    <p class="facility-desc" id="desc-derrick-tier">Base pneumatic drill harvesting raw surface minerals.</p>
-                    <button class="facility-upgrade-btn" id="btn-upgrade-derrick">
-                      UPGRADE TO TIER 2 (400 CR // 3 AP)
-                    </button>
+                <!-- Milestone 1.7: Sierra Outpost Isometric Grid Summary & Command Launcher -->
+                <div class="outpost-summary-box" id="colony-outpost-summary-box">
+                  <div class="outpost-summary-header">
+                    <span class="outpost-summary-badge">OUTPOST GRID // 4-LAYER 12×12</span>
+                    <span class="outpost-summary-eff" id="colony-outpost-grid-eff">EFFICIENCY: 100%</span>
                   </div>
-
-                  <!-- Facility 2: Habitation Arcology -->
-                  <div class="facility-card" id="facility-card-habitation">
-                    <div class="facility-header">
-                      <div class="facility-name-group">
-                        <span class="facility-icon">🏘️</span>
-                        <span class="facility-title">HABITATION BIOSPHERE</span>
-                      </div>
-                      <span class="facility-tier-badge" id="badge-habitation-tier">TIER 1</span>
-                    </div>
-                    <p class="facility-desc" id="desc-habitation-tier">Geodesic life-support domes supporting 500 colonists.</p>
-                    <button class="facility-upgrade-btn" id="btn-upgrade-habitation">
-                      UPGRADE TO TIER 2 (400 CR // 3 AP)
-                    </button>
+                  <div class="outpost-summary-metrics" id="colony-outpost-grid-summary">
+                    <span>⚡ 30 / 15 MW</span>
+                    <span>🫁 O2 30 / 15</span>
+                    <span>💚 MORALE 80%</span>
                   </div>
-
-                  <!-- Facility 3: Terraforming Scrubbers -->
-                  <div class="facility-card" id="facility-card-terraformer">
-                    <div class="facility-header">
-                      <div class="facility-name-group">
-                        <span class="facility-icon">🌱</span>
-                        <span class="facility-title">TERRAFORMING SCRUBBER</span>
-                      </div>
-                      <span class="facility-tier-badge" id="badge-terraformer-tier">TIER 1</span>
-                    </div>
-                    <p class="facility-desc" id="desc-terraformer-tier">Atmospheric ionizers scrubbing surface toxins (+1% Hab).</p>
-                    <button class="facility-upgrade-btn" id="btn-upgrade-terraformer">
-                      UPGRADE TO TIER 2 (400 CR // 3 AP)
-                    </button>
-                  </div>
-
-                  <!-- Facility 4: Logistics Silo -->
-                  <div class="facility-card" id="facility-card-silo">
-                    <div class="facility-header">
-                      <div class="facility-name-group">
-                        <span class="facility-icon">🏭</span>
-                        <span class="facility-title">LOGISTICS SILO</span>
-                      </div>
-                      <span class="facility-tier-badge" id="badge-silo-tier">TIER 1</span>
-                    </div>
-                    <p class="facility-desc" id="desc-silo-tier">Pressurized storage vault with 50 units capacity.</p>
-                    <button class="facility-upgrade-btn" id="btn-upgrade-silo">
-                      UPGRADE TO TIER 2 (400 CR // 3 AP)
-                    </button>
-                  </div>
+                  <button class="colony-action-btn primary large-btn" id="btn-open-outpost-modal">
+                    LAUNCH ISOMETRIC COLONY COMMAND (OUTPOST GRID) 🏗️
+                  </button>
                 </div>
 
                 <!-- Milestone 1.5: Colony Workforce, Settlement Recruitment & 8 Specialty Modules -->
@@ -1796,6 +1749,64 @@
               </button>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Milestone 1.7: Sierra Outpost Isometric Multi-Layer Colony Command Modal -->
+    <div id="outpost-colony-modal" class="fullscreen-crt-modal hidden">
+      <div class="outpost-modal-shell">
+        <header class="outpost-modal-header">
+          <div class="outpost-title-cluster">
+            <span class="outpost-mode-badge">OUTPOST GRID // 4-LAYER 12×12</span>
+            <h2 id="outpost-modal-title">COLONY // OUTPOST ISOMETRIC COMMAND</h2>
+          </div>
+
+          <div class="outpost-gauge-bar">
+            <span class="outpost-gauge-pill" id="outpost-gauge-power">⚡ 0/0 MW</span>
+            <span class="outpost-gauge-pill" id="outpost-gauge-o2">🫁 O2 0/0</span>
+            <span class="outpost-gauge-pill" id="outpost-gauge-workers">👷 0/0 POP</span>
+            <span class="outpost-gauge-pill" id="outpost-gauge-morale">💚 MORALE 80%</span>
+            <span class="outpost-gauge-pill" id="outpost-gauge-rate">⛏️ 0 u/min</span>
+            <span class="outpost-gauge-pill" id="outpost-gauge-silo">📦 0/50</span>
+          </div>
+
+          <div class="outpost-header-actions">
+            <button id="btn-outpost-rush-all" class="outpost-action-btn warn" style="display: none;">⚡ FINALIZE QUEUE</button>
+            <button id="btn-outpost-harvest" class="outpost-action-btn primary">📦 HARVEST SILO</button>
+            <button id="btn-close-outpost-modal" class="survey-close-btn" title="Exit Outpost Command [Esc]">✕</button>
+          </div>
+        </header>
+
+        <div class="outpost-layer-toolbar">
+          <div class="outpost-layer-tabs">
+            <button class="outpost-layer-btn active" data-layer="0">L0: SURFACE [1]</button>
+            <button class="outpost-layer-btn" data-layer="-1">L-1: SHALLOW CRUST [2]</button>
+            <button class="outpost-layer-btn" data-layer="-2">L-2: MID MANTLE [3]</button>
+            <button class="outpost-layer-btn" data-layer="-3">L-3: DEEP CORE [4]</button>
+          </div>
+          <div class="outpost-toolbar-hints">
+            <button id="btn-outpost-inspect-mode" class="outpost-action-btn active">🔍 INSPECT MODE</button>
+            <span class="outpost-hint-text">Drag canvas to pan · Scroll to zoom · Click tile to inspect/build · [1-4] Depth · [Esc] Close</span>
+          </div>
+        </div>
+
+        <div class="outpost-layout-body">
+          <aside class="outpost-palette-pane">
+            <div class="outpost-pane-title">BLUEPRINT PALETTE</div>
+            <div id="outpost-build-palette" class="outpost-build-palette"></div>
+          </aside>
+
+          <main class="outpost-viewport-pane">
+            <canvas id="outpost-grid-canvas" width="840" height="580"></canvas>
+          </main>
+
+          <aside class="outpost-inspector-pane">
+            <div class="outpost-pane-title">TILE & TELEMETRY INSPECTOR</div>
+            <div id="outpost-tile-inspector" class="outpost-tile-inspector">
+              <div class="inspector-placeholder">Click any tile on the isometric grid to inspect terrain seams, conduit connectivity, power draw, or construction status.</div>
+            </div>
+          </aside>
         </div>
       </div>
     </div>

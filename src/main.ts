@@ -2175,6 +2175,11 @@ class GameEngine {
         return;
       }
 
+      // Milestone 1.7: Outpost Isometric Colony Command Key Handling
+      if (this.colonyController?.outpostController?.isOpen) {
+        return; // OutpostColonyController handles Escape & 1..4 layer hotkeys
+      }
+
       // Day 20: Star Control II Precursor Archaeological Terminal Key Handling
       const precursorModal = document.getElementById('precursor-terminal-modal');
       if (precursorModal && !precursorModal.classList.contains('hidden')) {

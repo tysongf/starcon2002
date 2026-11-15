@@ -1,9 +1,11 @@
+import { OutpostColonyController } from './OutpostColonyController.ts';
+
 /**
  * ColonyController.ts
  *
- * Encapsulates planetary colony outposts, facility modules (Derrick, Habitation,
- * Terraformer, Silo), resource extraction/harvesting, Precursor Proto-Tech
- * laboratory catalog synthesis, and relic diplomatic remittance.
+ * Encapsulates planetary colony outposts, Sierra Outpost isometric grid orchestration,
+ * resource extraction/harvesting, Precursor Proto-Tech laboratory catalog synthesis,
+ * and relic diplomatic remittance.
  */
 
 export interface ColonyControllerCallbacks {
@@ -35,9 +37,22 @@ export class ColonyController {
   public precursorRequiredSurvey: number = 33;
   public playerRelicCount: number = 0;
   public precursorResearchCatalog: any[] = [];
+  public outpostController: OutpostColonyController;
 
   constructor(callbacks: ColonyControllerCallbacks) {
     this.callbacks = callbacks;
+    this.outpostController = new OutpostColonyController({
+      audio: callbacks.audio,
+      showApNotification: callbacks.showApNotification,
+      fetchPlayerAP: callbacks.fetchPlayerAP,
+      refreshPlayerHold: callbacks.refreshPlayerHold,
+      onColonyUpdated: (colony) => {
+        if (colony) {
+          this.activeColony = colony;
+          this.refreshColonyDashboardUI();
+        }
+      },
+    });
     this.bindEvents();
   }
 
@@ -56,17 +71,12 @@ export class ColonyController {
     const btnFound = document.getElementById('btn-found-colony');
     btnFound?.addEventListener('click', () => this.foundColony());
 
-    const btnDerrick = document.getElementById('btn-upgrade-derrick');
-    btnDerrick?.addEventListener('click', () => this.upgradeColonyFacility('DERRICK'));
-
-    const btnHab = document.getElementById('btn-upgrade-habitation');
-    btnHab?.addEventListener('click', () => this.upgradeColonyFacility('HABITATION'));
-
-    const btnTer = document.getElementById('btn-upgrade-terraformer');
-    btnTer?.addEventListener('click', () => this.upgradeColonyFacility('TERRAFORMER'));
-
-    const btnSilo = document.getElementById('btn-upgrade-silo');
-    btnSilo?.addEventListener('click', () => this.upgradeColonyFacility('SILO'));
+    const btnOpenOutpost = document.getElementById('btn-open-outpost-modal');
+    btnOpenOutpost?.addEventListener('click', () => {
+      if (this.activeColony?.id) {
+        void this.outpostController.open(this.activeColony.id);
+      }
+    });
 
     const btnHarvest = document.getElementById('btn-harvest-cargo') || document.getElementById('btn-harvest-colony');
     btnHarvest?.addEventListener('click', () => this.harvestColonyCargo());
@@ -168,11 +178,25 @@ export class ColonyController {
   }
 
   /**
-   * Updates Colony Command UI metrics, silo meter, and facility cards.
+   * Updates Colony Command UI metrics, silo meter, and Sierra Outpost grid summary.
    */
   public refreshColonyDashboardUI(): void {
     if (!this.activeColony) return;
     const col = this.activeColony;
+
+    const surfaceLat = Number(col.surfaceLat ?? col.surface_lat ?? 0);
+    const surfaceLng = Number(col.surfaceLng ?? col.surface_lng ?? 0);
+    const population = Number(col.population ?? 0);
+    const maxPopulation = Number(col.maxPopulation ?? col.max_population ?? 500);
+    const prodPerMin =
+      col.productionRatePerMinute !== undefined
+        ? Number(col.productionRatePerMinute)
+        : Number(col.production_rate ?? 0) * 60;
+    const terraformerTier = Number(col.terraformerTier ?? col.terraformer_tier ?? 1);
+    const habitability = Number(col.habitabilityRating ?? col.habitability_rating ?? 50);
+    const stockpiled = Number(col.stockpiledAmount ?? col.stockpiled_amount ?? 0);
+    const siloCap = Math.max(1, Number(col.siloCapacity ?? col.silo_capacity ?? 50));
+    const commodityId = String(col.commodityId ?? col.commodity_id ?? 'COMM_RAW_ORE');
 
     const elName = document.getElementById('colony-outpost-name');
     const elCoords = document.getElementById('colony-outpost-coords');
@@ -182,14 +206,18 @@ export class ColonyController {
     const elSiloText = document.getElementById('colony-silo-text');
     const elSiloFill = document.getElementById('colony-silo-fill');
 
-    if (elName) elName.textContent = col.name.toUpperCase();
-    if (elCoords) elCoords.textContent = `LAT: ${col.surface_lat >= 0 ? '+' : ''}${col.surface_lat.toFixed(1)}° // LNG: ${col.surface_lng >= 0 ? '+' : ''}${col.surface_lng.toFixed(1)}°`;
-    if (elPop) elPop.textContent = `${col.population} / ${col.max_population}`;
-    if (elRate) elRate.textContent = `${(col.production_rate * 60).toFixed(1)} u/min`;
-    if (elTerraform) elTerraform.textContent = `+${(col.terraformer_tier * 0.5).toFixed(1)}% / hr (Hab: ${col.habitability_rating}%)`;
+    if (elName) elName.textContent = String(col.name || 'COLONY').toUpperCase();
+    if (elCoords) {
+      elCoords.textContent = `LAT: ${surfaceLat >= 0 ? '+' : ''}${surfaceLat.toFixed(1)}° // LNG: ${surfaceLng >= 0 ? '+' : ''}${surfaceLng.toFixed(1)}°`;
+    }
+    if (elPop) elPop.textContent = `${population} / ${maxPopulation}`;
+    if (elRate) elRate.textContent = `${prodPerMin.toFixed(1)} u/min`;
+    if (elTerraform) elTerraform.textContent = `+${(terraformerTier * 0.5).toFixed(1)}% / hr (Hab: ${habitability}%)`;
 
-    const siloPct = Math.min(100, Math.round((col.stockpiled_amount / col.silo_capacity) * 100));
-    if (elSiloText) elSiloText.textContent = `${col.stockpiled_amount} / ${col.silo_capacity} Units Stockpiled (${col.commodity_id.replace('COMM_', '')})`;
+    const siloPct = Math.min(100, Math.round((stockpiled / siloCap) * 100));
+    if (elSiloText) {
+      elSiloText.textContent = `${stockpiled} / ${siloCap} Units Stockpiled (${commodityId.replace('COMM_', '')})`;
+    }
     if (elSiloFill) {
       elSiloFill.style.width = `${siloPct}%`;
       if (siloPct >= 100) {
@@ -199,85 +227,27 @@ export class ColonyController {
       }
     }
 
-    // Facility Cards: Derrick
-    const bDerrick = document.getElementById('badge-derrick-tier');
-    const dDerrick = document.getElementById('desc-derrick-tier');
-    const btnDerrick = document.getElementById('btn-upgrade-derrick') as HTMLButtonElement | null;
-    if (bDerrick) bDerrick.textContent = col.derrick_tier >= 3 ? 'TIER 3 (MAX)' : `TIER ${col.derrick_tier}`;
-    if (bDerrick && col.derrick_tier >= 3) bDerrick.classList.add('max');
-    if (dDerrick) {
-      const mult = col.derrick_tier === 1 ? '1.0x' : col.derrick_tier === 2 ? '2.5x' : '5.0x';
-      dDerrick.textContent = `Surface mineral drills operating at ${mult} extraction multiplier.`;
-    }
-    if (btnDerrick) {
-      if (col.derrick_tier >= 3) {
-        btnDerrick.textContent = 'MAXIMUM TIER REACHED';
-        btnDerrick.disabled = true;
-      } else {
-        const cost = col.derrick_tier === 1 ? '400 CR // 3 AP // 5 ALLOY' : '900 CR // 4 AP // 10 ALLOY';
-        btnDerrick.textContent = `UPGRADE TO TIER ${col.derrick_tier + 1} (${cost})`;
-        btnDerrick.disabled = false;
-      }
+    // Update Milestone 1.7 Outpost Isometric Grid telemetry summary
+    const pGen = Number(col.powerGeneratedMW ?? col.power_generated_mw ?? 30);
+    const pCon = Number(col.powerConsumedMW ?? col.power_consumed_mw ?? 15);
+    const o2Gen = Number(col.o2Generated ?? col.o2_generated ?? 30);
+    const o2Con = Number(col.o2Consumed ?? col.o2_consumed ?? 15);
+    const morale = Number(col.morale ?? 80);
+    const effPct = Math.round(Number(col.gridEfficiency ?? col.grid_efficiency ?? 1) * 100);
+
+    const elEff = document.getElementById('colony-outpost-grid-eff');
+    if (elEff) {
+      elEff.textContent = `EFFICIENCY: ${effPct}%`;
+      elEff.classList.toggle('danger', effPct < 90 || morale < 50);
     }
 
-    // Facility Cards: Habitation
-    const bHab = document.getElementById('badge-habitation-tier');
-    const dHab = document.getElementById('desc-habitation-tier');
-    const btnHab = document.getElementById('btn-upgrade-habitation') as HTMLButtonElement | null;
-    if (bHab) bHab.textContent = col.habitation_tier >= 3 ? 'TIER 3 (MAX)' : `TIER ${col.habitation_tier}`;
-    if (bHab && col.habitation_tier >= 3) bHab.classList.add('max');
-    if (dHab) {
-      dHab.textContent = `Pressurized biospheres supporting up to ${col.max_population} workforce.`;
-    }
-    if (btnHab) {
-      if (col.habitation_tier >= 3) {
-        btnHab.textContent = 'MAXIMUM TIER REACHED';
-        btnHab.disabled = true;
-      } else {
-        const cost = col.habitation_tier === 1 ? '400 CR // 3 AP // 5 ALLOY' : '900 CR // 4 AP // 10 ALLOY';
-        btnHab.textContent = `UPGRADE TO TIER ${col.habitation_tier + 1} (${cost})`;
-        btnHab.disabled = false;
-      }
-    }
-
-    // Facility Cards: Terraformer
-    const bTer = document.getElementById('badge-terraformer-tier');
-    const dTer = document.getElementById('desc-terraformer-tier');
-    const btnTer = document.getElementById('btn-upgrade-terraformer') as HTMLButtonElement | null;
-    if (bTer) bTer.textContent = col.terraformer_tier >= 3 ? 'TIER 3 (MAX)' : `TIER ${col.terraformer_tier}`;
-    if (bTer && col.terraformer_tier >= 3) bTer.classList.add('max');
-    if (dTer) {
-      dTer.textContent = `Ion scrubbers detoxifying atmosphere (+${(col.terraformer_tier * 0.5).toFixed(1)}% Hab/hr).`;
-    }
-    if (btnTer) {
-      if (col.terraformer_tier >= 3) {
-        btnTer.textContent = 'MAXIMUM TIER REACHED';
-        btnTer.disabled = true;
-      } else {
-        const cost = col.terraformer_tier === 1 ? '500 CR // 4 AP // 5 ALLOY' : '1,200 CR // 5 AP // 10 ALLOY';
-        btnTer.textContent = `UPGRADE TO TIER ${col.terraformer_tier + 1} (${cost})`;
-        btnTer.disabled = false;
-      }
-    }
-
-    // Facility Cards: Silo
-    const bSilo = document.getElementById('badge-silo-tier');
-    const dSilo = document.getElementById('desc-silo-tier');
-    const btnSilo = document.getElementById('btn-upgrade-silo') as HTMLButtonElement | null;
-    if (bSilo) bSilo.textContent = col.silo_tier >= 3 ? 'TIER 3 (MAX)' : `TIER ${col.silo_tier}`;
-    if (bSilo && col.silo_tier >= 3) bSilo.classList.add('max');
-    if (dSilo) {
-      dSilo.textContent = `Reinforced storage vaults buffering up to ${col.silo_capacity} units.`;
-    }
-    if (btnSilo) {
-      if (col.silo_tier >= 3) {
-        btnSilo.textContent = 'MAXIMUM TIER REACHED';
-        btnSilo.disabled = true;
-      } else {
-        const cost = col.silo_tier === 1 ? '350 CR // 3 AP // 5 ALLOY' : '800 CR // 4 AP // 10 ALLOY';
-        btnSilo.textContent = `UPGRADE TO TIER ${col.silo_tier + 1} (${cost})`;
-        btnSilo.disabled = false;
-      }
+    const elSummary = document.getElementById('colony-outpost-grid-summary');
+    if (elSummary) {
+      elSummary.innerHTML = `
+        <span>⚡ ${pGen} / ${pCon} MW</span>
+        <span>🫁 O2 ${o2Gen} / ${o2Con}</span>
+        <span>💚 MORALE ${morale}%</span>
+      `;
     }
 
     void this.loadColonyWorkforceUI(col);

@@ -1,6 +1,8 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { db } from '../db/Database';
 import { colonyService } from '../services/ColonyService';
+import { outpostGridService } from '../services/OutpostGridService';
+import { OUTPOST_BUILDINGS, type BuildingTypeId, type OutpostLayer } from '../procgen/OutpostCatalog';
 import { shipyardService } from '../services/ShipyardService';
 import { COLONY_MODULES, COLONY_FACILITY_CREW_REQUIREMENTS, type ColonyModuleKey } from '../procgen/CrewCatalog';
 
@@ -151,4 +153,118 @@ export const colonyRoutes: FastifyPluginAsync = async (server) => {
 
   server.post('/api/colonies/:id/shipyard/resupply-fleet', handleFleetResupply);
   server.post('/api/colony/:id/shipyard/resupply-fleet', handleFleetResupply);
+
+  // --- Milestone 1.7: Outpost Multi-Layer 12x12 Isometric Grid Routes ---
+  server.get('/api/colonies/outpost/catalog', async (_req, reply) => {
+    reply.send({ success: true, buildings: OUTPOST_BUILDINGS });
+  });
+
+  server.get('/api/colonies/:colonyId/grid', async (req, reply) => {
+    const { colonyId } = req.params as { colonyId: string };
+    const query = (req.query || {}) as { accountId?: string };
+    const accountId = query.accountId || 'acc_sol_captain';
+    try {
+      const colony = await colonyService.getColonyDetail(colonyId, accountId);
+      const { tiles, telemetry } = await outpostGridService.evaluateGridSimulation(colonyId, colony.population);
+      reply.send({
+        success: true,
+        colony,
+        telemetry,
+        tiles,
+        catalog: OUTPOST_BUILDINGS,
+      });
+    } catch (err: any) {
+      reply.status(400).send({ success: false, error: err.message });
+    }
+  });
+
+  server.post('/api/colonies/:colonyId/grid/build', async (req, reply) => {
+    const { colonyId } = req.params as { colonyId: string };
+    const body = (req.body || {}) as {
+      accountId?: string;
+      layer: number;
+      x: number;
+      y: number;
+      buildingType: BuildingTypeId;
+      instant?: boolean;
+    };
+    const accountId = body.accountId || 'acc_sol_captain';
+    try {
+      const placed = await outpostGridService.placeBuilding(
+        accountId,
+        colonyId,
+        Number(body.layer) as OutpostLayer,
+        Number(body.x),
+        Number(body.y),
+        body.buildingType,
+        { instant: !!body.instant }
+      );
+      const colony = await colonyService.getColonyDetail(colonyId, accountId);
+      const { tiles, telemetry } = await outpostGridService.evaluateGridSimulation(colonyId, colony.population);
+      reply.send({
+        success: true,
+        tile: placed.tile,
+        creditCostPaid: placed.creditCostPaid,
+        alloyCostPaid: placed.alloyCostPaid,
+        colony,
+        telemetry,
+        tiles,
+      });
+    } catch (err: any) {
+      reply.status(400).send({ success: false, error: err.message });
+    }
+  });
+
+  server.post('/api/colonies/:colonyId/grid/toggle', async (req, reply) => {
+    const { colonyId } = req.params as { colonyId: string };
+    const body = (req.body || {}) as { accountId?: string; layer: number; x: number; y: number };
+    const accountId = body.accountId || 'acc_sol_captain';
+    try {
+      const toggled = await outpostGridService.toggleBuildingPower(
+        colonyId,
+        Number(body.layer) as OutpostLayer,
+        Number(body.x),
+        Number(body.y)
+      );
+      const colony = await colonyService.getColonyDetail(colonyId, accountId);
+      const { tiles, telemetry } = await outpostGridService.evaluateGridSimulation(colonyId, colony.population);
+      reply.send({ success: true, tile: toggled.tile, colony, telemetry, tiles });
+    } catch (err: any) {
+      reply.status(400).send({ success: false, error: err.message });
+    }
+  });
+
+  server.post('/api/colonies/:colonyId/grid/demolish', async (req, reply) => {
+    const { colonyId } = req.params as { colonyId: string };
+    const body = (req.body || {}) as { accountId?: string; layer: number; x: number; y: number };
+    const accountId = body.accountId || 'acc_sol_captain';
+    try {
+      const res = await outpostGridService.demolishBuilding(
+        accountId,
+        colonyId,
+        Number(body.layer) as OutpostLayer,
+        Number(body.x),
+        Number(body.y)
+      );
+      const colony = await colonyService.getColonyDetail(colonyId, accountId);
+      const { tiles, telemetry } = await outpostGridService.evaluateGridSimulation(colonyId, colony.population);
+      reply.send({ success: true, refundCredits: res.refundCredits, colony, telemetry, tiles });
+    } catch (err: any) {
+      reply.status(400).send({ success: false, error: err.message });
+    }
+  });
+
+  server.post('/api/colonies/:colonyId/grid/complete-now', async (req, reply) => {
+    const { colonyId } = req.params as { colonyId: string };
+    const body = (req.body || {}) as { accountId?: string };
+    const accountId = body.accountId || 'acc_sol_captain';
+    try {
+      const completedCount = await outpostGridService.completePendingNow(colonyId);
+      const colony = await colonyService.getColonyDetail(colonyId, accountId);
+      const { tiles, telemetry } = await outpostGridService.evaluateGridSimulation(colonyId, colony.population);
+      reply.send({ success: true, completedCount, colony, telemetry, tiles });
+    } catch (err: any) {
+      reply.status(400).send({ success: false, error: err.message });
+    }
+  });
 };
