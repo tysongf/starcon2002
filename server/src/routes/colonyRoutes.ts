@@ -3,7 +3,7 @@ import { db } from '../db/Database';
 import { colonyService } from '../services/ColonyService';
 import { outpostGridService } from '../services/OutpostGridService';
 import { allianceService } from '../services/AllianceService';
-import { OUTPOST_BUILDINGS, type BuildingTypeId, type OutpostLayer } from '../procgen/OutpostCatalog';
+import { OUTPOST_BUILDINGS, OUTPOST_RELIC_BUILDINGS, type BuildingTypeId, type OutpostLayer } from '../procgen/OutpostCatalog';
 import { shipyardService } from '../services/ShipyardService';
 import { COLONY_MODULES, COLONY_FACILITY_CREW_REQUIREMENTS, type ColonyModuleKey } from '../procgen/CrewCatalog';
 
@@ -165,7 +165,7 @@ export const colonyRoutes: FastifyPluginAsync = async (server) => {
 
   // --- Milestone 1.7: Outpost Multi-Layer 12x12 Isometric Grid Routes ---
   server.get('/api/colonies/outpost/catalog', async (_req, reply) => {
-    reply.send({ success: true, buildings: OUTPOST_BUILDINGS });
+    reply.send({ success: true, buildings: OUTPOST_BUILDINGS, relicBuildings: OUTPOST_RELIC_BUILDINGS });
   });
 
   server.get('/api/colonies/:colonyId/grid', async (req, reply) => {

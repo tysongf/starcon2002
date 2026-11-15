@@ -53,10 +53,14 @@ export type BuildingTypeId =
   | 'FRONTIER_GARRISON'
   | 'DIPLOMATIC_CONSULATE'
   | 'ASTRO_OBSERVATORY'
-  | 'ARCH_EXCAVATION';
+  | 'ARCH_EXCAVATION'
+  | 'PRECURSOR_SINGULARITY_CORE'
+  | 'QUANTUM_ASSEMBLY_NEXUS'
+  | 'SUBSPACE_AEGIS_CITADEL';
 
 export interface OutpostBuildingDef {
   id: BuildingTypeId;
+  requiresRelicBlueprint?: boolean;
   name: string;
   icon: string;
   category: BuildingCategory;
@@ -553,8 +557,83 @@ export const OUTPOST_BUILDINGS: readonly OutpostBuildingDef[] = [
   },
 ];
 
+/**
+ * Milestone 1.9: Endgame Outpost Precursor Colony Cores unlocked from Dreadnought World Boss drops.
+ */
+export const OUTPOST_RELIC_BUILDINGS: readonly OutpostBuildingDef[] = [
+  {
+    id: 'PRECURSOR_SINGULARITY_CORE',
+    requiresRelicBlueprint: true,
+    name: 'Zero-Point Singularity Reactor',
+    icon: '⚛️',
+    category: 'POWER',
+    allowedLayers: [-2, -3],
+    buildTimeSec: 20,
+    creditCost: 1400,
+    alloyCost: 14,
+    powerDeltaMW: 140,
+    o2Delta: 0,
+    workersRequired: 8,
+    popCapacityBonus: 0,
+    siloCapacityBonus: 0,
+    extractionRateBase: 0,
+    extractionMultBonus: 0.15,
+    terraformRateBonus: 0,
+    moraleBonus: 8,
+    maxPerColony: 1,
+    colorHex: '#f43f5e',
+    description: 'Precursor vacuum-energy core delivering +140 MW continuous grid power and +15% industrial resonance.',
+  },
+  {
+    id: 'QUANTUM_ASSEMBLY_NEXUS',
+    requiresRelicBlueprint: true,
+    name: 'Precursor Quantum Fabricator',
+    icon: '💠',
+    category: 'INDUSTRY',
+    allowedLayers: [-1, -2, -3],
+    buildTimeSec: 22,
+    creditCost: 1600,
+    alloyCost: 16,
+    powerDeltaMW: -30,
+    o2Delta: 0,
+    workersRequired: 12,
+    popCapacityBonus: 0,
+    siloCapacityBonus: 120,
+    extractionRateBase: 4.5,
+    extractionMultBonus: 0.45,
+    terraformRateBonus: 0,
+    moraleBonus: 10,
+    maxPerColony: 1,
+    colorHex: '#e879f9',
+    description: 'Subterranean molecular assembler (+45% Colony extraction yield, +120 Silo capacity, +10 Morale).',
+  },
+  {
+    id: 'SUBSPACE_AEGIS_CITADEL',
+    requiresRelicBlueprint: true,
+    name: 'Planetary Subspace Aegis Dome',
+    icon: '🛸',
+    category: 'ORBITAL',
+    allowedLayers: [0],
+    buildTimeSec: 24,
+    creditCost: 1500,
+    alloyCost: 15,
+    powerDeltaMW: -25,
+    o2Delta: 35,
+    workersRequired: 10,
+    popCapacityBonus: 80,
+    siloCapacityBonus: 0,
+    extractionRateBase: 0,
+    extractionMultBonus: 0,
+    terraformRateBonus: 0.04,
+    moraleBonus: 22,
+    maxPerColony: 1,
+    colorHex: '#38bdf8',
+    description: 'Precursor planetary shield & atmospheric stabilizer (+35 O2, +80 Pop cap, +22 Morale, accelerated terraforming).',
+  },
+];
+
 export const OUTPOST_BUILDING_MAP = new Map<BuildingTypeId, OutpostBuildingDef>(
-  OUTPOST_BUILDINGS.map((b) => [b.id, b])
+  [...OUTPOST_BUILDINGS, ...OUTPOST_RELIC_BUILDINGS].map((b) => [b.id, b])
 );
 
 export function getOutpostBuildingDef(id: string | null | undefined): OutpostBuildingDef | null {

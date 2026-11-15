@@ -366,6 +366,7 @@ const RARITY_MULT_TABLE: Record<string, { weight: number; statScale: number; pri
   RARE: { weight: 14, statScale: 1.35, priceMult: 2.5 },
   EPIC: { weight: 6, statScale: 1.75, priceMult: 4.2 },
   LEGENDARY: { weight: 2, statScale: 2.25, priceMult: 7.5 },
+  MYTHIC: { weight: 0, statScale: 2.85, priceMult: 12.0 },
 };
 
 const FACTION_PREFIX_FAMILIES: Record<string, readonly PrefixFamily[]> = ALL_FACTION_IDS.reduce(
@@ -393,7 +394,7 @@ function formatStatLabel(stat: string, mult: number): string {
 }
 
 export interface RolledModuleAttributes {
-  rarity: 'COMMON' | 'UNCOMMON' | 'RARE' | 'EPIC' | 'LEGENDARY';
+  rarity: 'COMMON' | 'UNCOMMON' | 'RARE' | 'EPIC' | 'LEGENDARY' | 'MYTHIC';
   prefixDef: TechPrefixDef;
   techSuffix: string;
   customName: string;
@@ -415,14 +416,14 @@ export function rollModulePrefixAndAffixes(params: {
   basePowerGridCost: number;
   baseCpuCost: number;
   basePrice: number;
-  rarity?: 'COMMON' | 'UNCOMMON' | 'RARE' | 'EPIC' | 'LEGENDARY';
+  rarity?: 'COMMON' | 'UNCOMMON' | 'RARE' | 'EPIC' | 'LEGENDARY' | 'MYTHIC';
   factionAffinity?: string;
   rng?: () => number;
 }): RolledModuleAttributes {
   const rng = params.rng || Math.random;
   const rarity = params.rarity || pickRarityDeterministic(rng);
 
-  const rarityOrder = ['COMMON', 'UNCOMMON', 'RARE', 'EPIC', 'LEGENDARY'];
+  const rarityOrder = ['COMMON', 'UNCOMMON', 'RARE', 'EPIC', 'LEGENDARY', 'MYTHIC'];
   const rIdx = rarityOrder.indexOf(rarity);
   const allowedPrefixes = TECH_PREFIXES.filter((p) => (p.minRarity ? rarityOrder.indexOf(p.minRarity) <= rIdx : true));
 
@@ -469,7 +470,7 @@ export function rollModulePrefixAndAffixes(params: {
     if (prefixDef.secondaryStat === 'cpuCost') cpuMult *= secMult;
   }
 
-  const extraRolls = rarity === 'RARE' ? 1 : rarity === 'EPIC' ? 2 : rarity === 'LEGENDARY' ? 3 : 0;
+  const extraRolls = rarity === 'RARE' ? 1 : rarity === 'EPIC' ? 2 : rarity === 'LEGENDARY' ? 3 : rarity === 'MYTHIC' ? 4 : 0;
   const bonusStatsPool: LootAffix['stat'][] =
     params.slotType === 'HIGH'
       ? ['damage', 'muzzleSpeed', 'energyCost', 'cpuCost']

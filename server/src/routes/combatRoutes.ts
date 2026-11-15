@@ -8,6 +8,7 @@ import { outfittingService } from '../services/OutfittingService';
 import { squadronService } from '../services/SquadronService';
 import { allianceService } from '../services/AllianceService';
 import { duelService } from '../services/DuelService';
+import { raidDirectorService } from '../services/RaidDirectorService';
 
 export const combatRoutes: FastifyPluginAsync = async (server) => {
   // Killmails
@@ -374,6 +375,11 @@ export const combatRoutes: FastifyPluginAsync = async (server) => {
     socket.removeListener('message', earlyMessageHandler);
     socket.removeListener('close', earlyCloseHandler);
     if (closedEarly) return;
+
+    const activeRaidBoss = await raidDirectorService.getActiveBossForSector(sectorId).catch(() => null);
+    if (activeRaidBoss) {
+      await combatManager.syncRaidBossRoom(sectorId, activeRaidBoss);
+    }
 
     combatManager.handleConnection(socket, sectorId, playerId, shipData);
     for (const msg of bufferedMessages) {

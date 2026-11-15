@@ -20,7 +20,7 @@ export interface DroppedModule {
   techPrefix?: string;
   techSuffix?: string;
   manufacturer: string;
-  rarity: 'COMMON' | 'UNCOMMON' | 'RARE' | 'EPIC' | 'LEGENDARY';
+  rarity: 'COMMON' | 'UNCOMMON' | 'RARE' | 'EPIC' | 'LEGENDARY' | 'MYTHIC';
   powerGridCost: number;
   cpuCost: number;
   basePrice: number;

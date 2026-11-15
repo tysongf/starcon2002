@@ -28,9 +28,11 @@ import { crewRoutes } from './routes/crewRoutes';
 import { authRoutes } from './routes/authRoutes';
 import { socialRoutes } from './routes/socialRoutes';
 import { multiplayerRoutes } from './routes/multiplayerRoutes';
+import { raidRoutes } from './routes/raidRoutes';
 import { authService } from './services/AuthService';
 import { requireAuthHook, enforceAuthenticatedIdentity } from './middleware/authMiddleware';
 import { galacticMissionService } from './services/GalacticMissionService';
+import { raidDirectorService } from './services/RaidDirectorService';
 
 export async function buildApp(options: FastifyServerOptions = {}): Promise<FastifyInstance> {
   const startTime = Date.now();
@@ -131,6 +133,9 @@ export async function buildApp(options: FastifyServerOptions = {}): Promise<Fast
   await server.register(missionRoutes, { prefix: '/api/missions' });
   await server.register(captainRoutes, { prefix: '/api/captains' });
   await server.register(crewRoutes, { prefix: '/api/crew' });
+  await server.register(raidRoutes);
+
+  await raidDirectorService.initialize();
 
   return server;
 }

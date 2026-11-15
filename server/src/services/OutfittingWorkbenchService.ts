@@ -5,7 +5,7 @@ import {
 } from '../procgen/ProceduralModuleCatalog';
 import type { LootAffix } from './LootGenerator';
 
-export type ModuleRarity = 'COMMON' | 'UNCOMMON' | 'RARE' | 'EPIC' | 'LEGENDARY';
+export type ModuleRarity = 'COMMON' | 'UNCOMMON' | 'RARE' | 'EPIC' | 'LEGENDARY' | 'MYTHIC';
 
 export interface WorkbenchCostEntry {
   salvageComp: number;
@@ -45,6 +45,12 @@ export const WORKBENCH_COST_TABLE: Record<ModuleRarity, WorkbenchCostEntry> = {
     lockedReforge: { credits: 2400, components: 110 },
     upgrade: null,
   },
+  MYTHIC: {
+    salvageComp: 180,
+    reforge: { credits: 2800, components: 120 },
+    lockedReforge: { credits: 4200, components: 200 },
+    upgrade: null,
+  },
 };
 
 const MIN_AFFIX_COUNT_BY_RARITY: Record<ModuleRarity, number> = {
@@ -53,6 +59,7 @@ const MIN_AFFIX_COUNT_BY_RARITY: Record<ModuleRarity, number> = {
   RARE: 3,
   EPIC: 4,
   LEGENDARY: 5,
+  MYTHIC: 6,
 };
 
 interface InventoryModuleRow {

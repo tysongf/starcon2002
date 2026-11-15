@@ -34,7 +34,7 @@ export class MultiplayerController {
   private whisperTargetId: string | null = null;
   private chatMessages: any[] = [];
   private onlineCaptains: any[] = [];
-  private currentModalTab: 'HAIL' | 'SQUADRON' | 'ALLIES' | 'TRADE' = 'HAIL';
+  private currentModalTab: 'HAIL' | 'SQUADRON' | 'ALLIES' | 'TRADE' | 'RAIDS' = 'HAIL';
   private hailedDossier: any | null = null;
   private activeTrade: any | null = null;
   private activeDuel: any | null = null;
@@ -328,6 +328,13 @@ export class MultiplayerController {
             !won
           );
           void this.callbacks.onRefreshShipState();
+        } else if (msg.type === 'RAID_ALERT') {
+          this.callbacks.showApNotification(msg.message || `☠️ Frontier Dreadnought Signal Detected in Sector ${msg.sectorId}`);
+          if (this.currentModalTab === 'RAIDS') void this.renderRaidsTab();
+        } else if (msg.type === 'RAID_LOOT_ROLLS') {
+          this.callbacks.showApNotification(`🏆 Raid Spoils Roll Open! Need/Greed/Pass available.`);
+          if (this.currentModalTab === 'RAIDS') void this.renderRaidsTab();
+          else this.openSocialModal('RAIDS');
         }
       } catch {}
     };
@@ -479,7 +486,7 @@ export class MultiplayerController {
     } catch {}
   }
 
-  public openSocialModal(tab: 'HAIL' | 'SQUADRON' | 'ALLIES' | 'TRADE' = 'HAIL'): void {
+  public openSocialModal(tab: 'HAIL' | 'SQUADRON' | 'ALLIES' | 'TRADE' | 'RAIDS' = 'HAIL'): void {
     document.getElementById('multiplayer-social-modal')?.classList.remove('hidden');
     this.switchSocialTab(tab);
   }
@@ -488,7 +495,7 @@ export class MultiplayerController {
     document.getElementById('multiplayer-social-modal')?.classList.add('hidden');
   }
 
-  private switchSocialTab(tab: 'HAIL' | 'SQUADRON' | 'ALLIES' | 'TRADE'): void {
+  private switchSocialTab(tab: 'HAIL' | 'SQUADRON' | 'ALLIES' | 'TRADE' | 'RAIDS'): void {
     this.currentModalTab = tab;
     document.querySelectorAll('.mp-tab-btn').forEach((b) => {
       b.classList.toggle('active', b.getAttribute('data-tab') === tab);
@@ -497,6 +504,7 @@ export class MultiplayerController {
     else if (tab === 'SQUADRON') void this.renderSquadronTab();
     else if (tab === 'ALLIES') void this.renderAlliesTab();
     else if (tab === 'TRADE') void this.renderTradeTab();
+    else if (tab === 'RAIDS') void this.renderRaidsTab();
   }
 
   private renderHailTab(incomingDuel?: any): void {
@@ -872,6 +880,112 @@ export class MultiplayerController {
       const data = await res.json();
       this.activeTrade = data.trade;
       void this.renderTradeTab();
+    });
+  }
+
+  private async renderRaidsTab(): Promise<void> {
+    const body = document.getElementById('mp-modal-body');
+    if (!body) return;
+
+    const [raidsRes, rollsRes, relicsRes] = await Promise.all([
+      fetch('/api/raids/active').then((r) => r.json()).catch(() => ({ raids: [] })),
+      fetch('/api/raids/rolls').then((r) => r.json()).catch(() => ({ rolls: [] })),
+      fetch('/api/raids/relics').then((r) => r.json()).catch(() => ({ relics: [] })),
+    ]);
+
+    const raids = raidsRes.raids || [];
+    const rolls = rollsRes.rolls || [];
+    const relics = (relicsRes.relics || []).filter((r: any) => Number(r.chargesRemaining ?? 1) > 0);
+
+    body.innerHTML = `
+      <div class="mp-dossier-card">
+        <h3>☠️ ACTIVE ROAMING FRONTIER DREADNOUGHTS (OPEN PvPvE // REC. 6-12 PILOTS)</h3>
+        ${
+          raids.length === 0
+            ? '<div class="comms-empty">Scanning deep frontier beacons...</div>'
+            : raids
+                .map(
+                  (r: any) => `<div class="mp-member-row">
+                    <div>
+                      <strong>${this.escapeHtml(r.bossName)}</strong> (Phase ${r.phase})<br/>
+                      <span class="mp-badge">SECTOR ${r.sectorId}: ${this.escapeHtml(r.sectorName)} (${r.coordinatesX}, ${r.coordinatesY}) • HP ${r.hp}/${r.maxHp} • SHLD ${r.shields}/${r.maxShields}</span>
+                    </div>
+                    <button class="colony-action-btn primary btn-warp-raid" data-sector-id="${r.sectorId}">WARP INTERCEPT</button>
+                  </div>`
+                )
+                .join('')
+        }
+      </div>
+
+      <div class="mp-dossier-card">
+        <h3>🎲 SQUADRON LOOT ROLLS (NEED / GREED / PASS)</h3>
+        ${
+          rolls.length === 0
+            ? '<div class="comms-empty">No pending Dreadnought spoils rolls right now.</div>'
+            : rolls
+                .map(
+                  (roll: any) => `<div class="mp-member-row">
+                    <div>
+                      <strong>${this.escapeHtml(roll.itemName)}</strong> <span class="mp-badge">[${roll.itemType}]</span>
+                    </div>
+                    <div class="mp-btn-row">
+                      <button class="colony-action-btn primary btn-raid-bid" data-roll-id="${roll.id}" data-bid="NEED">NEED</button>
+                      <button class="colony-action-btn btn-raid-bid" data-roll-id="${roll.id}" data-bid="GREED">GREED</button>
+                      <button class="colony-action-btn warn btn-raid-bid" data-roll-id="${roll.id}" data-bid="PASS">PASS</button>
+                    </div>
+                  </div>`
+                )
+                .join('')
+        }
+      </div>
+
+      <div class="mp-dossier-card">
+        <h3>🏆 UNLOCKED RELIC BLUEPRINT PERMITS (${relics.length})</h3>
+        ${
+          relics.length === 0
+            ? '<div class="comms-empty">Defeat Frontier Dreadnoughts to earn Tier-4 Relic Ship & Precursor Core permits.</div>'
+            : relics.map((rl: any) => `<div class="mp-member-row"><span>✨ <strong>${this.escapeHtml(rl.title || rl.blueprintId)}</strong> (${this.escapeHtml(rl.unlockType || '')})</span><span class="mp-badge">CHARGES: ${rl.chargesRemaining ?? 1}</span></div>`).join('')
+        }
+      </div>
+    `;
+
+    body.querySelectorAll('.btn-warp-raid').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const sectorId = Number((btn as HTMLElement).getAttribute('data-sector-id'));
+        const res = await fetch('/api/navigation/hyperspace-jump', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ destinationSectorId: sectorId }),
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          this.callbacks.showApNotification(`⚡ Warping to Frontier Sector ${sectorId} Raid Beacon!`);
+          this.closeSocialModal();
+          void this.callbacks.onRefreshShipState();
+        } else {
+          this.callbacks.showApNotification(`⚠️ ${data.error || 'Warp jump failed (check Fuel/AP)'}`, true);
+        }
+      });
+    });
+
+    body.querySelectorAll('.btn-raid-bid').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const rollId = (btn as HTMLElement).getAttribute('data-roll-id');
+        const bidType = (btn as HTMLElement).getAttribute('data-bid');
+        const res = await fetch(`/api/raids/rolls/${encodeURIComponent(rollId || '')}/bid`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ bidType }),
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          this.callbacks.showApNotification(`🎲 Submitted ${bidType} roll!`);
+          void this.callbacks.onRefreshShipState();
+          void this.renderRaidsTab();
+        } else {
+          this.callbacks.showApNotification(`⚠️ ${data.error || 'Bid failed'}`, true);
+        }
+      });
     });
   }
 

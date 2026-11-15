@@ -12,6 +12,7 @@ import {
   type OutpostLayer,
   type TerrainType,
 } from '../procgen/OutpostCatalog';
+import { raidDirectorService } from './RaidDirectorService';
 import {
   getColonyModuleUpgradeRequirement,
   type ColonyModuleKey,
@@ -519,6 +520,21 @@ export class OutpostGridService {
       if (Number(cntRes.rows[0]?.cnt || 0) >= def.maxPerColony) {
         throw new Error(`MAX_STRUCTURE_LIMIT: Colony allows at most ${def.maxPerColony}x ${def.name}.`);
       }
+    }
+
+    if (def.requiresRelicBlueprint && !opts?.skipCost) {
+      const colOwnerRes = await db.query<{ account_id: string }>('SELECT account_id FROM colonies WHERE id = $1', [colonyId]);
+      const permitHolder = (await raidDirectorService.hasRelicUnlock(accountId, def.id))
+        ? accountId
+        : colOwnerRes.rows[0]?.account_id && (await raidDirectorService.hasRelicUnlock(colOwnerRes.rows[0].account_id, def.id))
+        ? colOwnerRes.rows[0].account_id
+        : null;
+      if (!permitHolder) {
+        throw new Error(
+          `RELIC_BLUEPRINT_REQUIRED: Constructing ${def.name} requires an unlocked Precursor Colony Core permit from a Dreadnought Raid.`
+        );
+      }
+      await raidDirectorService.consumeRelicUnlock(permitHolder, def.id);
     }
 
     // Enforce Milestone 1.5 N-Specialist Crew requirement when constructing Specialty Modules directly on grid

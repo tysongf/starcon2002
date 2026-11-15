@@ -28,10 +28,11 @@ export interface HullSubtypeDef {
   mainClass: MainHullClass;
   displayName: string;
   factionId: FactionId;
-  tier: 1 | 2 | 3;
-  highSlots: 1 | 2 | 3;
-  midSlots: 1 | 2 | 3;
-  lowSlots: 1 | 2 | 3;
+  tier: 1 | 2 | 3 | 4;
+  requiresRelicBlueprint?: boolean;
+  highSlots: 1 | 2 | 3 | 4;
+  midSlots: 1 | 2 | 3 | 4;
+  lowSlots: 1 | 2 | 3 | 4;
   baySlots: number;
   powerGridMax: number;
   cpuMax: number;
@@ -518,8 +519,104 @@ export const HULL_CLASS_CATALOG: readonly HullSubtypeDef[] = MAIN_CLASS_BASELINE
     ALL_FACTION_IDS.map((fid, facIdx) => synthesizeHullDef(baseline, classIdx, fid, facIdx))
 );
 
+/**
+ * Milestone 1.9: Tier-4 Precursor & Apex Relic Starship Hulls unlocked via Frontier Dreadnought World Boss drops.
+ */
+export const RELIC_HULL_CATALOG: readonly HullSubtypeDef[] = [
+  {
+    hullClass: 'PRECURSOR_CHRONO_DREAD',
+    mainClass: 'DREADNOUGHT',
+    displayName: 'Precursor Vaelic Chrono-Lancer',
+    factionId: 'FACTION_SOL',
+    tier: 4,
+    requiresRelicBlueprint: true,
+    highSlots: 4,
+    midSlots: 4,
+    lowSlots: 3,
+    baySlots: 4,
+    powerGridMax: 240,
+    cpuMax: 280,
+    baseArmor: 520,
+    baseShield: 580,
+    maxFuel: 240,
+    cargoCapacity: 320,
+    baseSpeed: 38,
+    baseTurnRate: 2.3,
+    baseFirepower: 210,
+    creditCost: 6500,
+    alloyCost: 35,
+    oreCost: 45,
+    fuelCost: 40,
+    apCost: 14,
+    requiredReputation: 0,
+    hullSeedDefault: 99401,
+    geometryProfile: { lengthMult: 1.7, widthMult: 1.45, heightMult: 0.72, wingSpread: 1.65, weaponHardpoints: 8 },
+    description: 'Tier-4 Precursor Relic Warship reverse-engineered from Chrono-Vanguard Vaultships; unmatched dual-synergy slot capacity.',
+  },
+  {
+    hullClass: 'HEGEMONY_VINDICATOR_TITAN',
+    mainClass: 'DREADNOUGHT',
+    displayName: 'Obsidian Vindicator Siege-Cruiser',
+    factionId: 'FACTION_HEGEMONY',
+    tier: 4,
+    requiresRelicBlueprint: true,
+    highSlots: 4,
+    midSlots: 3,
+    lowSlots: 4,
+    baySlots: 4,
+    powerGridMax: 260,
+    cpuMax: 250,
+    baseArmor: 680,
+    baseShield: 460,
+    maxFuel: 220,
+    cargoCapacity: 360,
+    baseSpeed: 34,
+    baseTurnRate: 2.0,
+    baseFirepower: 235,
+    creditCost: 6800,
+    alloyCost: 42,
+    oreCost: 50,
+    fuelCost: 40,
+    apCost: 14,
+    requiredReputation: 0,
+    hullSeedDefault: 99402,
+    geometryProfile: { lengthMult: 1.85, widthMult: 1.5, heightMult: 0.85, wingSpread: 1.5, weaponHardpoints: 8 },
+    description: 'Tier-4 Relic Bastion Cruiser engineered for main-tank Vanguard duties and heavy Squadron Siege engagements.',
+  },
+  {
+    hullClass: 'PHORID_OVERMIND_ARK',
+    mainClass: 'CRUISER',
+    displayName: 'Bio-Spore Overmind Ark',
+    factionId: 'FACTION_PHORID',
+    tier: 4,
+    requiresRelicBlueprint: true,
+    highSlots: 3,
+    midSlots: 4,
+    lowSlots: 4,
+    baySlots: 5,
+    powerGridMax: 230,
+    cpuMax: 300,
+    baseArmor: 470,
+    baseShield: 540,
+    maxFuel: 260,
+    cargoCapacity: 340,
+    baseSpeed: 42,
+    baseTurnRate: 2.6,
+    baseFirepower: 185,
+    creditCost: 6200,
+    alloyCost: 30,
+    oreCost: 40,
+    fuelCost: 45,
+    apCost: 14,
+    requiredReputation: 0,
+    hullSeedDefault: 99403,
+    geometryProfile: { lengthMult: 1.6, widthMult: 1.55, heightMult: 0.78, wingSpread: 1.75, weaponHardpoints: 7 },
+    description: 'Tier-4 Relic Bio-Logistics Carrier with expanded CPU/mid-slot matrix for Squadron Healing, Cleansing & Command Links.',
+  },
+];
+
 const HULL_MAP = new Map<string, HullSubtypeDef>(
-  HULL_CLASS_CATALOG.map((h) => [h.hullClass.toUpperCase(), h])
+  [...HULL_CLASS_CATALOG, ...RELIC_HULL_CATALOG].map((h) => [h.hullClass.toUpperCase(), h])
 );
 
 const DEFAULT_HULL = HULL_CLASS_CATALOG.find((h) => h.hullClass === 'CORVETTE')!;

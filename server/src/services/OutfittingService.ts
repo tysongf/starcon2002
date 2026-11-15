@@ -34,7 +34,7 @@ export interface FittedModule {
   techPrefix?: string;
   techSuffix?: string;
   manufacturer: string;
-  rarity: 'COMMON' | 'UNCOMMON' | 'RARE' | 'EPIC' | 'LEGENDARY';
+  rarity: 'COMMON' | 'UNCOMMON' | 'RARE' | 'EPIC' | 'LEGENDARY' | 'MYTHIC';
   powerGridCost: number;
   cpuCost: number;
   basePrice: number;
@@ -251,7 +251,15 @@ export class OutfittingService {
       [targetSlot, item.id]
     );
 
-    return this.getPlayerLoadout(accountId);
+    const updated = await this.getPlayerLoadout(accountId);
+    this.notifyCombatLoadoutRefresh(accountId, updated);
+    return updated;
+  }
+
+  private notifyCombatLoadoutRefresh(accountId: string, loadout: PlayerLoadout): void {
+    import('./SectorCombatManager')
+      .then(({ combatManager }) => combatManager.refreshPlayerLoadout(accountId, loadout))
+      .catch(() => {});
   }
 
   /**
@@ -347,6 +355,7 @@ export class OutfittingService {
     }
 
     const loadout = await this.getPlayerLoadout(accountId);
+    this.notifyCombatLoadoutRefresh(accountId, loadout);
     return { unfittedModules, loadout };
   }
 
@@ -362,7 +371,9 @@ export class OutfittingService {
         [itemId, accountId]
       );
     }
-    return this.getPlayerLoadout(accountId);
+    const updated = await this.getPlayerLoadout(accountId);
+    this.notifyCombatLoadoutRefresh(accountId, updated);
+    return updated;
   }
 
   public async buyModule(accountId: string, blueprintId: string): Promise<{ success: boolean; item: any; remainingCredits: number; credits: number }> {

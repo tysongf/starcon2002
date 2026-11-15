@@ -63,6 +63,8 @@ export class OutpostColonyController {
   public telemetry: any = null;
   public tiles: OutpostTileData[] = [];
   public catalog: OutpostBuildingSpec[] = [];
+  public relicCatalog: OutpostBuildingSpec[] = [];
+  public unlockedRelicIds: Set<string> = new Set();
 
   public activeLayer: 0 | -1 | -2 | -3 = 0;
   public activeCategory: string = 'ALL';
@@ -239,6 +241,18 @@ export class OutpostColonyController {
       this.telemetry = data.telemetry;
       this.tiles = Array.isArray(data.tiles) ? data.tiles : [];
       if (Array.isArray(data.catalog)) this.catalog = data.catalog;
+      try {
+        const [catRes, relRes] = await Promise.all([
+          fetch('/api/colonies/outpost/catalog').then((r) => r.json()).catch(() => null),
+          fetch('/api/raids/relics').then((r) => r.json()).catch(() => null),
+        ]);
+        if (catRes?.relicBuildings) this.relicCatalog = catRes.relicBuildings;
+        if (relRes?.relics) {
+          this.unlockedRelicIds = new Set(
+            relRes.relics.filter((rl: any) => Number(rl.chargesRemaining ?? 1) > 0).map((rl: any) => rl.blueprintId)
+          );
+        }
+      } catch {}
       this.lastTimerSyncMs = Date.now();
 
       this.callbacks.onColonyUpdated(this.colony);
@@ -527,19 +541,26 @@ export class OutpostColonyController {
       inspectBtn.classList.toggle('active', this.selectedBuildType === null);
     }
 
-    const allowed = this.catalog.filter(
+    const allowed = [...this.catalog, ...this.relicCatalog].filter(
       (b) => b.id !== 'COMMAND_HUB' && b.allowedLayers.includes(this.activeLayer)
     );
 
     container.innerHTML = allowed
       .map((b) => {
         const selected = this.selectedBuildType === b.id;
+        const isRelic = this.relicCatalog.some((rc) => rc.id === b.id);
+        const hasPermit = !isRelic || this.unlockedRelicIds.has(b.id);
         const mwTag = b.powerDeltaMW >= 0 ? `+${b.powerDeltaMW} MW` : `${b.powerDeltaMW} MW`;
         const o2Tag = b.o2Delta > 0 ? ` • +${b.o2Delta} O2` : b.o2Delta < 0 ? ` • ${b.o2Delta} O2` : '';
+        const relicBadge = isRelic
+          ? hasPermit
+            ? ' <span class="mp-badge">[RELIC READY]</span>'
+            : ' <span class="mp-badge">[RAID RELIC LOCKED]</span>'
+          : '';
         return `
           <button class="outpost-palette-card ${selected ? 'selected' : ''}" data-build-id="${b.id}" title="${b.description}">
             <div class="outpost-pal-top">
-              <span>${b.icon} <strong>${b.name}</strong></span>
+              <span>${b.icon} <strong>${b.name}</strong>${relicBadge}</span>
               <span class="outpost-pal-time">${b.buildTimeSec}s</span>
             </div>
             <div class="outpost-pal-meta">

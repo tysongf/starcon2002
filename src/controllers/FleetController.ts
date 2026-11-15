@@ -455,9 +455,34 @@ export class FleetController {
       let url = `/api/shipyard/hulls?accountId=${encodeURIComponent(accountId)}`;
       if (colonyId) url += `&colonyId=${encodeURIComponent(colonyId)}`;
 
-      const res = await fetch(url);
+      const [res, relicRes] = await Promise.all([
+        fetch(url),
+        fetch('/api/raids/relics').catch(() => null),
+      ]);
       if (res.ok) {
         const data = await res.json();
+        if (relicRes && relicRes.ok) {
+          const rData = await relicRes.json();
+          const unlockedSet = new Set(
+            (rData.relics || []).filter((rl: any) => Number(rl.chargesRemaining ?? 1) > 0).map((rl: any) => rl.blueprintId)
+          );
+          const relicHulls = (rData.availableHullBlueprints || []).map((rh: any) => {
+            const hasPermit = unlockedSet.has(rh.hullClass);
+            const missing = [...(hasPermit ? [] : ['REQUIRES DREADNOUGHT RELIC PERMIT'])];
+            return {
+              ...rh,
+              effectiveCreditCost: rh.creditCost,
+              effectiveApCost: rh.apCost,
+              effectiveAlloyCost: rh.alloyCost,
+              effectiveOreCost: rh.oreCost,
+              effectiveFuelCost: rh.fuelCost,
+              hasReputation: true,
+              canAfford: hasPermit && (data.credits ?? 0) >= rh.creditCost,
+              missingRequirements: missing,
+            };
+          });
+          data.hulls = [...(data.hulls || []), ...relicHulls];
+        }
         this.shipyardData = data;
         this.bindHullFilterButtons(colonyId);
         this.renderShipyard(data, colonyId);

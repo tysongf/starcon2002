@@ -98,6 +98,10 @@ export class CombatClient {
   // Milestone 1.8: Remote Player Ships & Shield Bubbles
   public remotePlayerMeshes: Map<string, THREE.Mesh> = new Map();
   public remotePlayerShieldBubbles: Map<string, ShieldBubble> = new Map();
+  // Milestone 1.9: Raid Telegraph Meshes & Synergy Selection
+  public telegraphMeshes: Map<string, THREE.Object3D> = new Map();
+  public selectedAllyEntityId: string | null = null;
+  private lastSynergyRenderKey: string = '';
   public targetedEntityId: string | null = null;
   public activeSquadronOrder: string = 'FORMATION_FOLLOW';
 
@@ -511,6 +515,11 @@ export class CombatClient {
     }
     this.projectileMeshes.clear();
 
+    for (const tgObj of this.telegraphMeshes.values()) {
+      scene.remove(tgObj);
+    }
+    this.telegraphMeshes.clear();
+
     if (this.skirmishBeaconMesh) {
       scene.remove(this.skirmishBeaconMesh);
       this.skirmishBeaconMesh = null;
@@ -546,6 +555,15 @@ export class CombatClient {
             this.openKillmailModal(msg.killmail);
           } else if (msg.type === 'S_TACTICAL_ORDER_ACK') {
             this.activeSquadronOrder = msg.order;
+          } else if (msg.type === 'S_SYNERGY_ACK') {
+            if (!msg.success && msg.error) {
+              this.callbacks.showApNotification(`⚠️ ${msg.error}`, true);
+            } else if (msg.success && msg.name) {
+              this.callbacks.showApNotification(`⚡ ${msg.name} activated!`);
+            }
+          } else if (msg.type === 'RAID_LOOT_ROLLS') {
+            this.callbacks.showApNotification(`🏆 DREADNOUGHT SPOILS: ${msg.rolls?.length || 0} Loot Rolls open in Comms -> Raids & Rolls!`);
+            window.dispatchEvent(new CustomEvent('raid-loot-rolls', { detail: msg }));
           } else if (msg.type === 'S_COMBAT_AAR') {
             this.openTacticalAARModal(msg.data);
           }
@@ -608,6 +626,45 @@ export class CombatClient {
         })
       );
     }
+  }
+
+  // Milestone 1.9: MMORPG Inter-Squadron Synergy Ability Dispatch
+  private static readonly SYNERGY_HUD_META: Record<
+    string,
+    { label: string; role: 'TANK' | 'HEALER' | 'DEBUFFER' | 'BUFFER'; targetMode: 'ENEMY' | 'ALLY' | 'SELF_AOE' | 'PASSIVE_AURA' }
+  > = {
+    TAUNT_EMITTER: { label: 'IFF TAUNT', role: 'TANK', targetMode: 'ENEMY' },
+    BASTION_DOME: { label: 'AEGIS DOME', role: 'TANK', targetMode: 'SELF_AOE' },
+    INTERCEPT_TETHER: { label: 'GUARD LINK', role: 'TANK', targetMode: 'ALLY' },
+    SHIELD_TRANSFUSER: { label: 'SHLD BEAM', role: 'HEALER', targetMode: 'ALLY' },
+    NANITE_REPAIRER: { label: 'NANITE WELD', role: 'HEALER', targetMode: 'ALLY' },
+    CLEANSE_PULSE: { label: 'PHASE PURGE', role: 'HEALER', targetMode: 'SELF_AOE' },
+    EMERGENCY_REBOOT: { label: 'CRYO REVIVE', role: 'HEALER', targetMode: 'ALLY' },
+    TARGET_PAINTER: { label: 'PAINTER', role: 'DEBUFFER', targetMode: 'ENEMY' },
+    ARMOR_CORRODER: { label: 'HULL ETCH', role: 'DEBUFFER', targetMode: 'ENEMY' },
+    STASIS_WEB: { label: 'STASIS WEB', role: 'DEBUFFER', targetMode: 'ENEMY' },
+    CAPACITOR_RELAY: { label: 'CAP RELAY', role: 'BUFFER', targetMode: 'ALLY' },
+    HARMONIC_COMMAND_LINK: { label: 'C3 AURA', role: 'BUFFER', targetMode: 'PASSIVE_AURA' },
+    OVERCLOCK_SYNCHRONIZER: { label: 'OVERCLOCK', role: 'BUFFER', targetMode: 'SELF_AOE' },
+  };
+
+  public sendSynergyAbility(abilityKey: string, targetEntityId?: string): void {
+    if (!this.combatSocket || this.combatSocket.readyState !== WebSocket.OPEN) return;
+    const meta = CombatClient.SYNERGY_HUD_META[abilityKey];
+    const resolvedTarget =
+      targetEntityId ||
+      (meta?.targetMode === 'ALLY'
+        ? this.selectedAllyEntityId || undefined
+        : meta?.targetMode === 'ENEMY'
+          ? this.targetedEntityId || undefined
+          : undefined);
+    this.combatSocket.send(
+      JSON.stringify({
+        type: 'S_SYNERGY_ABILITY',
+        abilityKey,
+        targetEntityId: resolvedTarget,
+      })
+    );
   }
 
   public handleCombatSnapshot(snapshot: any): void {
@@ -729,8 +786,12 @@ export class CombatClient {
       }
     }
 
-    // 2. Drone Mesh & Forcefield Shield Bubble Synchronization
-    const drones = snapshot.entities.filter((e: any) => e.type === 'DRONE' && e.state !== 'DESTROYED');
+    // 2. Hostile Drones, Raid Boss, Pylons & Repair Drones Synchronization
+    const drones = snapshot.entities.filter(
+      (e: any) =>
+        (e.type === 'DRONE' || e.type === 'RAID_BOSS' || e.type === 'RAID_PYLON' || e.type === 'RAID_REPAIR_DRONE') &&
+        e.state !== 'DESTROYED'
+    );
     const droneIds = new Set(drones.map((d: any) => d.id));
 
     // Remove defunct meshes & shield bubbles
@@ -756,23 +817,25 @@ export class CombatClient {
     for (const drone of drones) {
       let mesh = this.droneMeshes.get(drone.id);
       if (!mesh) {
-        const droneStyle = FACTION_STYLES.FACTION_VAELIC;
+        const facKey = (drone.factionId && (FACTION_STYLES as any)[drone.factionId]) ? drone.factionId : 'FACTION_VAELIC';
+        const droneStyle = (FACTION_STYLES as any)[facKey] || FACTION_STYLES.FACTION_VAELIC;
         const res = ProceduralHullGenerator.generate({
           seed: drone.hullSeed || 98765,
           faction: droneStyle,
         });
 
         const mat = new THREE.MeshStandardMaterial({
-          color: droneStyle.palette.primary,
+          color: drone.type === 'RAID_BOSS' ? '#f43f5e' : drone.type === 'RAID_PYLON' ? '#38bdf8' : droneStyle.palette.primary,
           roughness: 0.35,
           metalness: 0.85,
           flatShading: true,
-          emissive: droneStyle.palette.engineGlow,
-          emissiveIntensity: 0.4,
+          emissive: drone.type === 'RAID_BOSS' ? '#be123c' : drone.type === 'RAID_PYLON' ? '#0284c7' : droneStyle.palette.engineGlow,
+          emissiveIntensity: drone.type === 'RAID_BOSS' ? 0.65 : 0.4,
         });
 
         mesh = new THREE.Mesh(res.geometry, mat);
-        mesh.scale.set(0.9, 0.9, 0.9);
+        const s = drone.type === 'RAID_BOSS' ? 3.8 : drone.type === 'RAID_PYLON' ? 1.25 : drone.type === 'RAID_REPAIR_DRONE' ? 0.72 : 0.9;
+        mesh.scale.set(s, s, s);
         scene.add(mesh);
         this.droneMeshes.set(drone.id, mesh);
       }
@@ -782,10 +845,11 @@ export class CombatClient {
       mesh.position.z = mesh.position.z + (drone.z - mesh.position.z) * 0.45;
       mesh.rotation.y = drone.yaw;
 
-      // Update 3D Forcefield Shield Bubble for this drone
+      // Update 3D Forcefield Shield Bubble for this drone / boss / pylon
       let sb = this.droneShieldBubbles.get(drone.id);
       if (!sb) {
-        sb = new ShieldBubble(4.2, true);
+        const sbRadius = drone.type === 'RAID_BOSS' ? 16.5 : drone.type === 'RAID_PYLON' ? 5.8 : 4.2;
+        sb = new ShieldBubble(sbRadius, true);
         scene.add(sb.mesh);
         this.droneShieldBubbles.set(drone.id, sb);
       }
@@ -1474,9 +1538,20 @@ export class CombatClient {
           this.callbacks.showApNotification(`💥 VEIN FRACTURED: ${ev.data?.oreName} pod ejected!`, false);
         } else if (ev.type === 'ASTEROID_DEPLETED') {
           this.callbacks.showApNotification(`✨ ${ev.data?.oreName || 'Asteroid'} vein extracted completely.`, false);
+        } else if (ev.type === 'RAID_PHASE_SHIFT' || ev.type === 'RAID_BOSS_DEFEATED') {
+          this.audio.playApWarningSound();
+          if (ev.data?.message) {
+            this.callbacks.showApNotification(ev.data.message, ev.type === 'RAID_PHASE_SHIFT');
+          } else if (ev.type === 'RAID_BOSS_DEFEATED') {
+            this.callbacks.showApNotification(`🏆 DREADNOUGHT DESTROYED: ${ev.data?.bossName || 'World Boss'}! Check Raids & Rolls for Spoils!`, false);
+          }
         }
       }
     }
+
+    // Milestone 1.9: Sync Boss Telegraphs, Boss HUD Bar & Fitted Synergy Hotbar
+    this.syncTelegraphMeshes(scene, snapshot.telegraphs || []);
+    this.updateRaidAndSynergyHud(snapshot, playerEntity, remotePlayers);
 
     // Day 35: Monitor wingman critical vitals for alarm
     const livingWingmen = (snapshot.entities || []).filter((e: any) => e.type === 'WINGMAN' && e.state !== 'DESTROYED');
@@ -2945,5 +3020,161 @@ export class CombatClient {
     } catch (err) {
       console.error('[CombatClient] Error claiming escort bounty:', err);
     }
+  }
+
+  private syncTelegraphMeshes(scene: THREE.Scene, telegraphs: any[]): void {
+    const activeIds = new Set(telegraphs.map((t) => t.id));
+    for (const [id, obj] of this.telegraphMeshes.entries()) {
+      if (!activeIds.has(id)) {
+        scene.remove(obj);
+        this.telegraphMeshes.delete(id);
+      }
+    }
+
+    for (const tg of telegraphs) {
+      if (this.telegraphMeshes.has(tg.id)) continue;
+      let obj: THREE.Object3D;
+      if (tg.kind === 'BEAM_SWEEP') {
+        const len = Number(tg.length || 175);
+        const w = Number(tg.radius || 22) * 2;
+        const geo = new THREE.PlaneGeometry(w, len);
+        geo.rotateX(-Math.PI / 2);
+        const mat = new THREE.MeshBasicMaterial({
+          color: 0xf43f5e,
+          transparent: true,
+          opacity: 0.28,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+        const yaw = Number(tg.yaw || 0);
+        mesh.position.set(tg.x + Math.sin(yaw) * (len / 2), -0.4, tg.z + Math.cos(yaw) * (len / 2));
+        mesh.rotation.y = yaw;
+        obj = mesh;
+      } else {
+        const r = Number(tg.radius || 56);
+        const geo = new THREE.RingGeometry(Math.max(2, r - 3.5), r, 48);
+        geo.rotateX(-Math.PI / 2);
+        const mat = new THREE.MeshBasicMaterial({
+          color: tg.kind === 'EMP_SHOCKWAVE' ? 0x38bdf8 : 0xa855f7,
+          transparent: true,
+          opacity: 0.45,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.set(tg.x, -0.35, tg.z);
+        obj = mesh;
+      }
+      scene.add(obj);
+      this.telegraphMeshes.set(tg.id, obj);
+    }
+  }
+
+  private updateRaidAndSynergyHud(snapshot: any, playerEntity: any, remotePlayers: any[]): void {
+    const bossHud = document.getElementById('raid-boss-hud');
+    const rb = snapshot.raidBoss;
+    if (bossHud) {
+      if (!rb) {
+        bossHud.classList.add('hidden');
+      } else {
+        bossHud.classList.remove('hidden');
+        const nameEl = document.getElementById('raid-boss-name');
+        const phaseEl = document.getElementById('raid-boss-phase-badge');
+        const pylonsEl = document.getElementById('raid-boss-pylons-badge');
+        const enrageEl = document.getElementById('raid-boss-enrage-badge');
+        const shFill = document.getElementById('raid-boss-shield-fill');
+        const shVal = document.getElementById('raid-boss-shield-val');
+        const hpFill = document.getElementById('raid-boss-hull-fill');
+        const hpVal = document.getElementById('raid-boss-hull-val');
+
+        if (nameEl) nameEl.textContent = String(rb.bossName || 'DREADNOUGHT').toUpperCase();
+        if (phaseEl) {
+          phaseEl.textContent =
+            rb.pylonsAlive > 0
+              ? `PHASE ${rb.phase} // AEGIS -90%`
+              : rb.phase >= 3
+                ? 'PHASE 3 // OVERDRIVE'
+                : 'PHASE 2 // CORE EXPOSED';
+        }
+        if (pylonsEl) pylonsEl.textContent = `PYLONS: ${rb.pylonsAlive}`;
+        if (enrageEl) enrageEl.classList.toggle('hidden', !rb.enraged);
+
+        const shPct = rb.maxShields > 0 ? Math.max(0, Math.min(100, (rb.shields / rb.maxShields) * 100)) : 0;
+        const hpPct = rb.maxHp > 0 ? Math.max(0, Math.min(100, (rb.hp / rb.maxHp) * 100)) : 0;
+        if (shFill) shFill.style.width = `${shPct}%`;
+        if (shVal) shVal.textContent = `${rb.shields}/${rb.maxShields}`;
+        if (hpFill) hpFill.style.width = `${hpPct}%`;
+        if (hpVal) hpVal.textContent = `${rb.hp}/${rb.maxHp}`;
+      }
+    }
+
+    const hotbar = document.getElementById('synergy-hotbar');
+    const allyStrip = document.getElementById('synergy-ally-strip');
+    const slotsRow = document.getElementById('synergy-slots-row');
+    if (!hotbar || !allyStrip || !slotsRow) return;
+
+    const synergies: string[] = Array.isArray(playerEntity?.equippedSynergies) ? playerEntity.equippedSynergies : [];
+    if (synergies.length === 0 || this.isEscapePod) {
+      hotbar.classList.add('hidden');
+      return;
+    }
+    hotbar.classList.remove('hidden');
+
+    const allies = remotePlayers.filter(
+      (rp: any) =>
+        (playerEntity?.squadronId && rp.squadronId === playerEntity.squadronId) ||
+        rp.guardLinked ||
+        rp.overclocked
+    );
+    const allFriendlyCandidates = playerEntity ? [playerEntity, ...allies] : allies;
+    const now = Date.now();
+    const cooldowns = playerEntity?.synergyCooldowns || {};
+
+    const renderKey = JSON.stringify({
+      synergies,
+      selectedAlly: this.selectedAllyEntityId,
+      allies: allFriendlyCandidates.map((a: any) => `${a.id}:${Math.round(a.hp)}/${Math.round(a.shields)}`),
+      cds: synergies.map((k) => Math.max(0, Math.ceil(((cooldowns[k] || 0) - now) / 1000))),
+    });
+    if (renderKey === this.lastSynergyRenderKey) return;
+    this.lastSynergyRenderKey = renderKey;
+
+    allyStrip.innerHTML = allFriendlyCandidates
+      .slice(0, 8)
+      .map((a: any) => {
+        const isSelf = a.id === playerEntity?.id;
+        const isSel = this.selectedAllyEntityId === a.id;
+        const label = isSelf ? `SELF` : `${a.callsign || a.name}`;
+        return `<button class="synergy-ally-pill ${isSel ? 'selected' : ''}" data-ally-id="${a.id}">${label} (${Math.round(a.hp)}/${Math.round(a.shields)})</button>`;
+      })
+      .join('');
+
+    allyStrip.querySelectorAll('.synergy-ally-pill').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = (btn as HTMLElement).getAttribute('data-ally-id');
+        this.selectedAllyEntityId = this.selectedAllyEntityId === id ? null : id;
+        this.lastSynergyRenderKey = '';
+      });
+    });
+
+    slotsRow.innerHTML = synergies
+      .map((key) => {
+        const meta = CombatClient.SYNERGY_HUD_META[key] || { label: key, role: 'BUFFER', targetMode: 'SELF_AOE' };
+        const cdSec = Math.max(0, Math.ceil(((cooldowns[key] || 0) - now) / 1000));
+        return `<button class="synergy-slot-btn ${cdSec > 0 ? 'on-cd' : ''}" data-synergy-key="${key}" data-role="${meta.role}">
+          <span class="synergy-role-tag">${meta.role}</span>
+          <strong>${meta.label}</strong>
+          <span class="synergy-cd-tag">${meta.targetMode === 'PASSIVE_AURA' ? 'PASSIVE' : cdSec > 0 ? `${cdSec}s` : 'READY'}</span>
+        </button>`;
+      })
+      .join('');
+
+    slotsRow.querySelectorAll('.synergy-slot-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const key = (btn as HTMLElement).getAttribute('data-synergy-key');
+        if (key) this.sendSynergyAbility(key);
+      });
+    });
   }
 }

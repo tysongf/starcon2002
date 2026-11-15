@@ -20,6 +20,12 @@ import {
 import { crewService } from './CrewService';
 import { duelService } from './DuelService';
 import { socialHubService } from './SocialHubService';
+import { raidDirectorService } from './RaidDirectorService';
+import {
+  SYNERGY_MODULE_BY_BLUEPRINT,
+  SYNERGY_MODULE_BY_KEY,
+  type SynergyModuleSpec,
+} from '../procgen/SynergyModuleCatalog';
 import { db } from '../db/Database';
 
 export const contractService = new ContractService();
@@ -60,9 +66,26 @@ export interface SectorLootContainer {
   x: number;
   z: number;
   title: string;
-  rarity: 'COMMON' | 'UNCOMMON' | 'RARE' | 'EPIC' | 'LEGENDARY';
+  rarity: 'COMMON' | 'UNCOMMON' | 'RARE' | 'EPIC' | 'LEGENDARY' | 'MYTHIC';
   items: any[];
   createdAt: number;
+  lockedSquadronId?: string | null;
+  lockedAccountId?: string | null;
+  unlockAtMs?: number;
+}
+
+export interface SectorTelegraph {
+  id: string;
+  kind: 'BEAM_SWEEP' | 'EMP_SHOCKWAVE' | 'GRAVITY_WELL';
+  x: number;
+  z: number;
+  radius: number;
+  yaw?: number;
+  length?: number;
+  detonateAt: number;
+  createdAt: number;
+  damage: number;
+  ownerId: string;
 }
 
 export interface EscortAARStats {
@@ -96,7 +119,7 @@ export interface CombatAAR {
 
 export interface SectorEntity {
   id: string;
-  type: 'PLAYER' | 'DRONE' | 'WRECK' | 'CARGO_CRATE' | 'SCAVENGER' | 'HAULER' | 'WINGMAN';
+  type: 'PLAYER' | 'DRONE' | 'WRECK' | 'CARGO_CRATE' | 'SCAVENGER' | 'HAULER' | 'WINGMAN' | 'RAID_BOSS' | 'RAID_PYLON' | 'RAID_REPAIR_DRONE';
   factionId: string;
   name: string;
   hullClass: string;
@@ -184,6 +207,35 @@ export interface SectorEntity {
   squadronId?: string | null;
   activeDuelId?: string | null;
   friendlyFireAllyIds?: Set<string>;
+  // Milestone 1.9 World Boss & MMORPG Synergy State
+  raidEncounterId?: string;
+  raidArchetype?: string;
+  raidPhase?: number;
+  raidEnrageAtMs?: number | null;
+  raidEnraged?: boolean;
+  raidParentBossId?: string;
+  pylonIndex?: number;
+  equippedSynergies?: string[];
+  synergyCooldowns?: Record<string, number>;
+  tauntUntil?: number;
+  tauntedByEntityId?: string;
+  bastionDomeUntil?: number;
+  bastionDomeRadius?: number;
+  guardLinkUntil?: number;
+  guardedByEntityId?: string;
+  paintMarkedUntil?: number;
+  armorShredStacks?: number;
+  armorShredUntil?: number;
+  stasisWebUntil?: number;
+  stasisSlowPct?: number;
+  gravitySlowUntil?: number;
+  empDisruptUntil?: number;
+  cleanseImmuneUntil?: number;
+  naniteHotUntil?: number;
+  naniteHotPerSec?: number;
+  overclockUntil?: number;
+  capRegenBoostUntil?: number;
+  commandAuraActiveUntil?: number;
 }
 
 export interface SporeCloud {
@@ -218,7 +270,7 @@ export interface Projectile {
 }
 
 export interface CombatEvent {
-  type: 'HIT' | 'SHIELD_BREAK' | 'DESTROYED' | 'LOOT_SPAWNED' | 'LOOT_COLLECTED' | 'POD_EJECTED' | 'CONTAINER_SCOOPED' | 'WRECK_SPAWNED' | 'TOW_ATTACHED' | 'TOW_RELEASED' | 'SALVAGE_BEAM_TICK' | 'WRECK_DISINTEGRATED' | 'TRUCE_DECLARED' | 'TRUCE_BROKEN' | 'LIFE_SUPPORT_EXHAUSTED' | 'WARP_SPOOL_STARTED' | 'WARP_SPOOL_INTERRUPTED' | 'WARP_JUMP_SUCCESS' | 'CONVOY_SURRENDERED' | 'COMMS_ABORTED' | 'AMBUSH_TRIGGERED' | 'AMBUSH_CLEARED' | 'ESCORT_FAILED' | 'ALLEGIANCE_DECLARED' | 'COMBAT_BOND_AWARDED' | 'SKIRMISH_VICTORY' | 'TACTICAL_ORDER_ISSUED' | 'WINGMAN_DESTROYED' | 'ABILITY_TRIGGERED' | 'MINING_BEAM_TICK' | 'MINING_YIELD' | 'CARGO_HOLD_FULL' | 'THERMAL_VENT_WARNING' | 'THERMAL_VENT_ERUPTION' | 'MINING_AMBUSH' | 'ASTEROID_FRACTURED' | 'ASTEROID_DEPLETED' | 'CASTAWAY_RESCUED' | 'PVP_SAFE_ZONE_BLOCKED' | 'DUEL_COMPLETED';
+  type: 'HIT' | 'SHIELD_BREAK' | 'DESTROYED' | 'LOOT_SPAWNED' | 'LOOT_COLLECTED' | 'POD_EJECTED' | 'CONTAINER_SCOOPED' | 'WRECK_SPAWNED' | 'TOW_ATTACHED' | 'TOW_RELEASED' | 'SALVAGE_BEAM_TICK' | 'WRECK_DISINTEGRATED' | 'TRUCE_DECLARED' | 'TRUCE_BROKEN' | 'LIFE_SUPPORT_EXHAUSTED' | 'WARP_SPOOL_STARTED' | 'WARP_SPOOL_INTERRUPTED' | 'WARP_JUMP_SUCCESS' | 'CONVOY_SURRENDERED' | 'COMMS_ABORTED' | 'AMBUSH_TRIGGERED' | 'AMBUSH_CLEARED' | 'ESCORT_FAILED' | 'ALLEGIANCE_DECLARED' | 'COMBAT_BOND_AWARDED' | 'SKIRMISH_VICTORY' | 'TACTICAL_ORDER_ISSUED' | 'WINGMAN_DESTROYED' | 'ABILITY_TRIGGERED' | 'MINING_BEAM_TICK' | 'MINING_YIELD' | 'CARGO_HOLD_FULL' | 'THERMAL_VENT_WARNING' | 'THERMAL_VENT_ERUPTION' | 'MINING_AMBUSH' | 'ASTEROID_FRACTURED' | 'ASTEROID_DEPLETED' | 'CASTAWAY_RESCUED' | 'PVP_SAFE_ZONE_BLOCKED' | 'DUEL_COMPLETED' | 'RAID_BOSS_DEFEATED' | 'SYNERGY_TRIGGERED' | 'RAID_PHASE_SHIFT' | 'RAID_TELEGRAPH_TRIGGERED';
 
   sourceId?: string;
   targetId?: string;
@@ -300,6 +352,22 @@ export interface SnapshotPayload {
     callsign?: string;
     squadronId?: string | null;
     activeDuelId?: string | null;
+    // Milestone 1.9 World Boss & MMORPG Synergy Telemetry
+    raidEncounterId?: string;
+    raidPhase?: number;
+    raidEnraged?: boolean;
+    equippedSynergies?: string[];
+    synergyCooldowns?: Record<string, number>;
+    paintMarked?: boolean;
+    armorShredStacks?: number;
+    stasisWebbed?: boolean;
+    gravitySlowed?: boolean;
+    empDisrupted?: boolean;
+    overclocked?: boolean;
+    commandAuraActive?: boolean;
+    bastionActive?: boolean;
+    guardLinked?: boolean;
+    taunted?: boolean;
   }>;
   asteroids?: Array<{
     id: string;
@@ -367,6 +435,21 @@ export interface SnapshotPayload {
     isTowed: boolean;
     towedByAccountId: string | null;
   }>;
+  telegraphs?: SectorTelegraph[];
+  raidBoss?: {
+    encounterId: string;
+    bossName: string;
+    archetype: string;
+    phase: number;
+    hp: number;
+    maxHp: number;
+    shields: number;
+    maxShields: number;
+    pylonsAlive: number;
+    enraged: boolean;
+    enrageAtMs: number | null;
+    aegisReduction: number;
+  } | null;
   events: CombatEvent[];
 }
 
@@ -379,6 +462,8 @@ export class SectorRoom {
   public projectiles: Projectile[] = [];
   public containers: SectorLootContainer[] = [];
   public sporeClouds: SporeCloud[] = [];
+  public telegraphs: SectorTelegraph[] = [];
+  private bossAbilityState: Map<string, { nextTelegraphAt: number; nextDroneWaveAt: number; lastDbSyncAt: number; cycleIdx: number }> = new Map();
   public pendingEvents: CombatEvent[] = [];
   public sessionAAR: Map<string, CombatAAR> = new Map();
 
@@ -1265,6 +1350,7 @@ export class SectorRoom {
     const entityId = `player_${playerId}`;
     const loadout = shipData?.loadout;
     const fittedMods = loadout?.fitted ? Object.values(loadout.fitted).filter(Boolean) as any[] : [];
+    const equippedSynergies = this.extractSynergyKeysFromMods(fittedMods);
     const bonusHp = fittedMods.reduce((sum, m) => sum + Number(m?.baseStats?.maxHpBonus || 0), 0);
     const bonusShield = fittedMods.reduce((sum, m) => sum + Number(m?.baseStats?.maxShieldBonus || 0), 0);
     const bonusEnergy = fittedMods.reduce((sum, m) => sum + Number(m?.baseStats?.maxEnergyBonus || 0), 0);
@@ -1328,6 +1414,8 @@ export class SectorRoom {
         squadronId: shipData?.squadronId || null,
         activeDuelId: shipData?.activeDuelId || null,
         friendlyFireAllyIds: new Set(shipData?.friendlyFireAllyIds || []),
+        equippedSynergies,
+        synergyCooldowns: {},
       });
     } else {
       const existing = this.entities.get(entityId)!;
@@ -1337,6 +1425,12 @@ export class SectorRoom {
       existing.callsign = shipData?.callsign || existing.callsign || playerId;
       existing.squadronId = shipData?.squadronId ?? existing.squadronId ?? null;
       existing.activeDuelId = shipData?.activeDuelId ?? existing.activeDuelId ?? null;
+      if (loadout) {
+        existing.equippedSynergies = equippedSynergies;
+      }
+      if (!existing.synergyCooldowns) {
+        existing.synergyCooldowns = {};
+      }
       if (Array.isArray(shipData?.friendlyFireAllyIds)) {
         existing.friendlyFireAllyIds = new Set(shipData.friendlyFireAllyIds);
       }
@@ -2120,11 +2214,13 @@ export class SectorRoom {
     this.lastTickTimestamp = now;
     this.tickCount++;
 
-    // 1. Process Drone, Hauler, Scavenger & Wingman AI
+    // 1. Process Drone, Hauler, Scavenger, Wingman & World Boss AI
     this.processDroneAI(dt);
     this.processHaulerAI(dt);
     this.processScavengerAI(dt);
     this.processWingmanAI(dt, now);
+    this.processRaidBossAI(dt, now);
+    this.processSynergiesAndBuffs(dt, now);
 
     // 1b. Process Bio-Spore Clouds (Corrosive Armor DoT)
     if (this.sporeClouds.length > 0) {
@@ -2204,6 +2300,838 @@ export class SectorRoom {
 
     // 6. Broadcast 50ms Snapshot to Connected Clients
     this.broadcastSnapshot(now);
+  }
+
+  private extractSynergyKeysFromMods(fittedMods: any[]): string[] {
+    const keys: string[] = [];
+    for (const mod of fittedMods) {
+      const bp = mod?.blueprintId || mod?.blueprint_id;
+      if (!bp) continue;
+      const spec = SYNERGY_MODULE_BY_BLUEPRINT.get(bp);
+      if (spec && !keys.includes(spec.synergyKey)) {
+        keys.push(spec.synergyKey);
+      }
+    }
+    return keys;
+  }
+
+  public refreshPlayerLoadout(playerId: string, overrideLoadout?: any): void {
+    const entity = this.entities.get(`player_${playerId}`);
+    if (!entity) return;
+
+    const applyLoadout = (loadout: any) => {
+      const fittedMods = loadout?.fitted ? (Object.values(loadout.fitted).filter(Boolean) as any[]) : [];
+      entity.equippedSynergies = this.extractSynergyKeysFromMods(fittedMods);
+      entity.miningProfile = computeMiningCapabilities(entity.hullClass, fittedMods);
+    };
+
+    if (overrideLoadout) {
+      applyLoadout(overrideLoadout);
+      return;
+    }
+
+    outfittingService
+      .getPlayerLoadout(playerId)
+      .then((loadout) => applyLoadout(loadout))
+      .catch(() => {});
+  }
+
+  private isAlliedEntity(a: SectorEntity, b: SectorEntity): boolean {
+    if (a.id === b.id) return true;
+    const accA = a.type === 'PLAYER' ? a.accountId || a.id.replace('player_', '') : a.type === 'WINGMAN' ? a.ownerPlayerId : undefined;
+    const accB = b.type === 'PLAYER' ? b.accountId || b.id.replace('player_', '') : b.type === 'WINGMAN' ? b.ownerPlayerId : undefined;
+    if (!accA || !accB) return false;
+    if (accA === accB) return true;
+
+    const pA = this.entities.get(`player_${accA}`);
+    const pB = this.entities.get(`player_${accB}`);
+    if (!pA || !pB) return false;
+
+    const sharedDuel = pA.activeDuelId && pB.activeDuelId && pA.activeDuelId === pB.activeDuelId;
+    if (sharedDuel) return false;
+
+    if (pA.squadronId && pA.squadronId === pB.squadronId) return true;
+    if (pA.friendlyFireAllyIds?.has(accB) || pB.friendlyFireAllyIds?.has(accA)) return true;
+    return false;
+  }
+
+  private getActiveRaidBossEntity(): SectorEntity | null {
+    for (const ent of this.entities.values()) {
+      if (ent.type === 'RAID_BOSS' && ent.state !== 'DESTROYED') {
+        return ent;
+      }
+    }
+    return null;
+  }
+
+  public syncRaidBossRoom(encounter: {
+    id: string;
+    bossArchetype: string;
+    bossName: string;
+    factionId: string;
+    maxHp: number;
+    hp: number;
+    maxShields: number;
+    shields: number;
+    phase: number;
+    pylonCount: number;
+    hullSeed: number;
+    enrageAt?: string | Date | null;
+  }): void {
+    const bossId = `raid_boss_${encounter.id}`;
+    // Remove stale raid entities from older encounters in this sector
+    for (const [id, ent] of this.entities.entries()) {
+      if (
+        (ent.type === 'RAID_BOSS' || ent.type === 'RAID_PYLON' || ent.type === 'RAID_REPAIR_DRONE') &&
+        ent.raidEncounterId !== encounter.id
+      ) {
+        this.entities.delete(id);
+      }
+    }
+
+    const existingBoss = this.entities.get(bossId);
+    const enrageMs = encounter.enrageAt ? new Date(encounter.enrageAt).getTime() : Date.now() + 300000;
+    if (!existingBoss) {
+      this.entities.set(bossId, {
+        id: bossId,
+        type: 'RAID_BOSS',
+        factionId: encounter.factionId || 'FACTION_VAELIC',
+        name: encounter.bossName,
+        hullClass: 'DREADNOUGHT',
+        hullSeed: Number(encounter.hullSeed || 77001),
+        x: 0,
+        z: -135,
+        vx: 0,
+        vz: 0,
+        yaw: 0,
+        angularVelocity: 0,
+        hp: Number(encounter.hp),
+        maxHp: Number(encounter.maxHp),
+        shields: Number(encounter.shields),
+        maxShields: Number(encounter.maxShields),
+        energy: 500,
+        maxEnergy: 500,
+        powerGridMax: 1000,
+        powerGridUsed: 500,
+        cpuMax: 1000,
+        cpuUsed: 500,
+        state: 'PATROL',
+        inputs: { forward: false, reverse: false, turnLeft: false, turnRight: false, brake: false, firePrimary: false, fireTactical: false },
+        lastHitTime: 0,
+        fireCooldown: 0,
+        raidEncounterId: encounter.id,
+        raidArchetype: encounter.bossArchetype,
+        raidPhase: Number(encounter.phase || 1),
+        raidEnrageAtMs: enrageMs,
+        raidEnraged: false,
+      });
+
+      const phase = Number(encounter.phase || 1);
+      const pylonCount = Number(encounter.pylonCount || 2);
+      if (phase === 1 && pylonCount > 0) {
+        const pylonHp = Math.max(80, Math.round(encounter.maxHp * 0.08));
+        const pylonShields = Math.max(40, Math.round(encounter.maxShields * 0.12));
+        for (let i = 0; i < pylonCount; i++) {
+          const angle = (i * Math.PI * 2) / pylonCount;
+          this.entities.set(`raid_pylon_${encounter.id}_${i}`, {
+            id: `raid_pylon_${encounter.id}_${i}`,
+            type: 'RAID_PYLON',
+            factionId: encounter.factionId || 'FACTION_VAELIC',
+            name: `Aegis Shield Pylon ${i + 1}`,
+            hullClass: 'PYLON_NODE',
+            hullSeed: Number(encounter.hullSeed || 77001) + i + 1,
+            x: Math.round(Math.cos(angle) * 38 * 10) / 10,
+            z: Math.round((-135 + Math.sin(angle) * 38) * 10) / 10,
+            vx: 0,
+            vz: 0,
+            yaw: angle,
+            angularVelocity: 0,
+            hp: pylonHp,
+            maxHp: pylonHp,
+            shields: pylonShields,
+            maxShields: pylonShields,
+            energy: 100,
+            maxEnergy: 100,
+            powerGridMax: 100,
+            powerGridUsed: 50,
+            cpuMax: 100,
+            cpuUsed: 50,
+            state: 'PATROL',
+            inputs: { forward: false, reverse: false, turnLeft: false, turnRight: false, brake: false, firePrimary: false, fireTactical: false },
+            lastHitTime: 0,
+            fireCooldown: 0,
+            raidEncounterId: encounter.id,
+            raidParentBossId: bossId,
+            pylonIndex: i,
+          });
+        }
+      }
+    } else {
+      existingBoss.raidEnrageAtMs = enrageMs;
+    }
+
+    if (this.clients.size > 0 && !this.tickInterval) {
+      this.startTickLoop();
+    }
+  }
+
+  public handleSynergyAbility(
+    playerId: string,
+    abilityKey: string,
+    targetEntityId?: string
+  ): {
+    success: boolean;
+    error?: string;
+    synergyKey?: string;
+    name?: string;
+    targetId?: string;
+    cooldownRemaining?: number;
+    amount?: number;
+  } {
+    const spec: SynergyModuleSpec | undefined = SYNERGY_MODULE_BY_KEY.get(abilityKey);
+    if (!spec) {
+      return { success: false, error: `Unknown synergy ability: ${abilityKey}` };
+    }
+
+    const caster = this.entities.get(`player_${playerId}`);
+    if (!caster || caster.state === 'DESTROYED' || caster.isEscapePod || caster.hullClass === 'ESCAPE_POD') {
+      return { success: false, error: 'Flagship is incapacitated or in an Escape Pod.' };
+    }
+
+    if (!caster.equippedSynergies?.includes(abilityKey)) {
+      return { success: false, error: `Module ${spec.name} is not fitted on your Flagship.` };
+    }
+
+    if (spec.targetMode === 'PASSIVE_AURA') {
+      return {
+        success: true,
+        synergyKey: spec.synergyKey,
+        name: spec.name,
+        targetId: caster.id,
+        cooldownRemaining: 0,
+        amount: spec.basePower,
+      };
+    }
+
+    const now = Date.now();
+    caster.synergyCooldowns = caster.synergyCooldowns || {};
+    const readyAt = caster.synergyCooldowns[abilityKey] || 0;
+    if (readyAt > now) {
+      return {
+        success: false,
+        error: `${spec.name} recharging (${((readyAt - now) / 1000).toFixed(1)}s).`,
+        cooldownRemaining: Math.ceil((readyAt - now) / 1000),
+      };
+    }
+
+    if (caster.energy < spec.energyCost) {
+      return { success: false, error: `Insufficient capacitor (${Math.round(caster.energy)}/${spec.energyCost} GJ).` };
+    }
+
+    const resolveEntity = (rawId?: string): SectorEntity | undefined => {
+      if (!rawId) return undefined;
+      return this.entities.get(rawId) || this.entities.get(`player_${rawId}`);
+    };
+
+    let target: SectorEntity | undefined = resolveEntity(targetEntityId);
+
+    if (spec.targetMode === 'ALLY') {
+      if (target) {
+        if (target.state === 'DESTROYED' || !this.isAlliedEntity(caster, target)) {
+          return { success: false, error: 'Target must be a friendly Squadron member or Peer Ally.' };
+        }
+        if (abilityKey === 'INTERCEPT_TETHER' && target.id === caster.id) {
+          return { success: false, error: 'Warden Guardian Link must target an allied vessel other than yourself.' };
+        }
+      } else {
+        // Smart auto-selection for friendly target within range
+        let bestDist = Infinity;
+        for (const e of this.entities.values()) {
+          if (e.state === 'DESTROYED' || e.type !== 'PLAYER' || !this.isAlliedEntity(caster, e)) continue;
+          if (abilityKey === 'INTERCEPT_TETHER' && e.id === caster.id) continue;
+          const dist = Math.hypot(e.x - caster.x, e.z - caster.z);
+          if (dist > spec.rangeMeters) continue;
+          if (abilityKey === 'EMERGENCY_REBOOT' && (e.isEscapePod || e.hullClass === 'ESCAPE_POD')) {
+            target = e;
+            break;
+          }
+          if (dist < bestDist) {
+            bestDist = dist;
+            target = e;
+          }
+        }
+      }
+
+      if (!target) {
+        return { success: false, error: `No Squadron/Allied vessel within ${spec.rangeMeters}m.` };
+      }
+
+      const dist = Math.hypot(target.x - caster.x, target.z - caster.z);
+      if (dist > spec.rangeMeters) {
+        return { success: false, error: `Target out of range (${dist.toFixed(1)}m > ${spec.rangeMeters}m).` };
+      }
+      if ((target.isEscapePod || target.hullClass === 'ESCAPE_POD') && abilityKey !== 'EMERGENCY_REBOOT') {
+        return { success: false, error: 'Escape Pods require Phorid Bio-Stasis Revival Core.' };
+      }
+    } else if (spec.targetMode === 'ENEMY') {
+      if (target) {
+        if (target.state === 'DESTROYED' || this.isAlliedEntity(caster, target)) {
+          return { success: false, error: 'Target must be a hostile vessel or Dreadnought.' };
+        }
+      } else {
+        let bestDist = Infinity;
+        for (const e of this.entities.values()) {
+          if (
+            e.state === 'DESTROYED' ||
+            this.isAlliedEntity(caster, e) ||
+            e.type === 'WRECK' ||
+            e.type === 'CARGO_CRATE' ||
+            e.type === 'HAULER'
+          ) {
+            continue;
+          }
+          const dist = Math.hypot(e.x - caster.x, e.z - caster.z);
+          if (dist <= spec.rangeMeters && dist < bestDist) {
+            bestDist = dist;
+            target = e;
+          }
+        }
+      }
+
+      if (!target) {
+        return { success: false, error: `No hostile target within ${spec.rangeMeters}m.` };
+      }
+      const dist = Math.hypot(target.x - caster.x, target.z - caster.z);
+      if (dist > spec.rangeMeters) {
+        return { success: false, error: `Hostile target out of range (${dist.toFixed(1)}m > ${spec.rangeMeters}m).` };
+      }
+    }
+
+    caster.energy = Math.max(0, caster.energy - spec.energyCost);
+    caster.synergyCooldowns[abilityKey] = now + spec.cooldownSec * 1000;
+
+    const crewPotency =
+      1 +
+      (caster.crewBonuses?.shieldRegenBonus || 0) * 0.5 +
+      (caster.crewBonuses?.hazardResistBonus || 0) * 0.5 +
+      (caster.crewBonuses?.weaponDamageBonus || 0) * 0.25;
+
+    const activeBoss = this.getActiveRaidBossEntity();
+    let effectAmount = spec.basePower;
+    let healContribution = 0;
+    let supportContribution = 25;
+
+    switch (abilityKey) {
+      case 'TAUNT_EMITTER': {
+        target!.tauntUntil = now + spec.durationSec * 1000;
+        target!.tauntedByEntityId = caster.id;
+        caster.tauntUntil = now + spec.durationSec * 1000;
+        supportContribution = 75;
+        break;
+      }
+      case 'BASTION_DOME': {
+        caster.bastionDomeUntil = now + spec.durationSec * 1000;
+        caster.bastionDomeRadius = spec.rangeMeters;
+        target = caster;
+        supportContribution = 85;
+        break;
+      }
+      case 'INTERCEPT_TETHER': {
+        target!.guardLinkUntil = now + spec.durationSec * 1000;
+        target!.guardedByEntityId = caster.id;
+        supportContribution = 70;
+        break;
+      }
+      case 'SHIELD_TRANSFUSER': {
+        const gain = Math.round(spec.basePower * crewPotency);
+        const before = target!.shields;
+        target!.shields = Math.min(target!.maxShields, target!.shields + gain);
+        effectAmount = gain;
+        healContribution = Math.max(gain * 0.6, target!.shields - before);
+        break;
+      }
+      case 'NANITE_REPAIRER': {
+        const gain = Math.round(spec.basePower * crewPotency);
+        const before = target!.hp;
+        target!.hp = Math.min(target!.maxHp, target!.hp + gain);
+        target!.naniteHotUntil = now + spec.durationSec * 1000;
+        target!.naniteHotPerSec = Math.round(18 * crewPotency);
+        effectAmount = gain;
+        healContribution = Math.max(gain * 0.6, target!.hp - before);
+        break;
+      }
+      case 'CLEANSE_PULSE': {
+        let cleansedCount = 0;
+        for (const e of this.entities.values()) {
+          if (e.state === 'DESTROYED' || e.type !== 'PLAYER' || !this.isAlliedEntity(caster, e)) continue;
+          if (Math.hypot(e.x - caster.x, e.z - caster.z) <= spec.rangeMeters) {
+            e.gravitySlowUntil = 0;
+            e.empDisruptUntil = 0;
+            e.armorShredStacks = 0;
+            e.armorShredUntil = 0;
+            e.cleanseImmuneUntil = now + spec.durationSec * 1000;
+            cleansedCount++;
+          }
+        }
+        target = caster;
+        effectAmount = cleansedCount;
+        supportContribution = 65 + cleansedCount * 20;
+        break;
+      }
+      case 'EMERGENCY_REBOOT': {
+        if (target!.isEscapePod || target!.hullClass === 'ESCAPE_POD') {
+          target!.isEscapePod = false;
+          target!.weaponsDisabled = false;
+          target!.lifeSupportSeconds = undefined;
+          target!.hullClass = 'CORVETTE';
+          if (target!.maxHp <= 25) target!.maxHp = 100;
+          if (target!.maxShields <= 0) target!.maxShields = 100;
+          target!.hp = Math.max(60, Math.round(target!.maxHp * 0.65));
+          target!.shields = Math.max(60, Math.round(target!.maxShields * 0.65));
+          effectAmount = target!.hp + target!.shields;
+          healContribution = effectAmount;
+          supportContribution = 140;
+        } else {
+          const shGain = Math.round(250 * crewPotency);
+          const hpGain = Math.round(120 * crewPotency);
+          target!.shields = Math.min(target!.maxShields, target!.shields + shGain);
+          target!.hp = Math.min(target!.maxHp, target!.hp + hpGain);
+          effectAmount = shGain + hpGain;
+          healContribution = Math.round(effectAmount * 0.7);
+          supportContribution = 90;
+        }
+        break;
+      }
+      case 'TARGET_PAINTER': {
+        target!.paintMarkedUntil = now + spec.durationSec * 1000;
+        supportContribution = 80;
+        break;
+      }
+      case 'ARMOR_CORRODER': {
+        const currentStacks = target!.armorShredUntil && target!.armorShredUntil > now ? (target!.armorShredStacks || 0) : 0;
+        target!.armorShredStacks = Math.min(3, currentStacks + 1);
+        target!.armorShredUntil = now + spec.durationSec * 1000;
+        effectAmount = target!.armorShredStacks;
+        supportContribution = 70;
+        break;
+      }
+      case 'STASIS_WEB': {
+        target!.stasisWebUntil = now + spec.durationSec * 1000;
+        target!.stasisSlowPct = spec.basePower / 100;
+        supportContribution = 65;
+        break;
+      }
+      case 'CAPACITOR_RELAY': {
+        const gain = Math.round(spec.basePower * crewPotency);
+        target!.energy = Math.min(target!.maxEnergy, target!.energy + gain);
+        target!.capRegenBoostUntil = now + spec.durationSec * 1000;
+        effectAmount = gain;
+        supportContribution = 70;
+        break;
+      }
+      case 'OVERCLOCK_SYNCHRONIZER': {
+        let boostedCount = 0;
+        for (const e of this.entities.values()) {
+          if (e.state === 'DESTROYED' || e.type !== 'PLAYER' || !this.isAlliedEntity(caster, e)) continue;
+          if (Math.hypot(e.x - caster.x, e.z - caster.z) <= spec.rangeMeters) {
+            e.overclockUntil = now + spec.durationSec * 1000;
+            boostedCount++;
+          }
+        }
+        target = caster;
+        effectAmount = boostedCount;
+        supportContribution = 85 + boostedCount * 20;
+        break;
+      }
+    }
+
+    if (activeBoss?.raidEncounterId && caster.accountId) {
+      raidDirectorService
+        .recordContribution(activeBoss.raidEncounterId, caster.accountId, caster.squadronId, {
+          healingDone: healContribution,
+          supportScore: supportContribution,
+        })
+        .catch(() => {});
+    }
+
+    this.pendingEvents.push({
+      type: 'SYNERGY_TRIGGERED',
+      sourceId: caster.id,
+      targetId: target?.id,
+      x: target?.x ?? caster.x,
+      z: target?.z ?? caster.z,
+      data: {
+        synergyKey: spec.synergyKey,
+        name: spec.name,
+        shortLabel: spec.shortLabel,
+        role: spec.role,
+        amount: effectAmount,
+      },
+    });
+
+    return {
+      success: true,
+      synergyKey: spec.synergyKey,
+      name: spec.name,
+      targetId: target?.id,
+      cooldownRemaining: spec.cooldownSec,
+      amount: effectAmount,
+    };
+  }
+
+  private processSynergiesAndBuffs(dt: number, now: number): void {
+    const commandEmitters: SectorEntity[] = [];
+    for (const ent of this.entities.values()) {
+      if (
+        ent.type === 'PLAYER' &&
+        ent.state !== 'DESTROYED' &&
+        !ent.isEscapePod &&
+        ent.equippedSynergies?.includes('HARMONIC_COMMAND_LINK')
+      ) {
+        commandEmitters.push(ent);
+      }
+    }
+
+    const activeBoss = this.getActiveRaidBossEntity();
+
+    for (const ent of this.entities.values()) {
+      if (ent.state === 'DESTROYED') continue;
+
+      // Clear expired buffs & debuffs cleanly
+      if (ent.tauntUntil && now >= ent.tauntUntil) {
+        ent.tauntUntil = 0;
+        ent.tauntedByEntityId = undefined;
+      }
+      if (ent.bastionDomeUntil && now >= ent.bastionDomeUntil) ent.bastionDomeUntil = 0;
+      if (ent.guardLinkUntil && now >= ent.guardLinkUntil) {
+        ent.guardLinkUntil = 0;
+        ent.guardedByEntityId = undefined;
+      }
+      if (ent.paintMarkedUntil && now >= ent.paintMarkedUntil) ent.paintMarkedUntil = 0;
+      if (ent.armorShredUntil && now >= ent.armorShredUntil) {
+        ent.armorShredUntil = 0;
+        ent.armorShredStacks = 0;
+      }
+      if (ent.stasisWebUntil && now >= ent.stasisWebUntil) {
+        ent.stasisWebUntil = 0;
+        ent.stasisSlowPct = 0;
+      }
+      if (ent.gravitySlowUntil && now >= ent.gravitySlowUntil) ent.gravitySlowUntil = 0;
+      if (ent.empDisruptUntil && now >= ent.empDisruptUntil) ent.empDisruptUntil = 0;
+      if (ent.cleanseImmuneUntil && now >= ent.cleanseImmuneUntil) ent.cleanseImmuneUntil = 0;
+      if (ent.overclockUntil && now >= ent.overclockUntil) ent.overclockUntil = 0;
+      if (ent.capRegenBoostUntil && now >= ent.capRegenBoostUntil) ent.capRegenBoostUntil = 0;
+
+      // Apply passive HARMONIC_COMMAND_LINK 170m Squadron Aura (+12% firepower & shield regen, +10% speed)
+      if (ent.type === 'PLAYER' && !ent.isEscapePod && commandEmitters.length > 0) {
+        const inAura = commandEmitters.some(
+          (emitter) => this.isAlliedEntity(emitter, ent) && Math.hypot(emitter.x - ent.x, emitter.z - ent.z) <= 170
+        );
+        if (inAura) {
+          ent.commandAuraActiveUntil = now + 250;
+          if (now - ent.lastHitTime > 2000 && ent.shields < ent.maxShields) {
+            ent.shields = Math.min(ent.maxShields, ent.shields + 4.5 * dt);
+          }
+        }
+      }
+
+      // Tick Miners Nanite Weld HoT & Cap Relay Regen
+      if (ent.naniteHotUntil && ent.naniteHotUntil > now) {
+        const healed = Math.min(ent.maxHp - ent.hp, (ent.naniteHotPerSec || 18) * dt);
+        ent.hp += healed;
+        if (healed > 0 && activeBoss?.raidEncounterId && ent.accountId && Math.random() < 0.08) {
+          raidDirectorService
+            .recordContribution(activeBoss.raidEncounterId, ent.accountId, ent.squadronId, { healingDone: Math.round(healed * 10) })
+            .catch(() => {});
+        }
+      } else if (ent.naniteHotUntil && now >= ent.naniteHotUntil) {
+        ent.naniteHotUntil = 0;
+      }
+
+      if (ent.capRegenBoostUntil && ent.capRegenBoostUntil > now && ent.energy < ent.maxEnergy) {
+        ent.energy = Math.min(ent.maxEnergy, ent.energy + 7.7 * dt);
+      }
+    }
+  }
+
+  private processRaidBossAI(dt: number, now: number): void {
+    const livingBosses: SectorEntity[] = [];
+    const pylonsByBoss = new Map<string, SectorEntity[]>();
+    const repairDronesByBoss = new Map<string, SectorEntity[]>();
+
+    for (const ent of this.entities.values()) {
+      if (ent.state === 'DESTROYED') continue;
+      if (ent.type === 'RAID_BOSS') livingBosses.push(ent);
+      else if (ent.type === 'RAID_PYLON' && ent.raidParentBossId) {
+        const list = pylonsByBoss.get(ent.raidParentBossId) || [];
+        list.push(ent);
+        pylonsByBoss.set(ent.raidParentBossId, list);
+      } else if (ent.type === 'RAID_REPAIR_DRONE' && ent.raidParentBossId) {
+        const list = repairDronesByBoss.get(ent.raidParentBossId) || [];
+        list.push(ent);
+        repairDronesByBoss.set(ent.raidParentBossId, list);
+      }
+    }
+
+    for (const boss of livingBosses) {
+      const encId = boss.raidEncounterId || boss.id;
+      const pylons = pylonsByBoss.get(boss.id) || [];
+      const drones = repairDronesByBoss.get(boss.id) || [];
+      let state = this.bossAbilityState.get(boss.id);
+      if (!state) {
+        state = {
+          nextTelegraphAt: now + 3000,
+          nextDroneWaveAt: now + 5000,
+          lastDbSyncAt: now,
+          cycleIdx: 0,
+        };
+        this.bossAbilityState.set(boss.id, state);
+      }
+
+      // Orbit Pylons around Boss
+      for (let i = 0; i < pylons.length; i++) {
+        const p = pylons[i];
+        const angle = now * 0.00045 + ((p.pylonIndex ?? i) * Math.PI * 2) / Math.max(1, pylons.length);
+        p.x = Math.round((boss.x + Math.cos(angle) * 38) * 10) / 10;
+        p.z = Math.round((boss.z + Math.sin(angle) * 38) * 10) / 10;
+        p.yaw = angle + Math.PI / 2;
+      }
+
+      // Repair Drones pursue Boss & restore +180 Shields/sec
+      for (const drone of drones) {
+        const dx = boss.x - drone.x;
+        const dz = boss.z - drone.z;
+        const dist = Math.hypot(dx, dz);
+        const desiredYaw = Math.atan2(dx, dz);
+        let diff = desiredYaw - drone.yaw;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        drone.inputs.turnLeft = diff > 0.08;
+        drone.inputs.turnRight = diff < -0.08;
+        drone.inputs.forward = dist > 26;
+        drone.inputs.brake = dist <= 26;
+
+        if (dist <= 38) {
+          if (boss.shields < boss.maxShields) {
+            boss.shields = Math.min(boss.maxShields, boss.shields + 180 * dt);
+          } else {
+            boss.hp = Math.min(boss.maxHp, boss.hp + 90 * dt);
+          }
+        }
+      }
+
+      // Phase shifts: 1 -> 2 when Aegis Pylons collapse, 2 -> 3 at <30% HP
+      const currentPhase = boss.raidPhase || 1;
+      if (currentPhase === 1 && pylons.length === 0) {
+        boss.raidPhase = 2;
+        state.nextTelegraphAt = now + 1200;
+        state.nextDroneWaveAt = now + 2200;
+        this.pendingEvents.push({
+          type: 'RAID_PHASE_SHIFT',
+          sourceId: boss.id,
+          x: boss.x,
+          z: boss.z,
+          data: {
+            phase: 2,
+            bossName: boss.name,
+            message: `⚡ AEGIS PYLONS DESTROYED: ${boss.name} Core Exposed (Phase 2)!`,
+          },
+        });
+      } else if ((boss.raidPhase || 1) === 2 && boss.hp <= boss.maxHp * 0.30) {
+        boss.raidPhase = 3;
+        this.pendingEvents.push({
+          type: 'RAID_PHASE_SHIFT',
+          sourceId: boss.id,
+          x: boss.x,
+          z: boss.z,
+          data: {
+            phase: 3,
+            bossName: boss.name,
+            message: `🔥 CRITICAL OVERDRIVE: ${boss.name} entering Phase 3!`,
+          },
+        });
+      }
+
+      if (boss.raidEnrageAtMs && now >= boss.raidEnrageAtMs && !boss.raidEnraged) {
+        boss.raidEnraged = true;
+        this.pendingEvents.push({
+          type: 'RAID_PHASE_SHIFT',
+          sourceId: boss.id,
+          x: boss.x,
+          z: boss.z,
+          data: {
+            phase: 3,
+            enraged: true,
+            bossName: boss.name,
+            message: `☠️ EXTINCTION ENRAGE: ${boss.name} weapons surged 300%!`,
+          },
+        });
+      }
+
+      // Boss target selection (respects Tank TAUNT_EMITTER)
+      let target: SectorEntity | null = null;
+      if (boss.tauntUntil && boss.tauntUntil > now && boss.tauntedByEntityId) {
+        const taunter = this.entities.get(boss.tauntedByEntityId);
+        if (taunter && taunter.state !== 'DESTROYED' && !taunter.isEscapePod) {
+          target = taunter;
+        }
+      }
+      if (!target) {
+        let minDist = Infinity;
+        for (const e of this.entities.values()) {
+          if ((e.type === 'PLAYER' || e.type === 'WINGMAN') && e.state !== 'DESTROYED' && !e.isEscapePod && e.hullClass !== 'ESCAPE_POD') {
+            const d = Math.hypot(e.x - boss.x, e.z - boss.z);
+            if (d < minDist) {
+              minDist = d;
+              target = e;
+            }
+          }
+        }
+      }
+
+      if (target) {
+        const dx = target.x - boss.x;
+        const dz = target.z - boss.z;
+        const dist = Math.hypot(dx, dz);
+        const desiredYaw = Math.atan2(dx, dz);
+        let yawDiff = desiredYaw - boss.yaw;
+        while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
+        while (yawDiff > Math.PI) yawDiff -= Math.PI * 2;
+
+        boss.inputs.turnLeft = yawDiff > 0.06;
+        boss.inputs.turnRight = yawDiff < -0.06;
+        boss.inputs.forward = dist > 75;
+        boss.inputs.brake = dist <= 55;
+        boss.inputs.firePrimary = Math.abs(yawDiff) < 0.45 && dist < 240;
+      } else {
+        boss.inputs.forward = false;
+        boss.inputs.brake = true;
+        boss.inputs.firePrimary = false;
+      }
+
+      // Phase >= 2 Telegraphs & Repair Drone Waves
+      if ((boss.raidPhase || 1) >= 2 && target) {
+        if (now >= state.nextTelegraphAt) {
+          const kinds: SectorTelegraph['kind'][] = ['BEAM_SWEEP', 'EMP_SHOCKWAVE', 'GRAVITY_WELL'];
+          const kind = kinds[state.cycleIdx % kinds.length];
+          state.cycleIdx++;
+          state.nextTelegraphAt = now + ((boss.raidPhase || 1) >= 3 ? 4500 : 6200);
+
+          const dmgMult = boss.raidEnraged ? 3 : 1;
+          const tg: SectorTelegraph = {
+            id: `tele_${encId}_${now}_${state.cycleIdx}`,
+            kind,
+            x: kind === 'GRAVITY_WELL' ? target.x : boss.x,
+            z: kind === 'GRAVITY_WELL' ? target.z : boss.z,
+            radius: kind === 'EMP_SHOCKWAVE' ? 88 : kind === 'GRAVITY_WELL' ? 56 : 22,
+            yaw: kind === 'BEAM_SWEEP' ? Math.atan2(target.x - boss.x, target.z - boss.z) : undefined,
+            length: kind === 'BEAM_SWEEP' ? 175 : undefined,
+            detonateAt: now + 1800,
+            createdAt: now,
+            damage: (kind === 'BEAM_SWEEP' ? 95 : kind === 'EMP_SHOCKWAVE' ? 68 : 44) * dmgMult,
+            ownerId: boss.id,
+          };
+          this.telegraphs.push(tg);
+          this.pendingEvents.push({
+            type: 'RAID_TELEGRAPH_TRIGGERED',
+            sourceId: boss.id,
+            x: tg.x,
+            z: tg.z,
+            data: { kind: tg.kind, radius: tg.radius, detonateAt: tg.detonateAt },
+          });
+        }
+
+        if (now >= state.nextDroneWaveAt && drones.length < 2) {
+          state.nextDroneWaveAt = now + 14000;
+          const spawnAngle = Math.random() * Math.PI * 2;
+          const droneId = `raid_drone_${encId}_${now}`;
+          this.entities.set(droneId, {
+            id: droneId,
+            type: 'RAID_REPAIR_DRONE',
+            factionId: boss.factionId,
+            name: 'Dreadnought Shield Repair Drone',
+            hullClass: 'DRONE',
+            hullSeed: boss.hullSeed + 99,
+            x: Math.round((boss.x + Math.cos(spawnAngle) * 78) * 10) / 10,
+            z: Math.round((boss.z + Math.sin(spawnAngle) * 78) * 10) / 10,
+            vx: 0,
+            vz: 0,
+            yaw: spawnAngle + Math.PI,
+            angularVelocity: 0,
+            hp: Math.max(70, Math.round(boss.maxHp * 0.04)),
+            maxHp: Math.max(70, Math.round(boss.maxHp * 0.04)),
+            shields: Math.max(40, Math.round(boss.maxShields * 0.05)),
+            maxShields: Math.max(40, Math.round(boss.maxShields * 0.05)),
+            energy: 100,
+            maxEnergy: 100,
+            powerGridMax: 50,
+            powerGridUsed: 25,
+            cpuMax: 50,
+            cpuUsed: 25,
+            state: 'PATROL',
+            inputs: { forward: false, reverse: false, turnLeft: false, turnRight: false, brake: false, firePrimary: false, fireTactical: false },
+            lastHitTime: 0,
+            fireCooldown: 0,
+            raidEncounterId: encId,
+            raidParentBossId: boss.id,
+          });
+        }
+      }
+
+      if (now - state.lastDbSyncAt >= 2000) {
+        state.lastDbSyncAt = now;
+        raidDirectorService.syncBossState(encId, boss.hp, boss.shields, boss.raidPhase || 1).catch(() => {});
+      }
+    }
+
+    // Detonate due telegraphs
+    if (this.telegraphs.length > 0) {
+      const remaining: SectorTelegraph[] = [];
+      for (const tg of this.telegraphs) {
+        if (now < tg.detonateAt) {
+          remaining.push(tg);
+          continue;
+        }
+        for (const ent of this.entities.values()) {
+          if (ent.state === 'DESTROYED' || (ent.type !== 'PLAYER' && ent.type !== 'WINGMAN') || ent.isEscapePod) continue;
+          let hit = false;
+          if (tg.kind === 'BEAM_SWEEP') {
+            const dx = ent.x - tg.x;
+            const dz = ent.z - tg.z;
+            const fx = Math.sin(tg.yaw || 0);
+            const fz = Math.cos(tg.yaw || 0);
+            const along = dx * fx + dz * fz;
+            const perp = Math.abs(dx * fz - dz * fx);
+            hit = along >= -10 && along <= (tg.length || 175) && perp <= tg.radius;
+          } else {
+            hit = Math.hypot(ent.x - tg.x, ent.z - tg.z) <= tg.radius;
+          }
+          if (!hit) continue;
+
+          const immune = Boolean(ent.cleanseImmuneUntil && ent.cleanseImmuneUntil > now);
+          if (tg.kind === 'EMP_SHOCKWAVE' && !immune) {
+            ent.empDisruptUntil = now + 5000;
+            ent.energy = Math.max(0, ent.energy - 35);
+          } else if (tg.kind === 'GRAVITY_WELL' && !immune) {
+            ent.gravitySlowUntil = now + 6000;
+          }
+
+          this.applyDamage(ent, {
+            id: `tele_hit_${tg.id}`,
+            ownerId: tg.ownerId,
+            x: ent.x,
+            z: ent.z,
+            vx: 0,
+            vz: 0,
+            damage: tg.damage,
+            ttl: 0,
+            color: '#f43f5e',
+            projType: 'PLASMA',
+          });
+        }
+      }
+      this.telegraphs = remaining;
+    }
   }
 
   public attachTow(playerId: string, wreckId: string): boolean {
@@ -2761,12 +3689,59 @@ export class SectorRoom {
   }
 
   private integrateEntityPhysics(entity: SectorEntity, dt: number, now: number): void {
+    if (entity.type === 'RAID_PYLON') {
+      return;
+    }
     const isEscapePod = entity.isEscapePod || entity.hullClass === 'ESCAPE_POD';
-    let accel = isEscapePod ? 8.0 : entity.type === 'HAULER' ? 6.0 : entity.type === 'DRONE' ? 18.0 : entity.type === 'SCAVENGER' ? 14.0 : entity.type === 'WINGMAN' ? 24.0 : 22.0;
-    const turnAccel = isEscapePod ? 2.0 : entity.type === 'HAULER' ? 1.4 : entity.type === 'SCAVENGER' ? 2.8 : entity.type === 'WINGMAN' ? 3.4 : 3.6;
-    let maxSpeed = isEscapePod ? 13.0 : entity.type === 'HAULER' ? 10.0 : entity.type === 'DRONE' ? 24.0 : entity.type === 'SCAVENGER' ? 18.0 : entity.type === 'WINGMAN' ? 30.0 : 28.0;
+    let accel = isEscapePod
+      ? 8.0
+      : entity.type === 'RAID_BOSS'
+        ? 9.0
+        : entity.type === 'RAID_REPAIR_DRONE'
+          ? 20.0
+          : entity.type === 'HAULER'
+            ? 6.0
+            : entity.type === 'DRONE'
+              ? 18.0
+              : entity.type === 'SCAVENGER'
+                ? 14.0
+                : entity.type === 'WINGMAN'
+                  ? 24.0
+                  : 22.0;
+    const turnAccel = isEscapePod ? 2.0 : entity.type === 'RAID_BOSS' ? 1.8 : entity.type === 'HAULER' ? 1.4 : entity.type === 'SCAVENGER' ? 2.8 : entity.type === 'WINGMAN' ? 3.4 : 3.6;
+    let maxSpeed = isEscapePod
+      ? 13.0
+      : entity.type === 'RAID_BOSS'
+        ? 14.0
+        : entity.type === 'RAID_REPAIR_DRONE'
+          ? 22.0
+          : entity.type === 'HAULER'
+            ? 10.0
+            : entity.type === 'DRONE'
+              ? 24.0
+              : entity.type === 'SCAVENGER'
+                ? 18.0
+                : entity.type === 'WINGMAN'
+                  ? 30.0
+                  : 28.0;
+
+    let spdMult = 1.0;
     if (entity.type === 'PLAYER' && entity.crewBonuses?.flightSpeedBonus) {
-      const spdMult = 1 + entity.crewBonuses.flightSpeedBonus;
+      spdMult += entity.crewBonuses.flightSpeedBonus;
+    }
+    if (entity.commandAuraActiveUntil && entity.commandAuraActiveUntil > now) {
+      spdMult *= 1.10;
+    }
+    if (entity.overclockUntil && entity.overclockUntil > now) {
+      spdMult *= 1.25;
+    }
+    if (entity.stasisWebUntil && entity.stasisWebUntil > now) {
+      spdMult *= Math.max(0.25, 1 - (entity.stasisSlowPct || 0.55));
+    }
+    if (entity.gravitySlowUntil && entity.gravitySlowUntil > now) {
+      spdMult *= 0.50;
+    }
+    if (spdMult !== 1.0) {
       accel *= spdMult;
       maxSpeed *= spdMult;
     }
@@ -3626,6 +4601,31 @@ export class SectorRoom {
   }
 
   private dischargePrimaryWeapon(entity: SectorEntity): void {
+    if (entity.type === 'RAID_PYLON' || entity.type === 'RAID_REPAIR_DRONE') {
+      return;
+    }
+
+    if (entity.type === 'RAID_BOSS') {
+      entity.fireCooldown = entity.raidEnraged ? 0.35 : 0.65;
+      const forwardX = Math.sin(entity.yaw);
+      const forwardZ = Math.cos(entity.yaw);
+      const muzzleSpeed = 64.0;
+      const dmg = entity.raidEnraged ? 54 : 18;
+      this.projectiles.push({
+        id: `proj_${++this.projectileSeq}_${Date.now()}`,
+        ownerId: entity.id,
+        x: entity.x + forwardX * 10.0,
+        z: entity.z + forwardZ * 10.0,
+        vx: entity.vx * 0.2 + forwardX * muzzleSpeed,
+        vz: entity.vz * 0.2 + forwardZ * muzzleSpeed,
+        damage: dmg,
+        ttl: 2.4,
+        color: '#f43f5e',
+        projType: 'PLASMA',
+      });
+      return;
+    }
+
     if (entity.type === 'WINGMAN') {
       if (entity.energy < 8) return;
       entity.energy -= 8;
@@ -3777,12 +4777,25 @@ export class SectorRoom {
       });
     }
 
-    if (entity.type === 'PLAYER' && entity.crewBonuses) {
-      const dmgMult = 1 + (entity.crewBonuses.weaponDamageBonus || 0);
-      const cdMult = Math.max(0.55, 1 - (entity.crewBonuses.fireCadenceBonus || 0));
+    const now = Date.now();
+    let dmgMult = entity.type === 'PLAYER' && entity.crewBonuses ? 1 + (entity.crewBonuses.weaponDamageBonus || 0) : 1.0;
+    let cdMult = entity.type === 'PLAYER' && entity.crewBonuses ? Math.max(0.55, 1 - (entity.crewBonuses.fireCadenceBonus || 0)) : 1.0;
+
+    if (entity.type === 'PLAYER') {
+      if (entity.commandAuraActiveUntil && entity.commandAuraActiveUntil > now) {
+        dmgMult *= 1.12;
+      }
+      if (entity.overclockUntil && entity.overclockUntil > now) {
+        cdMult *= 0.70;
+      }
+      if (entity.empDisruptUntil && entity.empDisruptUntil > now) {
+        cdMult *= 1.35;
+      }
       entity.fireCooldown *= cdMult;
-      for (let i = projBefore; i < this.projectiles.length; i++) {
-        this.projectiles[i].damage = Math.round(this.projectiles[i].damage * dmgMult);
+      if (dmgMult !== 1.0) {
+        for (let i = projBefore; i < this.projectiles.length; i++) {
+          this.projectiles[i].damage = Math.round(this.projectiles[i].damage * dmgMult);
+        }
       }
     }
   }
@@ -3804,6 +4817,11 @@ export class SectorRoom {
 
         // Friendly fire protection between player flagship and their wingmen, and between co-wingmen
         const projOwner = this.entities.get(proj.ownerId);
+        const isRaidCoopNPC =
+          (projOwner?.type === 'RAID_BOSS' || projOwner?.type === 'RAID_PYLON' || projOwner?.type === 'RAID_REPAIR_DRONE') &&
+          (entity.type === 'RAID_BOSS' || entity.type === 'RAID_PYLON' || entity.type === 'RAID_REPAIR_DRONE');
+        if (isRaidCoopNPC) continue;
+
         const isFriendlySquadron =
           (entity.type === 'WINGMAN' && entity.ownerPlayerId === proj.ownerId.replace('player_', '')) ||
           (projOwner?.type === 'WINGMAN' && entity.id === `player_${projOwner.ownerPlayerId}`) ||
@@ -3854,7 +4872,16 @@ export class SectorRoom {
         const dx = entity.x - proj.x;
         const dz = entity.z - proj.z;
         const distSq = dx * dx + dz * dz;
-        const hitRadius = entity.hullClass === 'ESCAPE_POD' ? 2.0 : entity.type === 'HAULER' ? 6.5 : 3.8;
+        const hitRadius =
+          entity.type === 'RAID_BOSS'
+            ? 14.5
+            : entity.type === 'RAID_PYLON'
+              ? 5.2
+              : entity.hullClass === 'ESCAPE_POD'
+                ? 2.0
+                : entity.type === 'HAULER'
+                  ? 6.5
+                  : 3.8;
 
         if (distSq < hitRadius * hitRadius) {
           hit = true;
@@ -3943,12 +4970,118 @@ export class SectorRoom {
     this.projectiles = livingProjectiles;
   }
 
-  private applyDamage(target: SectorEntity, proj: Projectile): void {
-    target.lastHitTime = Date.now();
+  private applyDamage(target: SectorEntity, proj: Projectile, isRedirected: boolean = false): void {
+    const now = Date.now();
+    target.lastHitTime = now;
     let damageRemaining = proj.damage;
 
+    // Milestone 1.9: Phase 1 Aegis Pylon Protection (-90% incoming damage while Pylons live)
+    if (target.type === 'RAID_BOSS') {
+      let pylonsAlive = 0;
+      for (const e of this.entities.values()) {
+        if (e.type === 'RAID_PYLON' && e.state !== 'DESTROYED' && e.raidParentBossId === target.id) {
+          pylonsAlive++;
+        }
+      }
+      if (pylonsAlive > 0) {
+        damageRemaining = Math.max(1, damageRemaining * 0.10);
+      }
+    }
+
+    // Milestone 1.9: Tank Vaelic Taunt Damage Mitigation (-25%)
+    if (target.type === 'PLAYER' && target.tauntUntil && target.tauntUntil > now) {
+      damageRemaining *= 0.75;
+    }
+
+    // Milestone 1.9: Debuffer Amplifications (Target Painter +20%, Acid-Spore Hull Etcher +10%/stack up to 3)
+    const projOwner = proj.ownerId ? this.entities.get(proj.ownerId) : undefined;
+    const isPlayerOrWingmanAttack = projOwner?.type === 'PLAYER' || projOwner?.type === 'WINGMAN';
+    if (isPlayerOrWingmanAttack) {
+      if (target.paintMarkedUntil && target.paintMarkedUntil > now) {
+        damageRemaining *= 1.20;
+      }
+      if (target.armorShredStacks && target.armorShredStacks > 0 && target.armorShredUntil && target.armorShredUntil > now) {
+        damageRemaining *= 1 + 0.10 * Math.min(3, target.armorShredStacks);
+      }
+    }
+
+    // Milestone 1.9: Tank Guardian Link (50%) & Lithos Bastion Dome (35%) Damage Redirection
+    if (!isRedirected && target.type === 'PLAYER' && !target.isEscapePod) {
+      let tankEntity: SectorEntity | undefined;
+      let redirectFraction = 0;
+
+      if (target.guardLinkUntil && target.guardLinkUntil > now && target.guardedByEntityId) {
+        const linked = this.entities.get(target.guardedByEntityId);
+        if (linked && linked.id !== target.id && linked.state !== 'DESTROYED' && !linked.isEscapePod && this.isAlliedEntity(linked, target)) {
+          tankEntity = linked;
+          redirectFraction = 0.50;
+        }
+      } else {
+        for (const candidate of this.entities.values()) {
+          if (
+            candidate.id !== target.id &&
+            candidate.type === 'PLAYER' &&
+            candidate.state !== 'DESTROYED' &&
+            !candidate.isEscapePod &&
+            candidate.bastionDomeUntil &&
+            candidate.bastionDomeUntil > now &&
+            this.isAlliedEntity(candidate, target) &&
+            Math.hypot(candidate.x - target.x, candidate.z - target.z) <= (candidate.bastionDomeRadius || 105)
+          ) {
+            tankEntity = candidate;
+            redirectFraction = 0.35;
+            break;
+          }
+        }
+      }
+
+      if (tankEntity && redirectFraction > 0) {
+        const diverted = damageRemaining * redirectFraction;
+        damageRemaining -= diverted;
+        this.applyDamage(
+          tankEntity,
+          {
+            ...proj,
+            id: `${proj.id}_guard`,
+            damage: Math.round(diverted * 10) / 10,
+          },
+          true
+        );
+        if (tankEntity.accountId) {
+          const activeBoss = this.getActiveRaidBossEntity();
+          if (activeBoss?.raidEncounterId) {
+            raidDirectorService
+              .recordContribution(activeBoss.raidEncounterId, tankEntity.accountId, tankEntity.squadronId, {
+                supportScore: Math.round(diverted),
+              })
+              .catch(() => {});
+          }
+        }
+      }
+    }
+
+    // Milestone 1.9: Credit Raid Damage Ledger
+    if (
+      (target.type === 'RAID_BOSS' || target.type === 'RAID_PYLON' || target.type === 'RAID_REPAIR_DRONE') &&
+      target.raidEncounterId &&
+      isPlayerOrWingmanAttack
+    ) {
+      const atkAcc =
+        projOwner?.type === 'PLAYER'
+          ? projOwner.accountId || projOwner.id.replace('player_', '')
+          : projOwner?.ownerPlayerId;
+      if (atkAcc) {
+        const atkPlayer = this.entities.get(`player_${atkAcc}`);
+        raidDirectorService
+          .recordContribution(target.raidEncounterId, atkAcc, atkPlayer?.squadronId || null, {
+            damageDealt: Math.round(damageRemaining),
+          })
+          .catch(() => {});
+      }
+    }
+
     // Day 36: Record combat damage in session AAR
-    this.recordDamage(proj.ownerId, target, proj.damage);
+    this.recordDamage(proj.ownerId, target, damageRemaining);
 
     // Day 35: Lithos Harmonic Resonant Shield (50% absorption, 25% reflection)
     if (target.harmonicShieldActive) {
@@ -4137,6 +5270,91 @@ export class SectorRoom {
 
   private handleEntityDestruction(target: SectorEntity, killerId: string): void {
     target.state = 'DESTROYED';
+
+    // Milestone 1.9: World Boss Defeat Ledger & Squadron Loot Rolls
+    if (target.type === 'RAID_BOSS' && target.raidEncounterId) {
+      const encId = target.raidEncounterId;
+      for (const [eid, ent] of this.entities.entries()) {
+        if ((ent.type === 'RAID_PYLON' || ent.type === 'RAID_REPAIR_DRONE') && ent.raidParentBossId === target.id) {
+          ent.state = 'DESTROYED';
+          this.entities.delete(eid);
+        }
+      }
+      this.telegraphs = this.telegraphs.filter((tg) => tg.ownerId !== target.id);
+      this.bossAbilityState.delete(target.id);
+
+      const killerEnt = killerId ? this.entities.get(killerId) : undefined;
+      const killerAccountId =
+        killerEnt?.type === 'PLAYER'
+          ? killerEnt.accountId || killerEnt.id.replace('player_', '')
+          : killerEnt?.type === 'WINGMAN' && killerEnt.ownerPlayerId
+            ? killerEnt.ownerPlayerId
+            : killerId.replace('player_', '') || 'acc_sol_captain';
+      const killerPlayer = this.entities.get(`player_${killerAccountId}`);
+      const killerSquadronId = killerPlayer?.squadronId || null;
+
+      raidDirectorService
+        .finalizeBossDefeat(encId, killerAccountId, killerSquadronId)
+        .then((res) => {
+          const spoilsId = `raid_spoils_${encId}_${Date.now()}`;
+          this.containers.push({
+            id: spoilsId,
+            x: Math.round(target.x * 10) / 10,
+            z: Math.round(target.z * 10) / 10,
+            title: `${target.name} Mythic Spoils Cache`,
+            rarity: 'MYTHIC',
+            items: [
+              {
+                name: 'Precursor Singularity Shard',
+                category: 'VALUABLE',
+                quantity: 2,
+                unitValue: 2400,
+              },
+            ],
+            createdAt: Date.now(),
+            lockedSquadronId: res.winningSquadronId,
+            lockedAccountId: res.winningAccountId,
+            unlockAtMs: Date.now() + 45000,
+          });
+
+          this.pendingEvents.push({
+            type: 'RAID_BOSS_DEFEATED',
+            sourceId: killerId,
+            targetId: target.id,
+            x: target.x,
+            z: target.z,
+            data: {
+              encounterId: encId,
+              bossName: target.name,
+              winningSquadronId: res.winningSquadronId,
+              winningAccountId: res.winningAccountId,
+              rollsCount: res.rolls.length,
+              payouts: res.payouts,
+              spoilsContainerId: spoilsId,
+            },
+          });
+
+          for (const [pid, sock] of this.clients.entries()) {
+            if (sock.readyState !== 1) continue;
+            try {
+              sock.send(
+                JSON.stringify({
+                  type: 'RAID_LOOT_ROLLS',
+                  encounterId: encId,
+                  bossName: target.name,
+                  winningSquadronId: res.winningSquadronId,
+                  rolls: res.rolls,
+                  payouts: res.payouts,
+                })
+              );
+              void pid;
+            } catch {}
+          }
+        })
+        .catch((err) => {
+          console.error('[RaidDirectorService] Failed finalizing boss defeat:', err);
+        });
+    }
     const wreckId = `wreck_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
 
     // Day 36: Record kill in session AAR
@@ -4670,6 +5888,22 @@ export class SectorRoom {
         miningHeat: typeof e.miningHeat === 'number' ? Math.round(e.miningHeat) : 0,
         scoopRadius: e.miningProfile?.scoopRadius,
         beamRange: e.miningProfile?.beamRange,
+        // Milestone 1.9 World Boss & MMORPG Synergy Telemetry
+        raidEncounterId: e.raidEncounterId,
+        raidPhase: e.raidPhase,
+        raidEnraged: e.raidEnraged,
+        equippedSynergies: e.equippedSynergies,
+        synergyCooldowns: e.synergyCooldowns,
+        paintMarked: Boolean(e.paintMarkedUntil && e.paintMarkedUntil > now),
+        armorShredStacks: e.armorShredUntil && e.armorShredUntil > now ? e.armorShredStacks || 0 : 0,
+        stasisWebbed: Boolean(e.stasisWebUntil && e.stasisWebUntil > now),
+        gravitySlowed: Boolean(e.gravitySlowUntil && e.gravitySlowUntil > now),
+        empDisrupted: Boolean(e.empDisruptUntil && e.empDisruptUntil > now),
+        overclocked: Boolean(e.overclockUntil && e.overclockUntil > now),
+        commandAuraActive: Boolean(e.commandAuraActiveUntil && e.commandAuraActiveUntil > now),
+        bastionActive: Boolean(e.bastionDomeUntil && e.bastionDomeUntil > now),
+        guardLinked: Boolean(e.guardLinkUntil && e.guardLinkUntil > now),
+        taunted: Boolean(e.tauntUntil && e.tauntUntil > now),
       })),
       asteroids: this.serializeAsteroids(),
       sporeClouds: this.sporeClouds.map((sc) => ({
@@ -4739,6 +5973,31 @@ export class SectorRoom {
         isTowed: w.isTowed,
         towedByAccountId: w.towedByAccountId,
       })),
+      telegraphs: this.telegraphs.map((tg) => ({ ...tg })),
+      raidBoss: (() => {
+        const boss = this.getActiveRaidBossEntity();
+        if (!boss) return null;
+        let pylonsAlive = 0;
+        for (const ent of this.entities.values()) {
+          if (ent.type === 'RAID_PYLON' && ent.state !== 'DESTROYED' && ent.raidParentBossId === boss.id) {
+            pylonsAlive++;
+          }
+        }
+        return {
+          encounterId: boss.raidEncounterId || boss.id,
+          bossName: boss.name,
+          archetype: boss.raidArchetype || 'CHRONO_MONOLITH',
+          phase: boss.raidPhase || 1,
+          hp: Math.round(boss.hp),
+          maxHp: boss.maxHp,
+          shields: Math.round(boss.shields),
+          maxShields: boss.maxShields,
+          pylonsAlive,
+          enraged: Boolean(boss.raidEnraged),
+          enrageAtMs: boss.raidEnrageAtMs ?? null,
+          aegisReduction: pylonsAlive > 0 ? 0.90 : 0,
+        };
+      })(),
       events: [...this.pendingEvents],
     };
 
@@ -4950,6 +6209,16 @@ export class SectorCombatManager {
           } catch {
             // Socket might be closed
           }
+        } else if (msg.type === 'S_SYNERGY_ABILITY') {
+          const res = room.handleSynergyAbility(playerId, msg.abilityKey, msg.targetEntityId);
+          try {
+            socket.send(
+              JSON.stringify({
+                type: 'S_SYNERGY_ACK',
+                ...res,
+              })
+            );
+          } catch {}
         } else if (msg.type === 'C_DISENGAGE' || msg.type === 'C_REQUEST_AAR') {
           const aar = room.finalizeAAR(playerId);
           try {
@@ -5027,6 +6296,17 @@ export class SectorCombatManager {
       if (updates.friendlyFireAllyIds !== undefined) {
         entity.friendlyFireAllyIds = new Set(updates.friendlyFireAllyIds);
       }
+    }
+  }
+
+  public async syncRaidBossRoom(sectorId: number, encounter: any): Promise<void> {
+    const room = this.getOrCreateRoom(sectorId);
+    room.syncRaidBossRoom(encounter);
+  }
+
+  public refreshPlayerLoadout(accountId: string, loadout?: any): void {
+    for (const room of this.rooms.values()) {
+      room.refreshPlayerLoadout(accountId, loadout);
     }
   }
 }

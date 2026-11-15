@@ -4,6 +4,7 @@ import { ALL_FACTION_IDS, FACTION_REGISTRY, normalizeFactionId } from '../../../
 import { apService } from './ActionPointService';
 import { fleetService, type FleetShip } from './FleetService';
 import { colonyService, type ColonyDetail } from './ColonyService';
+import { raidDirectorService } from './RaidDirectorService';
 import {
   HULL_CLASS_CATALOG,
   MAIN_HULL_CLASS_META,
@@ -681,7 +682,7 @@ export class ShipyardService {
 
     // Find damaged escorts
     const damaged = ships.filter(s => Number(s.hull) < Number(s.max_hull) || Number(s.shield) < Number(s.max_shield));
-    
+
     let reqAlloy = 0;
     let reqOre = 0;
     let reqFuel = ships.length * 1; // 1 fuel per active escort for munitions and reactor priming
@@ -947,8 +948,18 @@ export class ShipyardService {
     if (!hullDef) {
       return {
         success: false,
-        error: `UNKNOWN_HULL_CLASS: "${hullClass}" is not registered in the 24-hull Naval Foundry.`,
+        error: `UNKNOWN_HULL_CLASS: "${hullClass}" is not registered in the Naval Foundry.`,
       };
+    }
+
+    if (hullDef.requiresRelicBlueprint) {
+      const hasPermit = await raidDirectorService.hasRelicUnlock(accountId, hullDef.hullClass);
+      if (!hasPermit) {
+        return {
+          success: false,
+          error: `RELIC_BLUEPRINT_REQUIRED: Fabricating ${hullDef.displayName} requires an unlocked Tier-4 Relic Blueprint from a Dreadnought World Boss.`,
+        };
+      }
     }
 
     if (colonyId) {
@@ -1053,6 +1064,10 @@ export class ShipyardService {
       specialAbility: hullDef.mainClass,
       hullSeed: hullDef.hullSeedDefault,
     });
+
+    if (hullDef.requiresRelicBlueprint) {
+      await raidDirectorService.consumeRelicUnlock(accountId, hullDef.hullClass);
+    }
 
     let promotedFlagship: any = null;
     if (promoteImmediately) {

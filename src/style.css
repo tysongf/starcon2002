@@ -10562,5 +10562,166 @@ kbd {
   color: #cbd5e1;
 }
 
+/* ==========================================================================
+   Milestone 1.9: World Boss HUD, MMORPG Synergy Hotbar & Loot Roll Cards
+   ========================================================================== */
+.raid-boss-hud {
+  position: fixed;
+  top: 72px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(560px, 88vw);
+  z-index: 25;
+  background: rgba(15, 10, 22, 0.88);
+  border: 1px solid rgba(244, 63, 94, 0.65);
+  border-radius: 6px;
+  padding: 8px 12px;
+  box-shadow: 0 0 24px rgba(244, 63, 94, 0.25);
+  pointer-events: none;
+  font-family: var(--font-mono);
+}
+
+.raid-boss-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.raid-boss-name {
+  font-weight: 800;
+  color: #fda4af;
+  font-size: 0.86rem;
+  letter-spacing: 0.04em;
+}
+
+.raid-phase-badge,
+.raid-pylons-badge,
+.raid-enrage-badge {
+  font-size: 0.68rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 700;
+}
+
+.raid-phase-badge {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fcd34d;
+  border: 1px solid rgba(245, 158, 11, 0.5);
+}
+
+.raid-pylons-badge {
+  background: rgba(56, 189, 248, 0.2);
+  color: #7dd3fc;
+  border: 1px solid rgba(56, 189, 248, 0.45);
+}
+
+.raid-enrage-badge {
+  background: rgba(220, 38, 38, 0.35);
+  color: #fecaca;
+  border: 1px solid #ef4444;
+}
+
+.raid-boss-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.raid-bar-row {
+  display: grid;
+  grid-template-columns: 38px 1fr 98px;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.7rem;
+}
+
+.raid-bar-lbl { color: #94a3b8; }
+.raid-bar-val { text-align: right; color: #e2e8f0; }
+
+.raid-bar-track {
+  height: 8px;
+  background: rgba(15, 23, 42, 0.9);
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid rgba(71, 85, 105, 0.5);
+}
+
+.raid-bar-fill.shield { background: linear-gradient(90deg, #0284c7, #38bdf8); height: 100%; }
+.raid-bar-fill.hull { background: linear-gradient(90deg, #be123c, #fb7185); height: 100%; }
+
+.synergy-hotbar {
+  position: fixed;
+  bottom: 92px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 26;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  pointer-events: auto;
+}
+
+.synergy-ally-strip {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.synergy-ally-pill {
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  background: rgba(15, 23, 42, 0.85);
+  color: #bae6fd;
+  font-size: 0.68rem;
+  font-family: var(--font-mono);
+  cursor: pointer;
+}
+
+.synergy-ally-pill.selected {
+  border-color: #22c55e;
+  background: rgba(20, 83, 45, 0.8);
+  color: #bbf7d0;
+}
+
+.synergy-slots-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: center;
+  background: rgba(9, 13, 22, 0.86);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: 8px;
+  padding: 5px 8px;
+}
+
+.synergy-slot-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 78px;
+  padding: 5px 7px;
+  border-radius: 5px;
+  border: 1px solid rgba(71, 85, 105, 0.7);
+  background: rgba(15, 23, 42, 0.9);
+  color: #f1f5f9;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  cursor: pointer;
+}
+
+.synergy-slot-btn[data-role="TANK"] { border-color: rgba(245, 158, 11, 0.6); }
+.synergy-slot-btn[data-role="HEALER"] { border-color: rgba(16, 185, 129, 0.6); }
+.synergy-slot-btn[data-role="DEBUFFER"] { border-color: rgba(168, 85, 247, 0.6); }
+.synergy-slot-btn[data-role="BUFFER"] { border-color: rgba(56, 189, 248, 0.6); }
+.synergy-slot-btn.on-cd { opacity: 0.55; }
+
+.synergy-role-tag { font-size: 0.58rem; color: #94a3b8; }
+.synergy-cd-tag { font-size: 0.64rem; color: #fbbf24; }
+
 
 

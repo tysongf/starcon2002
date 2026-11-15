@@ -588,6 +588,34 @@
       </footer>
     </div>
 
+    <!-- Milestone 1.9: Frontier Dreadnought World Boss Telemetry HUD -->
+    <div id="raid-boss-hud" class="raid-boss-hud hidden">
+      <div class="raid-boss-head">
+        <span id="raid-boss-name" class="raid-boss-name">UR-QUAN VAELIC DREAD-ARK</span>
+        <span id="raid-boss-phase-badge" class="raid-phase-badge">PHASE 1 // AEGIS -90%</span>
+        <span id="raid-boss-pylons-badge" class="raid-pylons-badge">PYLONS: 4</span>
+        <span id="raid-boss-enrage-badge" class="raid-enrage-badge hidden">ENRAGE 3x</span>
+      </div>
+      <div class="raid-boss-bars">
+        <div class="raid-bar-row">
+          <span class="raid-bar-lbl">SHLD</span>
+          <div class="raid-bar-track"><div id="raid-boss-shield-fill" class="raid-bar-fill shield"></div></div>
+          <span id="raid-boss-shield-val" class="raid-bar-val">12000/12000</span>
+        </div>
+        <div class="raid-bar-row">
+          <span class="raid-bar-lbl">HULL</span>
+          <div class="raid-bar-track"><div id="raid-boss-hull-fill" class="raid-bar-fill hull"></div></div>
+          <span id="raid-boss-hull-val" class="raid-bar-val">18000/18000</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Milestone 1.9: Fitted MMORPG Inter-Squadron Synergy Hotbar -->
+    <div id="synergy-hotbar" class="synergy-hotbar hidden">
+      <div id="synergy-ally-strip" class="synergy-ally-strip"></div>
+      <div id="synergy-slots-row" class="synergy-slots-row"></div>
+    </div>
+
     <!-- Tactical Target Reticle (Milestone 0.3) -->
     <div id="tactical-target-reticle" class="tactical-reticle hidden">
       <div class="reticle-box">
@@ -2404,6 +2432,7 @@
           <button class="mp-tab-btn" data-tab="SQUADRON">SQUADRON (MAX 12)</button>
           <button class="mp-tab-btn" data-tab="ALLIES">PEER ALLIES</button>
           <button class="mp-tab-btn" data-tab="TRADE">ESCROW TRADE</button>
+          <button class="mp-tab-btn" data-tab="RAIDS">RAIDS &amp; ROLLS</button>
         </div>
         <div id="mp-modal-body" class="mp-modal-body"></div>
       </div>
